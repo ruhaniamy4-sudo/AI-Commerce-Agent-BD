@@ -75,7 +75,7 @@ router.post('/', async (req, res) => {
         }
 
         const deterministicReply = message
-            ? await getDeterministicResponse(businessId, String(message))
+            ? await getDeterministicResponse(businessId, String(message), { psid: conversation?.psid })
             : null;
         if (deterministicReply) {
             await saveMessage(businessId, convId, 'assistant', deterministicReply, undefined, {

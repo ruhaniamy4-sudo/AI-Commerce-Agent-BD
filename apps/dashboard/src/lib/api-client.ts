@@ -40,7 +40,7 @@ axiosInstance.interceptors.response.use(
     (error: AxiosError) => {
         const status = error.response?.status || 500;
         const data = error.response?.data as Record<string, unknown>;
-        const message = (data?.message as string) || error.message || 'An unexpected error occurred';
+        const message = (data?.message as string) || (data?.error as string) || error.message || 'An unexpected error occurred';
 
         throw new ApiError(message, status, data);
     }

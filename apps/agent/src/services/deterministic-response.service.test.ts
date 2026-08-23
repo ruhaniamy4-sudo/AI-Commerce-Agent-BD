@@ -25,6 +25,21 @@ describe('deterministic responses', () => {
             .resolves.toBe('Order #ABC123 is currently shipped.');
     });
 
+    it('answers a Banglish parcel question from real courier data without an AI request or invented ETA', async () => {
+        vi.spyOn(Order, 'findOne').mockReturnValue({
+            sort: () => ({
+                select: () => ({ lean: () => Promise.resolve({
+                    orderNumber: 'ORD-ABC123', status: 'confirmed',
+                    courier: { status: 'in_transit', trackingCode: 'TRACK123' },
+                }) }),
+            }),
+        } as never);
+
+        const response = await asTenant(() => getDeterministicResponse(businessId, 'amar parcel koi?', { psid: 'customer-1' }));
+        expect(response).toBe('Order #ORD-ABC123 is currently in transit. Tracking code: TRACK123.');
+        expect(response).not.toMatch(/ETA|arrive|tomorrow/i);
+    });
+
     it('answers exact SKU price and stock from backend data', async () => {
         vi.spyOn(Product, 'findOne').mockReturnValue({
             select: () => ({

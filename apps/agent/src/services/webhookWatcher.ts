@@ -52,7 +52,7 @@ export const processWebhookEvent = async (data: any) => {
         }
 
         const deterministicReply = message
-            ? await getDeterministicResponse(businessId, String(message))
+            ? await getDeterministicResponse(businessId, String(message), { psid })
             : null;
         if (deterministicReply) {
             await sendMessage(psid, deterministicReply, pageId);

@@ -144,6 +144,9 @@ export const ordersApi = {
         apiClient.post<Order>('/api/orders/manual', data),
     updatePaymentStatus: (id: string, paymentStatus: string, note?: string) =>
         apiClient.patch<Order>(`/api/orders/${id}/payment-status`, { paymentStatus, note }),
+    getCourier: (id: string) => apiClient.get<CourierActionResponse>(`/api/orders/${id}/courier`),
+    createCourier: (id: string) => apiClient.post<CourierActionResponse>(`/api/orders/${id}/courier/create`),
+    syncCourier: (id: string) => apiClient.post<CourierActionResponse>(`/api/orders/${id}/courier/sync`),
     getAnalytics: (dateRange?: string) =>
         apiClient.get<{
             revenue: { total: number; period: string };
@@ -152,6 +155,32 @@ export const ordersApi = {
             ordersByShippingMethod: Record<string, number>;
             recentOrders: Order[];
         }>('/api/orders/analytics', { params: { dateRange } }),
+};
+
+export interface CourierIntegrationStatus {
+    provider: 'steadfast';
+    configured: boolean;
+    connected: boolean;
+    status: 'connected' | 'disabled' | 'error' | 'not_configured';
+    deliveryType: 0 | 1;
+    lastTestedAt?: string;
+    lastErrorCode?: string;
+}
+
+export interface CourierActionResponse {
+    created?: boolean;
+    idempotent?: boolean;
+    courier: Order['courier'];
+    orderStatus?: Order['status'];
+    orderNumber?: string;
+}
+
+export const courierIntegrationsApi = {
+    getSteadfast: () => apiClient.get<CourierIntegrationStatus>('/api/courier-integrations/steadfast'),
+    saveSteadfast: (data: { apiKey: string; secretKey: string; deliveryType: 0 | 1 }) =>
+        apiClient.put<CourierIntegrationStatus>('/api/courier-integrations/steadfast', data),
+    testSteadfast: () => apiClient.post<{ provider: 'steadfast'; configured: true; connected: true }>('/api/courier-integrations/steadfast/test'),
+    disconnectSteadfast: () => apiClient.delete<CourierIntegrationStatus>('/api/courier-integrations/steadfast'),
 };
 
 

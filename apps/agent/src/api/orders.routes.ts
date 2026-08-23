@@ -4,6 +4,12 @@ import { Order } from '../models/Order';
 import { createOrderWithStock, OrderCreationError } from '../services/checkout.service';
 import { requireAdministrator } from '../auth/middleware';
 import { requireTenantContext } from '../tenancy/context';
+import {
+    CourierOperationError,
+    createCourierDelivery,
+    serializeOrderCourier,
+    syncCourierDelivery,
+} from '../courier/courier.service';
 
 const router = Router();
 
@@ -117,7 +123,7 @@ router.patch('/orders/:id/status', requireAdministrator, async (req, res) => {
 router.patch('/orders/:id', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
+        const { courier: _courier, trackingNumber: _trackingNumber, businessId: _businessId, ...updates } = req.body;
 
         const order = await Order.findByIdAndUpdate(id, updates, {
             new: true,
@@ -132,6 +138,47 @@ router.patch('/orders/:id', requireAdministrator, async (req, res) => {
     } catch (error) {
         console.error('Error updating order:', error);
         res.status(500).json({ error: 'Failed to update order' });
+    }
+});
+
+function courierErrorResponse(res: any, error: unknown) {
+    const known = error instanceof CourierOperationError;
+    return res.status(known ? error.statusCode : 500).json({
+        error: known ? error.message : 'Courier operation failed',
+        code: known ? error.code : 'courier_operation_failed',
+    });
+}
+
+router.get('/orders/:id/courier', async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id).select('orderNumber status courier');
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+        res.json({ orderNumber: order.orderNumber, orderStatus: order.status, courier: serializeOrderCourier(order.courier) });
+    } catch (error) {
+        courierErrorResponse(res, error);
+    }
+});
+
+router.post('/orders/:id/courier/create', requireAdministrator, async (req, res) => {
+    try {
+        const result = await createCourierDelivery({
+            businessId: requireTenantContext().businessId,
+            orderId: req.params.id,
+        });
+        res.status(result.created ? 201 : 200).json(result);
+    } catch (error) {
+        courierErrorResponse(res, error);
+    }
+});
+
+router.post('/orders/:id/courier/sync', requireAdministrator, async (req, res) => {
+    try {
+        res.json(await syncCourierDelivery({
+            businessId: requireTenantContext().businessId,
+            orderId: req.params.id,
+        }));
+    } catch (error) {
+        courierErrorResponse(res, error);
     }
 });
 
