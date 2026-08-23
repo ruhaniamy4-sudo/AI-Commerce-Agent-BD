@@ -1,6 +1,7 @@
 import { Product } from '../models/Product';
 import { getImageEmbedding, findSimilarProductsByEmbedding, cosineSimilarity } from './embedding.service';
 import { assertTenantBusinessId } from '../tenancy/context';
+import { getRagTopK } from './ai-config';
 
 export interface ProductMatchParams {
     businessId: string;
@@ -11,6 +12,8 @@ export interface ProductMatchParams {
     features?: string[];
     limit?: number;
     minSimilarity?: number;
+    conversationId?: string;
+    eventIdentifier?: string;
 }
 
 /**
@@ -25,7 +28,7 @@ export async function matchProductsWithRAG(params: ProductMatchParams) {
         imageEmbedding: providedEmbedd,
         textQuery,
         category,
-        limit = 5,
+        limit = getRagTopK(),
         minSimilarity = 0.7,
     } = params;
 
@@ -35,7 +38,11 @@ export async function matchProductsWithRAG(params: ProductMatchParams) {
 
         if (!queryEmbedding && imageUrl) {
             console.log('Generating embedding for customer image...');
-            const result = await getImageEmbedding(imageUrl);
+            const result = await getImageEmbedding(imageUrl,
+                params.conversationId && params.eventIdentifier
+                    ? { conversationId: params.conversationId, eventIdentifier: params.eventIdentifier }
+                    : undefined
+            );
             queryEmbedding = result.embedding;
         }
 
@@ -60,6 +67,7 @@ export async function matchProductsWithRAG(params: ProductMatchParams) {
 
         const products = await Product.find(query)
             .select('_id name basePrice images imageEmbedding imageEmbeddings category description')
+            .limit(Math.max(limit * 20, 50))
             .lean();
 
         console.log(`Searching ${products.length} products with embeddings`);
@@ -142,7 +150,7 @@ export async function matchProductsWithImageContext(params: any) {
         textQuery,
         category,
         features = [],
-        limit = 5,
+        limit = getRagTopK(),
     } = params;
 
     try {

@@ -3,6 +3,7 @@ import { Conversation } from '../models/Conversation';
 import { Message } from '../models/Message';
 import { getSenderProfile } from './facebook.service';
 import { assertTenantBusinessId } from '../tenancy/context';
+import { maybeUpdateConversationSummary } from './conversation-summary.service';
 
 export async function ensureConversation(
     businessId: string,
@@ -101,13 +102,18 @@ export async function saveMessage(
     conversationId: string,
     role: 'user' | 'assistant',
     content: string,
-    imageUrl?: string
+    imageUrl?: string,
+    options?: { messageId?: string; platform?: string }
 ) {
     assertTenantBusinessId(businessId, 'memory.saveMessage');
     const messageData: any = {
         conversationId,
         role,
         content,
+        metadata: options?.messageId ? {
+            messageId: options.messageId,
+            platform: options.platform,
+        } : undefined,
     };
 
     if (imageUrl) {
@@ -118,5 +124,24 @@ export async function saveMessage(
         }];
     }
 
-    await Message.create(messageData);
+    let savedMessage;
+    try {
+        savedMessage = await Message.create(messageData);
+    } catch (error: any) {
+        if (error?.code !== 11000 || !options?.messageId) throw error;
+        return Message.findOne({ conversationId, 'metadata.messageId': options.messageId });
+    }
+    const conversation = await Conversation.findOneAndUpdate(
+        { conversationId },
+        {
+            $inc: { messageCount: 1 },
+            $set: {
+                lastMessageAt: new Date(),
+                lastMessagePreview: content.slice(0, 200),
+            },
+        },
+        { new: true }
+    );
+    if (conversation) await maybeUpdateConversationSummary(businessId, conversationId);
+    return savedMessage;
 }

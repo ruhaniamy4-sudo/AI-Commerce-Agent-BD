@@ -4,12 +4,15 @@ import { tenantPlugin } from '../tenancy/plugin';
 export interface IWebhookEvent extends Document {
     businessId: mongoose.Types.ObjectId;
     eventId: string; // Unique ID from Facebook or generated
-    source: 'facebook' | 'instagram'; // Platform source
+    source: 'facebook' | 'web';
     eventType: string; // 'message', 'postback', 'delivery', etc.
     psid: string; // Sender PSID
     payload: any; // Full webhook payload
     processed: boolean;
     processedAt?: Date;
+    processingAt?: Date;
+    processingToken?: string;
+    response?: unknown;
     error?: string;
     createdAt: Date;
 }
@@ -20,7 +23,7 @@ const WebhookEventSchema = new Schema(
         source: {
             type: String,
             required: true,
-            enum: ['facebook', 'instagram'],
+            enum: ['facebook', 'web'],
             default: 'facebook',
         },
         eventType: { type: String, required: true },
@@ -28,6 +31,9 @@ const WebhookEventSchema = new Schema(
         payload: { type: Schema.Types.Mixed, required: true },
         processed: { type: Boolean, default: false },
         processedAt: { type: Date },
+        processingAt: { type: Date },
+        processingToken: { type: String },
+        response: { type: Schema.Types.Mixed },
         error: { type: String },
     },
     { timestamps: true }

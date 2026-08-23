@@ -145,6 +145,8 @@ export interface Conversation extends TenantEntity {
   platform: 'facebook' | 'whatsapp' | 'web-widget' | 'telegram' | 'instagram' | 'manual';
   aiEnabled: boolean;
   needsHumanHandoff: boolean;
+  controlMode: 'AI_ACTIVE' | 'HUMAN_ACTIVE';
+  summary?: string;
   handoffReason?: string;
   status: 'active' | 'archived' | 'resolved' | 'spam';
   assignedTo?: string;

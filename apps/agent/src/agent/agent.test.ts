@@ -6,8 +6,12 @@ import { retrieveContext } from '../services/rag.service';
 
 // Mock RAG Service
 vi.mock('../services/rag.service', () => ({
-    retrieveContext: vi.fn().mockResolvedValue({}),
+    retrieveContext: vi.fn().mockResolvedValue({ catalogHits: [], knowledgeEntries: [], lastOrders: [] }),
     formatContextPack: vi.fn().mockReturnValue('{}'),
+}));
+
+vi.mock('../services/ai-usage.service', () => ({
+    recordAIUsage: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Hoist mock function
@@ -54,6 +58,7 @@ describe('AI Agent Logic', () => {
         // Run Agent
         const initialState = {
             businessId,
+            eventIdentifier: 'event-agent-test',
             messages: [new HumanMessage('Hi there')],
             conversationId: 'fb_12345',
             psid: '12345',

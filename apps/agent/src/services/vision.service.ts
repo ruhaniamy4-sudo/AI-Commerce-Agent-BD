@@ -1,8 +1,19 @@
 import OpenAI from 'openai';
+import { recordAIUsage } from './ai-usage.service';
+import { getAIMaxOutputTokens } from './ai-config';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+const getOpenAI = () => {
+    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
+    return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+};
+
+async function recordUsageSafely(params: Parameters<typeof recordAIUsage>[0]) {
+    try {
+        await recordAIUsage(params);
+    } catch (error) {
+        console.error('Failed to record vision usage:', error);
+    }
+}
 
 export interface VisionAnalysisResult {
     description: string;
@@ -16,12 +27,16 @@ export interface VisionAnalysisResult {
  * Analyzes a product image using OpenAI Vision API
  * Extracts category, features, colors, and provides description
  */
-export async function analyzeProductImage(imageUrl: string): Promise<VisionAnalysisResult> {
+export async function analyzeProductImage(
+    imageUrl: string,
+    usageContext?: { conversationId: string; eventIdentifier: string }
+): Promise<VisionAnalysisResult> {
     try {
         console.log(`Analyzing product image: ${imageUrl}`);
 
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4-vision-preview',
+        const model = process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini';
+        const response = await getOpenAI().chat.completions.create({
+            model,
             messages: [
                 {
                     role: 'user',
@@ -49,7 +64,14 @@ Focus on details that would help match this to an e-commerce product catalog.`,
                     ],
                 },
             ],
-            max_tokens: 300,
+            max_tokens: Math.min(300, getAIMaxOutputTokens()),
+        });
+        if (usageContext) await recordUsageSafely({
+            ...usageContext,
+            eventIdentifier: `${usageContext.eventIdentifier}:image-analysis`,
+            operationType: 'vision',
+            model,
+            response,
         });
 
         const content = response.choices[0]?.message?.content;

@@ -1,6 +1,6 @@
 "use client"
 
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { conversationsApi } from "@/lib/api"
 import { PageHeader } from "@/components/layout/page-header"
 import { CardContent } from "@/components/ui/card"
@@ -15,10 +15,26 @@ export default function ConversationDetailPage() {
   const router = useRouter()
   const params = useParams()
   const conversationId = params.id as string
+  const queryClient = useQueryClient()
+
+  const { data: conversation } = useQuery({
+    queryKey: ["conversation", conversationId],
+    queryFn: () => conversationsApi.getById(conversationId),
+  })
 
   const { data: messages, isLoading, error } = useQuery({
     queryKey: ["conversation-messages", conversationId],
     queryFn: () => conversationsApi.getMessages(conversationId),
+  })
+
+  const controlMutation = useMutation({
+    mutationFn: () => conversation?.controlMode === "HUMAN_ACTIVE"
+      ? conversationsApi.returnToAI(conversationId)
+      : conversationsApi.takeOver(conversationId),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["conversation", conversationId], updated)
+      queryClient.invalidateQueries({ queryKey: ["conversations"] })
+    },
   })
 
   if (isLoading) return <div className="flex h-[80vh] items-center justify-center"><Loader2 className="animate-spin text-primary h-12 w-12" /></div>;
@@ -64,7 +80,29 @@ export default function ConversationDetailPage() {
                 <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest opacity-60">Real-time neural telemetry active</p>
               </div>
             </div>
-            <div className="hidden md:flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-xl border",
+                conversation?.controlMode === "HUMAN_ACTIVE"
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                  : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+              )}>
+                {conversation?.controlMode === "HUMAN_ACTIVE" ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                <span className="text-[10px] font-black uppercase tracking-widest">
+                  {conversation?.controlMode === "HUMAN_ACTIVE" ? "Human Active" : "AI Active"}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!conversation || controlMutation.isPending}
+                onClick={() => controlMutation.mutate()}
+                className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+              >
+                {controlMutation.isPending
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : conversation?.controlMode === "HUMAN_ACTIVE" ? "Return to AI" : "Take Over"}
+              </Button>
               <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                 <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Encrypted.256</span>

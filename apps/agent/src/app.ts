@@ -17,6 +17,7 @@ import authRoutes from './api/auth.routes';
 import { authenticate, requireAdministrator } from './auth/middleware';
 import { resolvePublicChannel } from './auth/channel.middleware';
 import publicRoutes from './api/public.routes';
+import aiUsageRoutes from './api/ai-usage.routes';
 import { connectMongo } from './db/mongodb';
 import { getAgentStatus } from './services/agentManager';
 import { warmPromptCache } from './services/systemPrompt.service';
@@ -78,7 +79,7 @@ app.use('/facebook', facebookRoutes);
 app.use('/public/:channelId', resolvePublicChannel, publicRoutes);
 app.use('/google', authenticate, requireAdministrator, googleRoutes);
 app.use('/admin', authenticate, adminRoutes);
-app.use('/api', authenticate, productsRoutes, ordersRoutes, customersRoutes);
+app.use('/api', authenticate, productsRoutes, ordersRoutes, customersRoutes, aiUsageRoutes);
 app.use('/api', authenticate, requireAdministrator, uploadRoutes);
 // Connect to MongoDB
 connectMongo()

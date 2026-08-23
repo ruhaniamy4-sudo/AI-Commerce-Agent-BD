@@ -38,6 +38,9 @@ export const conversationsApi = {
         }),
     getMessages: (id: string) =>
         apiClient.get<Message[]>(`/admin/conversations/${id}/messages`),
+    getById: (id: string) => apiClient.get<Conversation>(`/admin/conversations/${id}`),
+    takeOver: (id: string) => apiClient.post<Conversation>(`/admin/conversations/${id}/take-over`),
+    returnToAI: (id: string) => apiClient.post<Conversation>(`/admin/conversations/${id}/return-to-ai`),
 };
 
 // Customers API (Replaces Clients)

@@ -1,23 +1,42 @@
 import dotenv from 'dotenv';
 import OpenAI from 'openai';
 import axios from 'axios';
+import { recordAIUsage } from './ai-usage.service';
+import { getAIMaxOutputTokens } from './ai-config';
 
 dotenv.config();
 
-const openai = new OpenAI({
-    apiKey: "",
-});
+const getOpenAI = () => {
+    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
+    return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+};
 
+interface UsageContext { conversationId: string; eventIdentifier: string }
+
+async function recordUsageSafely(params: Parameters<typeof recordAIUsage>[0]) {
+    try {
+        await recordAIUsage(params);
+    } catch (error) {
+        console.error('Failed to record embedding usage:', error);
+    }
+}
 
 /**
  * Generate text embedding (for standard RAG)
  */
-export async function generateEmbedding(text: string): Promise<number[]> {
+export async function generateEmbedding(text: string, usageContext?: UsageContext): Promise<number[]> {
     try {
-        const response = await openai.embeddings.create({
+        const response = await getOpenAI().embeddings.create({
             model: 'text-embedding-3-small',
             input: text,
             encoding_format: 'float',
+        });
+        if (usageContext) await recordUsageSafely({
+            ...usageContext,
+            eventIdentifier: `${usageContext.eventIdentifier}:embedding`,
+            operationType: 'embedding',
+            model: 'text-embedding-3-small',
+            response,
         });
 
         return response.data[0].embedding;
@@ -31,7 +50,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
  * Generate image embedding using OpenAI Vision + Text Embedding
  * Gets detailed description first, then embeds it
  */
-export async function generateImageEmbedding(imageUrl: string): Promise<{
+export async function generateImageEmbedding(imageUrl: string, usageContext?: UsageContext): Promise<{
     embedding: number[];
     model: string;
 }> {
@@ -39,8 +58,8 @@ export async function generateImageEmbedding(imageUrl: string): Promise<{
         console.log(`Generating embedding for image: ${imageUrl}`);
 
         // Get detailed description using Vision API
-        const visionResponse = await openai.chat.completions.create({
-            model: 'gpt-4-vision-preview',
+        const visionResponse = await getOpenAI().chat.completions.create({
+            model: process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini',
             messages: [
                 {
                     role: 'user',
@@ -56,13 +75,20 @@ export async function generateImageEmbedding(imageUrl: string): Promise<{
                     ],
                 },
             ],
-            max_tokens: 200,
+            max_tokens: Math.min(200, getAIMaxOutputTokens()),
+        });
+        if (usageContext) await recordUsageSafely({
+            ...usageContext,
+            eventIdentifier: `${usageContext.eventIdentifier}:embedding-vision`,
+            operationType: 'vision',
+            model: process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini',
+            response: visionResponse,
         });
 
         const description = visionResponse.choices[0]?.message?.content || '';
 
         // Generate embedding from the description
-        const embedding = await generateEmbedding(description);
+        const embedding = await generateEmbedding(description, usageContext);
 
         return {
             embedding,
@@ -153,7 +179,7 @@ export async function generateExternalImageEmbedding(imageUrl: string): Promise<
 /**
  * Main function - prioritizes external microservice, falls back to OpenAI Vision
  */
-export async function getImageEmbedding(imageUrl: string): Promise<{
+export async function getImageEmbedding(imageUrl: string, usageContext?: UsageContext): Promise<{
     embedding: number[];
     model: string;
 }> {
@@ -174,7 +200,7 @@ export async function getImageEmbedding(imageUrl: string): Promise<{
     }
 
     // 3. Fallback to OpenAI Vision + Text Embedding
-    return await generateImageEmbedding(imageUrl);
+    return await generateImageEmbedding(imageUrl, usageContext);
 }
 
 /**

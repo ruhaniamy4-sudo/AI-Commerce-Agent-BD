@@ -14,10 +14,11 @@ import { Message } from '../models/Message';
 import { Order } from '../models/Order';
 import { Product } from '../models/Product';
 import { WebhookEvent } from '../models/WebhookEvent';
+import { AIUsage } from '../models/AIUsage';
 
 dotenv.config();
 
-const tenantModels = [Category, Conversation, Customer, Knowledge, Message, Order, Product, WebhookEvent];
+const tenantModels = [AIUsage, Category, Conversation, Customer, Knowledge, Message, Order, Product, WebhookEvent];
 
 async function dropLegacyGlobalUniqueIndexes() {
     const legacyIndexes: Record<string, string[]> = {
@@ -97,6 +98,22 @@ async function main() {
         );
         console.log(`${model.modelName}: backfilled ${result.modifiedCount}`);
     }
+
+    await Conversation.collection.updateMany(
+        { controlMode: { $exists: false } },
+        [{
+            $set: {
+                controlMode: {
+                    $cond: [
+                        { $or: [{ $eq: ['$aiEnabled', false] }, { $eq: ['$needsHumanHandoff', true] }] },
+                        'HUMAN_ACTIVE',
+                        'AI_ACTIVE',
+                    ],
+                },
+                summarizedMessageCount: { $ifNull: ['$summarizedMessageCount', 0] },
+            },
+        }]
+    );
 
     await dropLegacyGlobalUniqueIndexes();
     for (const model of tenantModels) await model.syncIndexes();

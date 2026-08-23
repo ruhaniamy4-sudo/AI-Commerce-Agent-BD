@@ -37,6 +37,7 @@ export type OrderStatus =
 export interface IOrder extends Document {
     businessId: mongoose.Types.ObjectId;
     orderNumber: string; // Unique order ID for customer reference
+    idempotencyKey?: string;
     invoiceNumber?: string; // Unique invoice ID for accounting
     customerId: mongoose.Types.ObjectId;
     psid?: string; // Facebook PSID if ordered via Messenger
@@ -109,6 +110,7 @@ const AddressSchema = new Schema({
 const OrderSchema = new Schema(
     {
         orderNumber: { type: String, required: true },
+        idempotencyKey: { type: String },
         invoiceNumber: { type: String },
         customerId: {
             type: Schema.Types.ObjectId,
@@ -186,6 +188,10 @@ OrderSchema.plugin(tenantPlugin);
 
 // Indexes for common queries
 OrderSchema.index({ businessId: 1, orderNumber: 1 }, { unique: true });
+OrderSchema.index(
+    { businessId: 1, idempotencyKey: 1 },
+    { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } }
+);
 OrderSchema.index(
     { businessId: 1, invoiceNumber: 1 },
     { unique: true, partialFilterExpression: { invoiceNumber: { $type: 'string' } } }

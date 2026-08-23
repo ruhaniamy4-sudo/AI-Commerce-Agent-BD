@@ -10,6 +10,10 @@ const GraphState = Annotation.Root({
         reducer: (x, y) => y ?? x,
         default: () => '',
     }),
+    eventIdentifier: Annotation<string>({
+        reducer: (x, y) => y ?? x,
+        default: () => '',
+    }),
     conversationId: Annotation<string>({
         reducer: (x, y) => y ?? x,
         default: () => 'default_id',
@@ -43,6 +47,7 @@ const graph = new StateGraph(GraphState)
             {
                 messages: state.messages as BaseMessage[],
                 businessId: state.businessId,
+                eventIdentifier: state.eventIdentifier,
                 conversationId: state.conversationId as string,
                 psid: state.psid,
             },

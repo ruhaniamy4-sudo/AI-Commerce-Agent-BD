@@ -63,6 +63,7 @@ describe('message pipeline tenant guards', () => {
             businessId: businessB,
             conversationId: 'fb_customer',
             psid: 'customer',
+            eventIdentifier: 'event-1',
             response: { message_text: 'handoff', action: 'handoff' },
         }))).rejects.toThrow('agent.executeAction');
         expect(updateConversation).not.toHaveBeenCalled();
