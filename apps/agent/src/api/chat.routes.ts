@@ -10,11 +10,14 @@ import { logError } from '../services/error.service';
 import { loadConversationHistory } from '../services/history.service';
 import { ensureConversation, saveMessage } from '../services/memory.service';
 import { handleImageInput } from '../services/image-processor.service';
+import { requireTenantContext } from '../tenancy/context';
+import { executeAgentAction, parseAgentResponse } from '../services/agent-action.service';
 
 const router = Router();
 
 router.post('/', async (req, res) => {
     try {
+        const { businessId } = requireTenantContext();
         const { message, conversationId, imageUrl } = req.body;
         const convId = conversationId || uuid();
 
@@ -23,15 +26,23 @@ router.post('/', async (req, res) => {
         }
 
         // ensure conversation exists
-        await ensureConversation(convId);
+        const conversation = await ensureConversation(businessId, convId);
 
         // save human message
-        await saveMessage(convId, 'user', message || '', imageUrl);
+        await saveMessage(businessId, convId, 'user', message || '', imageUrl);
+
+        if (conversation && (!conversation.aiEnabled || conversation.needsHumanHandoff)) {
+            return res.status(202).json({
+                conversationId: convId,
+                reply: null,
+                needsHumanHandoff: conversation.needsHumanHandoff,
+            });
+        }
 
         // Process image if provided (RAG + Vision context)
         if (imageUrl) {
             try {
-                await handleImageInput(convId, imageUrl);
+                await handleImageInput(businessId, convId, imageUrl);
             } catch (error) {
                 console.error('Error processing image in chat route:', error);
             }
@@ -43,30 +54,29 @@ router.post('/', async (req, res) => {
         const agentStatus = await getAgentStatus();
 
         // load full history for context
-        const history = await loadConversationHistory(convId);
+        const history = await loadConversationHistory(businessId, convId);
 
         const state = await agentGraph.invoke({
+            businessId,
             conversationId: convId,
             agentStatus: agentStatus as AgentState['agentStatus'],
             lastHumanActivity: Date.now(),
             messages: history,
+            psid: conversation?.psid,
         });
 
         const lastMessage = state.messages[state.messages.length - 1];
-        let reply = lastMessage?.content;
-
-        if (lastMessage) {
-            if (typeof lastMessage.content === 'string') {
-                reply = lastMessage.content;
-            } else if (Array.isArray(lastMessage.content)) {
-                reply = lastMessage.content
-                    .map((m: any) => ('text' in m ? m.text : ''))
-                    .join('');
-            }
-        }
+        const agentResponse = parseAgentResponse(lastMessage?.content);
+        await executeAgentAction({
+            businessId,
+            conversationId: convId,
+            psid: conversation?.psid,
+            response: agentResponse,
+        });
+        const reply = agentResponse.message_text;
 
         if (reply) {
-            await saveMessage(convId, 'assistant', reply as string);
+            await saveMessage(businessId, convId, 'assistant', reply);
         }
 
         res.json({

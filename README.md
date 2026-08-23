@@ -40,6 +40,15 @@ MongoDB runs as a single-node replica set because order and stock writes use tra
 
 Tenant administration endpoints are available under `/auth/business`, `/auth/members`, and `/auth/channels`.
 
+### Tenant-aware message pipeline
+
+Facebook page events and public web chat requests resolve a `BusinessChannel` before processing. The resulting `businessId` is carried explicitly through Conversation, agent state, Memory, RAG, product matching, Knowledge/Customer retrieval, and order actions. Every stage compares that value with the request-scoped tenant context and fails before accessing data when they differ.
+
+- Facebook entry: `/facebook` resolves the page ID and includes `businessId` in the BullMQ job.
+- Web entry: `/public/:channelId/chat` resolves the storefront/web channel before invoking the same chat pipeline.
+- Authenticated manual chat: `/chat` uses the business bound to the validated membership token.
+- Agent-created orders resolve the customer and products under that same tenant and retain the existing MongoDB transaction boundary.
+
 ## Run locally
 
 Use separate terminals:

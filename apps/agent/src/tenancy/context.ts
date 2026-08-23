@@ -29,6 +29,14 @@ export function requireTenantContext(): TenantPrincipal {
     return context;
 }
 
+export function assertTenantBusinessId(businessId: string, stage: string): string {
+    const context = requireTenantContext();
+    if (!businessId || businessId !== context.businessId) {
+        throw new TenantContextError(`Tenant context mismatch at ${stage}`);
+    }
+    return context.businessId;
+}
+
 export function withTenantContext<T>(context: TenantPrincipal, work: () => T): T {
     return tenantStorage.run(context, work);
 }

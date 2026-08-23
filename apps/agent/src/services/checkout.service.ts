@@ -2,14 +2,17 @@ import mongoose from 'mongoose';
 import { Order } from '../models/Order';
 import { Product } from '../models/Product';
 import { Customer } from '../models/Customer';
+import { assertTenantBusinessId } from '../tenancy/context';
 
 interface CreateOrderParams {
+    businessId: string;
     psid: string;
     items: { sku: string; quantity: number; variantId?: string }[];
     address?: any;
 }
 
 export interface CreateOrderWithStockParams {
+    businessId: string;
     customerId: mongoose.Types.ObjectId | string;
     psid?: string;
     items: Array<{
@@ -34,6 +37,7 @@ export interface CreateOrderWithStockParams {
 export class OrderCreationError extends Error {}
 
 export const createOrderWithStock = async (params: CreateOrderWithStockParams) => {
+    assertTenantBusinessId(params.businessId, 'orders.createWithStock');
     if (!params.items?.length) throw new OrderCreationError('At least one order item is required');
 
     const deliveryFee = Number(params.deliveryFee || 0);
@@ -152,12 +156,14 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
 
 export const createOrder = async (params: CreateOrderParams) => {
     try {
+        assertTenantBusinessId(params.businessId, 'orders.createFromAgent');
         console.log(`Creating order for PSID ${params.psid}`);
 
         const customer = await Customer.findOne({ psid: params.psid });
         if (!customer) throw new Error('Customer not found');
 
         const order = await createOrderWithStock({
+            businessId: params.businessId,
             customerId: customer._id,
             psid: params.psid,
             items: params.items,

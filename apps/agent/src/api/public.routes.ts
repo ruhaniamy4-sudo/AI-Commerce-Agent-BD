@@ -2,8 +2,11 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import { Category } from '../models/Category';
 import { Product } from '../models/Product';
+import chatRoutes from './chat.routes';
 
 const router = Router({ mergeParams: true });
+
+router.use('/chat', chatRoutes);
 
 router.get('/products', async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);

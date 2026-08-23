@@ -12,14 +12,16 @@ import {
     sendQuickReplies,
     sendGenericTemplate
 } from './facebook.service';
-import { createOrder } from './checkout.service';
 import { logError } from './error.service';
 import { handleImageInput } from './image-processor.service';
 import { formatProductsForResponse } from './product-matcher.service';
 import { Conversation } from '../models/Conversation';
+import { assertTenantBusinessId } from '../tenancy/context';
+import { executeAgentAction, parseAgentResponse } from './agent-action.service';
 
 export const processWebhookEvent = async (data: any) => {
-    const { eventId, psid, message, attachments = [] } = data;
+    const { businessId, eventId, psid, message, attachments = [], pageId } = data;
+    assertTenantBusinessId(businessId, 'facebook.webhookWorker');
 
     const existingEvent = await WebhookEvent.findOne({ eventId, processed: true });
     if (existingEvent) {
@@ -36,7 +38,7 @@ export const processWebhookEvent = async (data: any) => {
         }
 
         const convId = `fb_${psid}`;
-        await ensureConversation(convId);
+        await ensureConversation(businessId, convId);
 
         // Check for image attachments and process them
         const imageAttachment = attachments.find((att: any) => att.type === 'image');
@@ -44,18 +46,18 @@ export const processWebhookEvent = async (data: any) => {
 
         if (imageAttachment && imageAttachment.payload?.url) {
             try {
-                const { matchedProducts, visionResult } = await handleImageInput(convId, imageAttachment.payload.url);
+                const { matchedProducts, visionResult } = await handleImageInput(businessId, convId, imageAttachment.payload.url);
 
                 // If we found matching products, send them immediately (Facebook specific behavior)
                 if (matchedProducts.length > 0) {
                     const productList = formatProductsForResponse(matchedProducts);
                     const responseText = `I can see this is a ${visionResult.category || 'product'}! I found these visually similar matches:\n\n${productList}\n\nWould you like to know more about any of these?`;
 
-                    await sendMessage(psid, responseText, process.env.FB_PAGE_ID || 'me');
+                    await sendMessage(psid, responseText, pageId);
                     imageAnalyzed = true;
                 } else {
                     // No good matches
-                    await sendMessage(psid, `I can see the ${visionResult.category || 'product'} you shared! We don't have exact matches right now, but I can help you find similar items. What are you looking for?`, process.env.FB_PAGE_ID || 'me');
+                    await sendMessage(psid, `I can see the ${visionResult.category || 'product'} you shared! We don't have exact matches right now, but I can help you find similar items. What are you looking for?`, pageId);
                     imageAnalyzed = true;
                 }
             } catch (visionError) {
@@ -65,7 +67,7 @@ export const processWebhookEvent = async (data: any) => {
 
         // Save the user message
         const messageText = message || (imageAttachment ? '[Image]' : '');
-        await saveMessage(convId, 'user', messageText);
+        await saveMessage(businessId, convId, 'user', messageText);
         await updateLastHumanActivity();
 
         // Load conversation with image context
@@ -77,10 +79,11 @@ export const processWebhookEvent = async (data: any) => {
             );
             return;
         }
-        const history = await loadConversationHistory(convId);
+        const history = await loadConversationHistory(businessId, convId);
 
         // Invoke AI Agent
         const state = await agentGraph.invoke({
+            businessId,
             conversationId: convId,
             agentStatus: agentStatus as AgentState['agentStatus'],
             lastHumanActivity: Date.now(),
@@ -90,47 +93,10 @@ export const processWebhookEvent = async (data: any) => {
 
         // Get reply and Parse JSON
         const lastMessage = state.messages[state.messages.length - 1];
-        let aiResponse: any = {};
-
-        try {
-            const content = lastMessage.content.toString();
-            // Clean up code blocks if present (markdown json)
-            const cleanContent = content.replace(/```json/g, '').replace(/```/g, '').trim();
-            aiResponse = JSON.parse(cleanContent);
-        } catch (e) {
-            console.error('Failed to parse AI JSON response:', lastMessage.content);
-            // Fallback for simple text
-            aiResponse = { message_text: lastMessage.content.toString(), action: 'none' };
-        }
-
-        const pageId = process.env.FB_PAGE_ID || 'me';
+        const aiResponse = parseAgentResponse(lastMessage.content);
 
         // 1. Handle Actions
-        if (aiResponse.action === 'create_order') {
-            const orderResult = await createOrder({
-                psid,
-                items: aiResponse.action_payload?.items || [],
-                address: aiResponse.action_payload?.address
-            });
-
-            // Append order status to message
-            if (orderResult.success) {
-                aiResponse.message_text += `\n\nOrder #${orderResult.orderId} created successfully! Total: ${orderResult.total}`;
-            } else {
-                aiResponse.message_text += `\n\nFailed to create order: ${orderResult.error}`;
-            }
-        }
-
-        if (aiResponse.action === 'handoff') {
-            await Conversation.updateOne(
-                { conversationId: convId },
-                {
-                    aiEnabled: false,
-                    needsHumanHandoff: true,
-                    handoffReason: aiResponse.action_payload?.reason || 'AI requested human handoff',
-                }
-            );
-        }
+        await executeAgentAction({ businessId, conversationId: convId, psid, response: aiResponse });
 
         // 2. Send Message (with Quick Replies or Templates)
         if (aiResponse.suggested_products && aiResponse.suggested_products.length > 0) {
@@ -167,7 +133,7 @@ export const processWebhookEvent = async (data: any) => {
 
         // Save Assistant Reply - Store the text to keep conversation history compatible
         // Ideally we should store the full JSON structure in metadata, but for RAG text is input
-        await saveMessage(convId, 'assistant', aiResponse.message_text);
+        await saveMessage(businessId, convId, 'assistant', aiResponse.message_text);
 
         await WebhookEvent.updateOne(
             { eventId },
