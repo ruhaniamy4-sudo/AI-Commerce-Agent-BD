@@ -1,6 +1,8 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { tenantPlugin } from '../tenancy/plugin';
 
 export interface ICategory extends Document {
+    businessId: mongoose.Types.ObjectId;
     name: string;
     slug: string;
     description?: string;
@@ -18,7 +20,6 @@ const CategorySchema = new Schema(
         slug: {
             type: String,
             required: true,
-            unique: true,
             lowercase: true,
             trim: true,
         },
@@ -36,9 +37,12 @@ const CategorySchema = new Schema(
     { timestamps: true }
 );
 
+CategorySchema.plugin(tenantPlugin);
+
 // Indexes
-CategorySchema.index({ parentId: 1, isActive: 1 });
-CategorySchema.index({ order: 1 });
+CategorySchema.index({ businessId: 1, slug: 1 }, { unique: true });
+CategorySchema.index({ businessId: 1, parentId: 1, isActive: 1 });
+CategorySchema.index({ businessId: 1, order: 1 });
 
 // Pre-save middleware to generate slug
 CategorySchema.pre('save', async function (this: ICategory) {

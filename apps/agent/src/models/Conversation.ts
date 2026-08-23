@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { tenantPlugin } from '../tenancy/plugin';
 
 export type ConversationIntent =
     | 'product_inquiry'
@@ -10,6 +11,7 @@ export type ConversationIntent =
     | 'unknown';
 
 export interface IConversation extends Document {
+    businessId: mongoose.Types.ObjectId;
     conversationId: string; // Unique conversation ID
     customerId?: mongoose.Types.ObjectId; // Reference to Customer
     psid?: string; // Facebook PSID
@@ -53,7 +55,7 @@ export interface IConversation extends Document {
 
 const ConversationSchema = new Schema(
     {
-        conversationId: { type: String, required: true, unique: true },
+        conversationId: { type: String, required: true },
         customerId: { type: Schema.Types.ObjectId, ref: 'Customer', index: true },
         psid: { type: String },
 
@@ -111,12 +113,15 @@ const ConversationSchema = new Schema(
     { timestamps: true }
 );
 
+ConversationSchema.plugin(tenantPlugin);
+
 // Compound Indexes for common query patterns
-ConversationSchema.index({ customerId: 1, createdAt: -1 });
-ConversationSchema.index({ status: 1, lastMessageAt: -1 });
-ConversationSchema.index({ platform: 1, status: 1 });
-ConversationSchema.index({ assignedTo: 1, status: 1 });
-ConversationSchema.index({ needsHumanHandoff: 1, status: 1 });
-ConversationSchema.index({ psid: 1 });
+ConversationSchema.index({ businessId: 1, conversationId: 1 }, { unique: true });
+ConversationSchema.index({ businessId: 1, customerId: 1, createdAt: -1 });
+ConversationSchema.index({ businessId: 1, status: 1, lastMessageAt: -1 });
+ConversationSchema.index({ businessId: 1, platform: 1, status: 1 });
+ConversationSchema.index({ businessId: 1, assignedTo: 1, status: 1 });
+ConversationSchema.index({ businessId: 1, needsHumanHandoff: 1, status: 1 });
+ConversationSchema.index({ businessId: 1, psid: 1 });
 
 export const Conversation = mongoose.model<IConversation>('Conversation', ConversationSchema);

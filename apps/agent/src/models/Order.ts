@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { tenantPlugin } from '../tenancy/plugin';
 
 export interface IOrderItem {
     productId: mongoose.Types.ObjectId;
@@ -34,6 +35,7 @@ export type OrderStatus =
     | 'refunded';
 
 export interface IOrder extends Document {
+    businessId: mongoose.Types.ObjectId;
     orderNumber: string; // Unique order ID for customer reference
     invoiceNumber?: string; // Unique invoice ID for accounting
     customerId: mongoose.Types.ObjectId;
@@ -106,8 +108,8 @@ const AddressSchema = new Schema({
 
 const OrderSchema = new Schema(
     {
-        orderNumber: { type: String, required: true, unique: true },
-        invoiceNumber: { type: String, unique: true, sparse: true },
+        orderNumber: { type: String, required: true },
+        invoiceNumber: { type: String },
         customerId: {
             type: Schema.Types.ObjectId,
             ref: 'Customer',
@@ -180,9 +182,16 @@ const OrderSchema = new Schema(
     { timestamps: true }
 );
 
+OrderSchema.plugin(tenantPlugin);
+
 // Indexes for common queries
-OrderSchema.index({ customerId: 1, createdAt: -1 });
-OrderSchema.index({ status: 1, createdAt: -1 });
+OrderSchema.index({ businessId: 1, orderNumber: 1 }, { unique: true });
+OrderSchema.index(
+    { businessId: 1, invoiceNumber: 1 },
+    { unique: true, partialFilterExpression: { invoiceNumber: { $type: 'string' } } }
+);
+OrderSchema.index({ businessId: 1, customerId: 1, createdAt: -1 });
+OrderSchema.index({ businessId: 1, status: 1, createdAt: -1 });
 
 // Generate required identifiers before validation runs.
 OrderSchema.pre('validate', function (this: IOrder) {

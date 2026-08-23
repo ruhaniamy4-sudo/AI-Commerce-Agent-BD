@@ -1,6 +1,7 @@
 import { Queue, Worker } from 'bullmq';
 import dotenv from 'dotenv';
 import { processWebhookEvent } from './webhookWatcher';
+import { withTenantContext } from '../tenancy/context';
 
 dotenv.config();
 
@@ -18,7 +19,13 @@ export const setupWorker = () => {
         'webhook-events',
         async (job) => {
             console.log(`Processing job ${job.id}:`, job.name);
-            await processWebhookEvent(job.data);
+            if (!job.data.businessId) throw new Error('Webhook job is missing businessId');
+            await withTenantContext({
+                businessId: job.data.businessId,
+                userId: 'facebook-system',
+                membershipId: 'facebook-system',
+                role: 'Staff',
+            }, () => processWebhookEvent(job.data));
         },
         { connection: redisConfig }
     );

@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { tenantPlugin } from '../tenancy/plugin';
 
 export interface IProductVariant {
     variantId: string;
@@ -12,6 +13,7 @@ export interface IProductVariant {
 }
 
 export interface IProduct extends Document {
+    businessId: mongoose.Types.ObjectId;
     name: string;
     slug: string;
     description: string;
@@ -66,7 +68,7 @@ export interface IProduct extends Document {
 const ProductVariantSchema = new Schema({
     variantId: { type: String, required: true },
     name: { type: String, required: true },
-    sku: { type: String, required: true, unique: true },
+    sku: { type: String, required: true },
     price: { type: Number, required: true, min: 0 },
     stock: { type: Number, required: true, min: 0, default: 0 },
     images: [{ type: String }],
@@ -80,7 +82,6 @@ const ProductSchema = new Schema(
         slug: {
             type: String,
             required: true,
-            unique: true,
             lowercase: true,
             trim: true,
         },
@@ -131,12 +132,19 @@ const ProductSchema = new Schema(
     { timestamps: true }
 );
 
+ProductSchema.plugin(tenantPlugin);
+
 // Indexes for common queries
-ProductSchema.index({ name: 'text', description: 'text' });
-ProductSchema.index({ categoryId: 1, isActive: 1 });
-ProductSchema.index({ compatibilityTags: 1 });
-ProductSchema.index({ basePrice: 1 });
-ProductSchema.index({ isFeatured: 1, isActive: 1 });
+ProductSchema.index({ businessId: 1, slug: 1 }, { unique: true });
+ProductSchema.index(
+    { businessId: 1, 'variants.sku': 1 },
+    { unique: true, partialFilterExpression: { 'variants.sku': { $exists: true } } }
+);
+ProductSchema.index({ businessId: 1, name: 'text', description: 'text' });
+ProductSchema.index({ businessId: 1, categoryId: 1, isActive: 1 });
+ProductSchema.index({ businessId: 1, compatibilityTags: 1 });
+ProductSchema.index({ businessId: 1, basePrice: 1 });
+ProductSchema.index({ businessId: 1, isFeatured: 1, isActive: 1 });
 
 // Virtual for low stock check
 ProductSchema.virtual('isLowStock').get(function (this: IProduct) {

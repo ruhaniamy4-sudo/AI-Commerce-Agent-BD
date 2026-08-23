@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import NodeCache from 'node-cache';
+import { AuthenticatedRequest, requireAdministrator } from '../auth/middleware';
+import { requireTenantContext, tenantDocument } from '../tenancy/context';
 import { Conversation } from '../models/Conversation';
 import { Customer } from '../models/Customer';
 import { Knowledge } from '../models/Knowledge';
@@ -202,7 +204,7 @@ router.get('/knowledge', async (req, res) => {
 });
 
 // Create a new knowledge base entry
-router.post('/knowledge', async (req, res) => {
+router.post('/knowledge', requireAdministrator, async (req: AuthenticatedRequest, res) => {
     try {
         const { title, content, type, language, tags, status } = req.body;
 
@@ -210,15 +212,17 @@ router.post('/knowledge', async (req, res) => {
             return res.status(400).json({ error: 'Title, content, and type are required' });
         }
 
-        const knowledge = new Knowledge({
+        const knowledge = new Knowledge(tenantDocument({
             title,
             content,
             type,
             language: language || 'en',
             tags: tags || [],
             status: status || 'active',
-            version: 1
-        });
+            version: 1,
+            createdBy: req.auth!.userId,
+            updatedBy: req.auth!.userId,
+        }));
 
         await knowledge.save();
         res.status(201).json(knowledge);
@@ -229,10 +233,11 @@ router.post('/knowledge', async (req, res) => {
 });
 
 // Update a knowledge base entry
-router.patch('/knowledge/:id', async (req, res) => {
+router.patch('/knowledge/:id', requireAdministrator, async (req: AuthenticatedRequest, res) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
+        const { businessId: _ignoredBusinessId, ...updates } = req.body;
+        updates.updatedBy = req.auth!.userId;
         const knowledge = await Knowledge.findByIdAndUpdate(id, updates, { new: true });
         if (!knowledge) return res.status(404).json({ error: 'Not found' });
         res.json(knowledge);
@@ -242,7 +247,7 @@ router.patch('/knowledge/:id', async (req, res) => {
 });
 
 // Delete a knowledge base entry
-router.delete('/knowledge/:id', async (req, res) => {
+router.delete('/knowledge/:id', requireAdministrator, async (req, res) => {
     try {
         await Knowledge.findByIdAndDelete(req.params.id);
         res.json({ message: 'Deleted successfully' });
@@ -271,7 +276,7 @@ router.get('/system-prompts/active', async (_req, res) => {
     }
 });
 
-router.post('/system-prompts', async (req, res) => {
+router.post('/system-prompts', requireAdministrator, async (req, res) => {
     try {
         const prompt = await SystemPrompt.create(req.body);
         await invalidatePromptCache();
@@ -281,7 +286,7 @@ router.post('/system-prompts', async (req, res) => {
     }
 });
 
-router.patch('/system-prompts/:id', async (req, res) => {
+router.patch('/system-prompts/:id', requireAdministrator, async (req, res) => {
     try {
         const prompt = await SystemPrompt.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
@@ -295,7 +300,7 @@ router.patch('/system-prompts/:id', async (req, res) => {
     }
 });
 
-router.delete('/system-prompts/:id', async (req, res) => {
+router.delete('/system-prompts/:id', requireAdministrator, async (req, res) => {
     try {
         const prompt = await SystemPrompt.findByIdAndDelete(req.params.id);
         if (!prompt) return res.status(404).json({ error: 'Prompt not found' });
@@ -311,7 +316,7 @@ const analyticsCache = new NodeCache({ stdTTL: 300 });
 
 router.get('/analytics', async (req, res) => {
     try {
-        const cacheKey = 'f_commerce_analytics';
+        const cacheKey = `f_commerce_analytics:${requireTenantContext().businessId}`;
         const cachedData = analyticsCache.get(cacheKey);
         if (cachedData) return res.json(cachedData);
 

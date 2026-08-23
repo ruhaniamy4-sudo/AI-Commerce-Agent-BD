@@ -15,6 +15,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
     "smoke:baseline": "node scripts/smoke-baseline.mjs",
+    "migrate:tenancy": "npm run migrate:tenancy -w apps/agent",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f mongo redis"

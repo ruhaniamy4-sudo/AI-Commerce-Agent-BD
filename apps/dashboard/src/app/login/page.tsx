@@ -11,6 +11,7 @@ import { Loader2, Lock, Mail } from "lucide-react"
 export default function LoginPage() {
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
+    const [businessId, setBusinessId] = useState("")
     const [error, setError] = useState("")
     const [isLoading, setIsLoading] = useState(false)
     const router = useRouter()
@@ -25,6 +26,7 @@ export default function LoginPage() {
                 redirect: false,
                 email,
                 password,
+                businessId,
             })
 
             if (result?.error) {
@@ -93,6 +95,16 @@ export default function LoginPage() {
                                     required
                                 />
                             </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium leading-none" htmlFor="businessId">
+                                Business ID <span className="text-slate-400">(only for multi-business users)</span>
+                            </label>
+                            <Input
+                                id="businessId"
+                                value={businessId}
+                                onChange={(e) => setBusinessId(e.target.value)}
+                            />
                         </div>
                     </CardContent>
                     <CardFooter className="flex flex-col space-y-4 pt-4">

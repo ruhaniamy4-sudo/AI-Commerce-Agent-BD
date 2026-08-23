@@ -1,50 +1,69 @@
-import { NextAuthOptions } from "next-auth"
-import CredentialsProvider from "next-auth/providers/credentials"
-import crypto from "crypto"
+import { NextAuthOptions } from 'next-auth';
+import CredentialsProvider from 'next-auth/providers/credentials';
 
-function safeEqual(left: string, right: string) {
-    const leftBuffer = Buffer.from(left)
-    const rightBuffer = Buffer.from(right)
-    return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer)
+interface LoginResponse {
+    accessToken: string;
+    role: 'Owner' | 'Admin' | 'Staff';
+    business: { id: string; name: string; slug: string };
+    user: { id: string; name: string; email: string };
 }
 
 export const authOptions: NextAuthOptions = {
     providers: [
         CredentialsProvider({
-            name: "Credentials",
+            name: 'Credentials',
             credentials: {
-                email: { label: "Email", type: "email", placeholder: "admin@example.com" },
-                password: { label: "Password", type: "password" }
+                email: { label: 'Email', type: 'email' },
+                password: { label: 'Password', type: 'password' },
+                businessId: { label: 'Business ID', type: 'text' },
             },
             async authorize(credentials) {
-                const adminEmail = process.env.DASHBOARD_ADMIN_EMAIL
-                const adminPassword = process.env.DASHBOARD_ADMIN_PASSWORD
-                if (!adminEmail || !adminPassword || !credentials?.email || !credentials.password) {
-                    return null
-                }
-                if (safeEqual(credentials.email.toLowerCase(), adminEmail.toLowerCase()) && safeEqual(credentials.password, adminPassword)) {
-                    return { id: "admin", name: "Admin", email: adminEmail }
-                }
-                return null
-            }
-        })
+                if (!credentials?.email || !credentials.password) return null;
+                const apiBaseUrl = process.env.AGENT_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
+                if (!apiBaseUrl) throw new Error('Agent API URL is not configured');
+
+                const response = await fetch(`${apiBaseUrl}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        email: credentials.email,
+                        password: credentials.password,
+                        businessId: credentials.businessId || undefined,
+                    }),
+                });
+                if (!response.ok) return null;
+                const result = (await response.json()) as LoginResponse;
+                return {
+                    id: result.user.id,
+                    name: result.user.name,
+                    email: result.user.email,
+                    accessToken: result.accessToken,
+                    businessId: result.business.id,
+                    businessName: result.business.name,
+                    role: result.role,
+                };
+            },
+        }),
     ],
-    pages: {
-        signIn: "/login",
-    },
+    pages: { signIn: '/login' },
     callbacks: {
-        async session({ session, token }) {
-            if (token && session.user) {
-                session.user.id = token.sub
-            }
-            return session
-        },
         async jwt({ token, user }) {
             if (user) {
-                token.id = user.id
+                token.accessToken = user.accessToken;
+                token.businessId = user.businessId;
+                token.businessName = user.businessName;
+                token.role = user.role;
             }
-            return token
-        }
+            return token;
+        },
+        async session({ session, token }) {
+            if (session.user) session.user.id = token.sub;
+            session.accessToken = token.accessToken;
+            session.businessId = token.businessId;
+            session.businessName = token.businessName;
+            session.role = token.role;
+            return session;
+        },
     },
     secret: process.env.NEXTAUTH_SECRET,
-}
+};

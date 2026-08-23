@@ -4,6 +4,7 @@ import { Order } from '../models/Order';
 import { Customer } from '../models/Customer';
 import { Product } from '../models/Product';
 import { createOrderWithStock } from './checkout.service';
+import { withTenantContext } from '../tenancy/context';
 
 describe('order creation and stock safety', () => {
     const session = {
@@ -12,6 +13,13 @@ describe('order creation and stock safety', () => {
     };
     const customerId = new mongoose.Types.ObjectId();
     const productId = new mongoose.Types.ObjectId();
+    const businessId = new mongoose.Types.ObjectId().toString();
+    const asTenant = <T>(work: () => T) => withTenantContext({
+        businessId,
+        userId: new mongoose.Types.ObjectId().toString(),
+        membershipId: new mongoose.Types.ObjectId().toString(),
+        role: 'Owner',
+    }, work);
 
     beforeEach(() => {
         vi.spyOn(mongoose, 'startSession').mockResolvedValue(session as never);
@@ -63,14 +71,14 @@ describe('order creation and stock safety', () => {
             paymentMethod: 'Cash on Delivery',
         });
 
-        await order.validate();
+        await asTenant(() => order.validate());
         expect(order.orderNumber).toMatch(/^ORD-/);
     });
 
     it('normalizes items and decrements stock exactly once on success', async () => {
         vi.spyOn(Product, 'findOneAndUpdate').mockResolvedValue({ _id: productId } as never);
 
-        const order = await createOrderWithStock({
+        const order = await asTenant(() => createOrderWithStock({
             customerId,
             items: [{ productId, quantity: 2 }],
             shippingAddress: {
@@ -81,7 +89,7 @@ describe('order creation and stock safety', () => {
                 zone: 'Dhaka North',
                 country: 'Bangladesh',
             },
-        });
+        }));
 
         expect(Product.findOneAndUpdate).toHaveBeenCalledTimes(1);
         expect(order.items[0].productName).toBe('Baseline Product');
@@ -93,7 +101,7 @@ describe('order creation and stock safety', () => {
     it('does not create an order when the conditional stock update fails', async () => {
         vi.spyOn(Product, 'findOneAndUpdate').mockResolvedValue(null);
 
-        await expect(createOrderWithStock({
+        await expect(asTenant(() => createOrderWithStock({
             customerId,
             items: [{ productId, quantity: 99 }],
             shippingAddress: {
@@ -104,7 +112,7 @@ describe('order creation and stock safety', () => {
                 zone: 'Dhaka North',
                 country: 'Bangladesh',
             },
-        })).rejects.toThrow('Insufficient stock');
+        }))).rejects.toThrow('Insufficient stock');
 
         expect(Order.prototype.save).not.toHaveBeenCalled();
         expect(Customer.updateOne).not.toHaveBeenCalled();

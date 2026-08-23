@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { Product } from '../models/Product';
 import { getImageEmbedding } from '../services/embedding.service';
+import { initializeScriptTenantContext } from '../tenancy/script-context';
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ async function runBatchEmbedding() {
         const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/edutechs';
         await mongoose.connect(mongoUri);
         console.log('Connected to MongoDB');
+        await initializeScriptTenantContext();
 
         // Find ALL products with images to re-embed with the new model
         const products = await Product.find({

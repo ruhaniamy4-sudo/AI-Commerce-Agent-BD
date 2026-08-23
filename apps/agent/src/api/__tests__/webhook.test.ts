@@ -3,10 +3,11 @@ import request from 'supertest';
 import crypto from 'crypto';
 
 // Mocks must be hoisted
-const { mockQueueAdd, mockWebHookEvent, mockLogError } = vi.hoisted(() => {
+const { mockQueueAdd, mockWebHookEvent, mockBusinessChannel, mockLogError } = vi.hoisted(() => {
     return {
         mockQueueAdd: vi.fn(),
         mockWebHookEvent: { findOne: vi.fn(), create: vi.fn() },
+        mockBusinessChannel: { findOne: vi.fn() },
         mockLogError: vi.fn()
     };
 });
@@ -19,6 +20,10 @@ vi.mock('../../services/queue.service', () => ({
 
 vi.mock('../../models/WebhookEvent', () => ({
     WebhookEvent: mockWebHookEvent
+}));
+
+vi.mock('../../models/BusinessChannel', () => ({
+    BusinessChannel: mockBusinessChannel,
 }));
 
 vi.mock('../../services/error.service', () => ({
@@ -48,6 +53,9 @@ describe('Facebook Webhook API', () => {
         app.use('/webhook', facebookRouter);
 
         vi.clearAllMocks();
+        mockBusinessChannel.findOne.mockReturnValue({
+            lean: vi.fn().mockResolvedValue({ businessId: { toString: () => '507f1f77bcf86cd799439011' } }),
+        });
     });
 
     it('GET /webhook returns challenge if token matches', async () => {
@@ -111,6 +119,7 @@ describe('Facebook Webhook API', () => {
         expect(response.status).toBe(200);
         expect(response.text).toBe('EVENT_RECEIVED');
         expect(mockQueueAdd).toHaveBeenCalledWith('process-facebook-event', expect.objectContaining({
+            businessId: '507f1f77bcf86cd799439011',
             psid: 'user_1',
             message: 'Hello'
         }));

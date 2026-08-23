@@ -15,6 +15,7 @@ import { Customer } from '../models/Customer';
 import { Conversation } from '../models/Conversation';
 import { Message } from '../models/Message';
 import { Meeting } from '../models/Meeting';
+import { initializeScriptTenantContext } from '../tenancy/script-context';
 
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/edutechs';
 
@@ -174,7 +175,8 @@ async function main() {
     console.log('🚀 Starting Schema Migration - Phase 1\n');
     console.log('⚠️  This will modify your database. Ensure you have a backup!\n');
 
-    await connectDB();
+        await connectDB();
+        await initializeScriptTenantContext();
 
     try {
         await migrateClients();
