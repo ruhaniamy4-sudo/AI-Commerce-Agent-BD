@@ -1,4 +1,40 @@
 export type ID = string;
+export type BusinessRole = 'Owner' | 'Admin' | 'Staff';
+
+export interface TenantEntity {
+  businessId: ID;
+}
+
+export interface Business {
+  _id: ID;
+  name: string;
+  slug: string;
+  status: 'active' | 'suspended';
+}
+
+export interface User {
+  _id: ID;
+  name: string;
+  email: string;
+  status: 'active' | 'disabled';
+}
+
+export interface BusinessMember {
+  _id: ID;
+  businessId: ID;
+  userId: ID | User;
+  role: BusinessRole;
+  status: 'active' | 'invited' | 'disabled';
+}
+
+export interface BusinessChannel {
+  _id: ID;
+  businessId: ID;
+  platform: 'facebook' | 'web';
+  externalId: string;
+  name: string;
+  status: 'active' | 'disabled';
+}
 
 export interface PaginatedResponse<T> {
   data: T[];
@@ -23,7 +59,7 @@ export interface ProductVariant {
   isActive: boolean;
 }
 
-export interface Product {
+export interface Product extends TenantEntity {
   _id: ID;
   name: string;
   slug: string;
@@ -45,7 +81,7 @@ export interface Product {
   updatedAt: string;
 }
 
-export interface Category {
+export interface Category extends TenantEntity {
   _id: ID;
   name: string;
   slug: string;
@@ -71,7 +107,7 @@ export interface CustomerAddress {
   isDefault?: boolean;
 }
 
-export interface Customer {
+export interface Customer extends TenantEntity {
   _id: ID;
   psid: string;
   name?: string;
@@ -100,7 +136,7 @@ export type ConversationIntent =
   | 'general'
   | 'unknown';
 
-export interface Conversation {
+export interface Conversation extends TenantEntity {
   _id: ID;
   conversationId: string;
   customerId?: ID | Customer;
@@ -122,7 +158,7 @@ export interface Conversation {
   updatedAt: string;
 }
 
-export interface Message {
+export interface Message extends TenantEntity {
   _id: ID;
   conversationId: string;
   role: 'user' | 'assistant' | 'system';
@@ -134,7 +170,7 @@ export interface Message {
   updatedAt: string;
 }
 
-export interface Knowledge {
+export interface Knowledge extends TenantEntity {
   _id: ID;
   title: string;
   content: string;
@@ -174,7 +210,7 @@ export type OrderStatus =
   | 'returned'
   | 'refunded';
 
-export interface Order {
+export interface Order extends TenantEntity {
   _id: ID;
   orderNumber: string;
   invoiceNumber?: string;

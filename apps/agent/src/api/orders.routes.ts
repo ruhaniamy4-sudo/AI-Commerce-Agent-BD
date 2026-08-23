@@ -2,6 +2,7 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import { Order } from '../models/Order';
 import { createOrderWithStock, OrderCreationError } from '../services/checkout.service';
+import { requireAdministrator } from '../auth/middleware';
 
 const router = Router();
 
@@ -72,7 +73,7 @@ router.post('/orders', async (req, res) => {
 });
 
 // Update order status
-router.patch('/orders/:id/status', async (req, res) => {
+router.patch('/orders/:id/status', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
         const { status, note } = req.body;
@@ -109,7 +110,7 @@ router.patch('/orders/:id/status', async (req, res) => {
 });
 
 // Update order details
-router.patch('/orders/:id', async (req, res) => {
+router.patch('/orders/:id', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
         const updates = req.body;
@@ -131,7 +132,7 @@ router.patch('/orders/:id', async (req, res) => {
 });
 
 // Create manual order (admin dashboard)
-router.post('/orders/manual', async (req, res) => {
+router.post('/orders/manual', requireAdministrator, async (req, res) => {
     try {
         if (!req.body.customerId || !req.body.items?.length) {
             return res.status(400).json({
@@ -153,7 +154,7 @@ router.post('/orders/manual', async (req, res) => {
 });
 
 // Update payment status with audit trail
-router.patch('/orders/:id/payment-status', async (req, res) => {
+router.patch('/orders/:id/payment-status', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
         const { paymentStatus, note } = req.body;

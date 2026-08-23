@@ -12,7 +12,8 @@
         "worker": "ts-node src/worker.ts",
         "test-calendar": "ts-node src/test-calendar.ts",
         "test-calendar-v2": "ts-node src/test-calendar-v2.ts",
-        "train-rag": "ts-node src/scripts/train-rag.ts"
+        "train-rag": "ts-node src/scripts/train-rag.ts",
+        "migrate:tenancy": "ts-node src/scripts/migrate-tenancy.ts"
     },
     "dependencies": {
         "@edutechs/shared": "*",

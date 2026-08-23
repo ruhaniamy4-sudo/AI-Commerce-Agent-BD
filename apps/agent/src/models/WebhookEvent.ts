@@ -1,6 +1,8 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { tenantPlugin } from '../tenancy/plugin';
 
 export interface IWebhookEvent extends Document {
+    businessId: mongoose.Types.ObjectId;
     eventId: string; // Unique ID from Facebook or generated
     source: 'facebook' | 'instagram'; // Platform source
     eventType: string; // 'message', 'postback', 'delivery', etc.
@@ -14,7 +16,7 @@ export interface IWebhookEvent extends Document {
 
 const WebhookEventSchema = new Schema(
     {
-        eventId: { type: String, required: true, unique: true },
+        eventId: { type: String, required: true },
         source: {
             type: String,
             required: true,
@@ -31,10 +33,13 @@ const WebhookEventSchema = new Schema(
     { timestamps: true }
 );
 
+WebhookEventSchema.plugin(tenantPlugin);
+
 // Indexes for deduplication and processing queue
-WebhookEventSchema.index({ eventType: 1 });
-WebhookEventSchema.index({ processed: 1, createdAt: 1 });
-WebhookEventSchema.index({ psid: 1, createdAt: -1 });
+WebhookEventSchema.index({ businessId: 1, eventId: 1 }, { unique: true });
+WebhookEventSchema.index({ businessId: 1, eventType: 1 });
+WebhookEventSchema.index({ businessId: 1, processed: 1, createdAt: 1 });
+WebhookEventSchema.index({ businessId: 1, psid: 1, createdAt: -1 });
 
 // TTL index to auto-delete old events after 30 days
 WebhookEventSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 }); // 30 days

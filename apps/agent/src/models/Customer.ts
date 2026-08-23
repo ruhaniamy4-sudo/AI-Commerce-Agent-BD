@@ -1,6 +1,8 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { tenantPlugin } from '../tenancy/plugin';
 
 export interface ICustomer extends Document {
+    businessId: mongoose.Types.ObjectId;
     psid: string; // Page Scoped ID from Facebook
     name?: string;
     phone?: string;
@@ -55,7 +57,7 @@ const AddressSubSchema = new Schema({
 
 const CustomerSchema = new Schema(
     {
-        psid: { type: String, required: true, unique: true },
+        psid: { type: String, required: true },
         name: { type: String, trim: true },
         phone: { type: String, trim: true },
         email: {
@@ -91,10 +93,19 @@ const CustomerSchema = new Schema(
     { timestamps: true }
 );
 
+CustomerSchema.plugin(tenantPlugin);
+
 // Indexes
-CustomerSchema.index({ phone: 1 }, { sparse: true });
-CustomerSchema.index({ email: 1 }, { sparse: true });
-CustomerSchema.index({ lastMessageAt: -1 });
-CustomerSchema.index({ totalSpent: -1 });
+CustomerSchema.index({ businessId: 1, psid: 1 }, { unique: true });
+CustomerSchema.index(
+    { businessId: 1, phone: 1 },
+    { partialFilterExpression: { phone: { $type: 'string' } } }
+);
+CustomerSchema.index(
+    { businessId: 1, email: 1 },
+    { partialFilterExpression: { email: { $type: 'string' } } }
+);
+CustomerSchema.index({ businessId: 1, lastMessageAt: -1 });
+CustomerSchema.index({ businessId: 1, totalSpent: -1 });
 
 export const Customer = mongoose.model<ICustomer>('Customer', CustomerSchema);

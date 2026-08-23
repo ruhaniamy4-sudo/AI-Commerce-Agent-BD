@@ -1,10 +1,12 @@
 import { PaginatedResponse, Product } from './types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const BUSINESS_CHANNEL_ID = process.env.NEXT_PUBLIC_BUSINESS_CHANNEL_ID || 'storefront';
+const CATALOG_URL = `${API_BASE_URL}/public/${encodeURIComponent(BUSINESS_CHANNEL_ID)}`;
 
 export async function getFeaturedProducts(): Promise<Product[]> {
     try {
-        const res = await fetch(`${API_BASE_URL}/products?limit=8`, {
+        const res = await fetch(`${CATALOG_URL}/products?limit=8`, {
             next: { revalidate: 60 } // Cache for 60s
         });
         if (!res.ok) return [];
@@ -18,7 +20,7 @@ export async function getFeaturedProducts(): Promise<Product[]> {
 
 export async function getProduct(slug: string): Promise<Product | null> {
     try {
-        const res = await fetch(`${API_BASE_URL}/products/${slug}`, {
+        const res = await fetch(`${CATALOG_URL}/products/${slug}`, {
             next: { revalidate: 60 }
         });
         if (!res.ok) return null;

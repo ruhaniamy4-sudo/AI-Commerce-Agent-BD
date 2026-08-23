@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import { connectMongo } from '../db/mongodb';
 import { Knowledge } from '../models/Knowledge';
 import { generateEmbedding } from '../services/embedding.service';
+import { initializeScriptTenantContext } from '../tenancy/script-context';
 
 dotenv.config();
 
@@ -17,6 +18,7 @@ async function train() {
     try {
         console.log('Connecting to MongoDB...');
         await connectMongo();
+        await initializeScriptTenantContext();
 
         console.log(`Starting training with ${trainingData.length} items...`);
 

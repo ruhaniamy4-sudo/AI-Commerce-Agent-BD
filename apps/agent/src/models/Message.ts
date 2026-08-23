@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import { tenantPlugin } from '../tenancy/plugin';
 
 const MessageSchema = new Schema(
     {
@@ -36,10 +37,12 @@ const MessageSchema = new Schema(
     { timestamps: true }
 );
 
+MessageSchema.plugin(tenantPlugin);
+
 // Indexes
-MessageSchema.index({ conversationId: 1, createdAt: 1 }); // Chronological messages
-MessageSchema.index({ content: 'text' }); // Full-text search
-MessageSchema.index({ 'metadata.platform': 1 });
-MessageSchema.index({ role: 1, createdAt: -1 }); // Filter by role
+MessageSchema.index({ businessId: 1, conversationId: 1, createdAt: 1 });
+MessageSchema.index({ businessId: 1, content: 'text' });
+MessageSchema.index({ businessId: 1, 'metadata.platform': 1 });
+MessageSchema.index({ businessId: 1, role: 1, createdAt: -1 });
 
 export const Message = mongoose.model('Message', MessageSchema);

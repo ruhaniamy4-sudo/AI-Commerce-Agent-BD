@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { tenantPlugin } from '../tenancy/plugin';
 
 export type KnowledgeType = 'FAQ' | 'POLICY' | 'GUIDE' | 'TROUBLESHOOT' | 'COMPATIBILITY';
 
@@ -9,6 +10,7 @@ export interface IKnowledgeVersion {
 }
 
 export interface IKnowledge extends Document {
+    businessId: mongoose.Types.ObjectId;
     title: string;
     content: string; // Rich text or markdown
     type: KnowledgeType;
@@ -79,11 +81,13 @@ const KnowledgeSchema = new Schema(
     { timestamps: true }
 );
 
+KnowledgeSchema.plugin(tenantPlugin);
+
 // Indexes for retrieval
-KnowledgeSchema.index({ title: 'text', content: 'text' });
-KnowledgeSchema.index({ type: 1, language: 1, status: 1 });
-KnowledgeSchema.index({ tags: 1, status: 1 });
-KnowledgeSchema.index({ isPinned: 1, sourcePriority: 1 });
+KnowledgeSchema.index({ businessId: 1, title: 'text', content: 'text' });
+KnowledgeSchema.index({ businessId: 1, type: 1, language: 1, status: 1 });
+KnowledgeSchema.index({ businessId: 1, tags: 1, status: 1 });
+KnowledgeSchema.index({ businessId: 1, isPinned: 1, sourcePriority: 1 });
 
 // Pre-save middleware to add to version history
 KnowledgeSchema.pre('save', async function (this: IKnowledge) {

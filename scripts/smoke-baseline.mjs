@@ -1,5 +1,6 @@
 const baseUrl = process.env.AGENT_BASE_URL || 'http://localhost:4000';
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+let accessToken = '';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -8,7 +9,11 @@ function assert(condition, message) {
 async function api(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     ...options,
-    headers: { 'content-type': 'application/json', ...(options.headers || {}) },
+    headers: {
+      'content-type': 'application/json',
+      ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
+      ...(options.headers || {}),
+    },
   });
   const text = await response.text();
   const body = text ? JSON.parse(text) : undefined;
@@ -18,6 +23,17 @@ async function api(path, options = {}) {
 
 const health = await api('/health');
 assert(health.mongo === 'connected', 'MongoDB is not connected');
+
+const login = await api('/auth/login', {
+  method: 'POST',
+  body: JSON.stringify({
+    email: process.env.BOOTSTRAP_OWNER_EMAIL,
+    password: process.env.BOOTSTRAP_OWNER_PASSWORD,
+    businessId: process.env.SMOKE_BUSINESS_ID || undefined,
+  }),
+});
+accessToken = login.accessToken;
+assert(accessToken, 'Authentication did not return an access token');
 
 const category = await api('/api/categories', {
   method: 'POST',
@@ -82,7 +98,7 @@ assert(productAfterSuccess.stock === 3, 'Successful order did not reduce stock e
 
 const failedResponse = await fetch(`${baseUrl}/api/orders/manual`, {
   method: 'POST',
-  headers: { 'content-type': 'application/json' },
+  headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
   body: JSON.stringify({
     customerId: customer._id,
     items: [{ productId: product._id, quantity: 99 }],

@@ -13,6 +13,10 @@ import productsRoutes from './api/products.routes';
 import ordersRoutes from './api/orders.routes';
 import customersRoutes from './api/customers.routes';
 import uploadRoutes from './api/upload.routes';
+import authRoutes from './api/auth.routes';
+import { authenticate, requireAdministrator } from './auth/middleware';
+import { resolvePublicChannel } from './auth/channel.middleware';
+import publicRoutes from './api/public.routes';
 import { connectMongo } from './db/mongodb';
 import { getAgentStatus } from './services/agentManager';
 import { warmPromptCache } from './services/systemPrompt.service';
@@ -67,15 +71,15 @@ app.get('/health', (_req, res) => {
     });
 });
 
-app.use('/chat', chatRoutes);
-app.use('/agent', agentRoutes);
+app.use('/auth', authRoutes);
+app.use('/chat', authenticate, chatRoutes);
+app.use('/agent', authenticate, requireAdministrator, agentRoutes);
 app.use('/facebook', facebookRoutes);
-app.use('/google', googleRoutes);
-app.use('/admin', adminRoutes);
-app.use('/api', productsRoutes);
-app.use('/api', ordersRoutes);
-app.use('/api', customersRoutes);
-app.use('/api', uploadRoutes);
+app.use('/public/:channelId', resolvePublicChannel, publicRoutes);
+app.use('/google', authenticate, requireAdministrator, googleRoutes);
+app.use('/admin', authenticate, adminRoutes);
+app.use('/api', authenticate, productsRoutes, ordersRoutes, customersRoutes);
+app.use('/api', authenticate, requireAdministrator, uploadRoutes);
 // Connect to MongoDB
 connectMongo()
     .then(async () => {

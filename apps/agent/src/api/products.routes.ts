@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 import { Product } from '../models/Product';
 import { Category } from '../models/Category';
 import { getImageEmbedding } from '../services/embedding.service';
+import { requireAdministrator } from '../auth/middleware';
+import { tenantDocument } from '../tenancy/context';
 
 const router = Router();
 
@@ -89,12 +91,15 @@ router.get('/products/:identifier', async (req, res) => {
 });
 
 // Create new product (admin)
-router.post('/products', async (req, res) => {
+router.post('/products', requireAdministrator, async (req, res) => {
     try {
-        const productData = req.body;
+        const productData = tenantDocument(req.body);
 
         if (!productData.name || !productData.categoryId || productData.basePrice === undefined) {
             return res.status(400).json({ error: 'Name, category, and price are required' });
+        }
+        if (!(await Category.exists({ _id: productData.categoryId, isActive: true }))) {
+            return res.status(400).json({ error: 'Category does not belong to this business' });
         }
 
         const product = new Product(productData);
@@ -133,10 +138,13 @@ router.post('/products', async (req, res) => {
 });
 
 // Update product (admin)
-router.patch('/products/:id', async (req, res) => {
+router.patch('/products/:id', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
+        const { businessId: _ignoredBusinessId, ...updates } = req.body;
+        if (updates.categoryId && !(await Category.exists({ _id: updates.categoryId, isActive: true }))) {
+            return res.status(400).json({ error: 'Category does not belong to this business' });
+        }
 
         const product = await Product.findById(id);
 
@@ -180,7 +188,7 @@ router.patch('/products/:id', async (req, res) => {
 });
 
 // Delete product (admin - soft delete)
-router.delete('/products/:id', async (req, res) => {
+router.delete('/products/:id', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -202,7 +210,7 @@ router.delete('/products/:id', async (req, res) => {
 });
 
 // Bulk import products via CSV (admin)
-router.post('/products/bulk-import', async (req, res) => {
+router.post('/products/bulk-import', requireAdministrator, async (req, res) => {
     try {
         const { products } = req.body;
 
@@ -210,7 +218,7 @@ router.post('/products/bulk-import', async (req, res) => {
             return res.status(400).json({ error: 'Products array is required' });
         }
 
-        const results = await Product.insertMany(products, { ordered: false });
+        const results = await Product.create(products.map((product) => tenantDocument(product)));
 
         res.status(201).json({
             message: `Successfully imported ${results.length} products`,
@@ -275,12 +283,15 @@ router.get('/categories/:id', async (req, res) => {
 });
 
 // Create category (admin)
-router.post('/categories', async (req, res) => {
+router.post('/categories', requireAdministrator, async (req, res) => {
     try {
-        const categoryData = req.body;
+        const categoryData = tenantDocument(req.body);
 
         if (!categoryData.name) {
             return res.status(400).json({ error: 'Category name is required' });
+        }
+        if (categoryData.parentId && !(await Category.exists({ _id: categoryData.parentId, isActive: true }))) {
+            return res.status(400).json({ error: 'Parent category does not belong to this business' });
         }
 
         const category = new Category(categoryData);
@@ -294,10 +305,13 @@ router.post('/categories', async (req, res) => {
 });
 
 // Update category (admin)
-router.patch('/categories/:id', async (req, res) => {
+router.patch('/categories/:id', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
+        const { businessId: _ignoredBusinessId, ...updates } = req.body;
+        if (updates.parentId && !(await Category.exists({ _id: updates.parentId, isActive: true }))) {
+            return res.status(400).json({ error: 'Parent category does not belong to this business' });
+        }
 
         const category = await Category.findByIdAndUpdate(id, updates, {
             new: true,
@@ -316,7 +330,7 @@ router.patch('/categories/:id', async (req, res) => {
 });
 
 // Delete category (admin - soft delete)
-router.delete('/categories/:id', async (req, res) => {
+router.delete('/categories/:id', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
 

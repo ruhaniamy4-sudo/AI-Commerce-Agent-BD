@@ -4,6 +4,8 @@ import crypto from 'crypto';
 import { WebhookEvent } from '../models/WebhookEvent';
 import { webhookQueue } from '../services/queue.service';
 import { logError } from '../services/error.service';
+import { BusinessChannel } from '../models/BusinessChannel';
+import { withTenantContext } from '../tenancy/context';
 
 dotenv.config();
 
@@ -70,41 +72,55 @@ router.post('/', verifySignature, async (req, res) => {
             // Process each entry
             for (const entry of body.entry) {
                 const pageId = entry.id;
+                const channel = await BusinessChannel.findOne({
+                    platform: 'facebook',
+                    externalId: pageId,
+                    status: 'active',
+                }).lean();
+                if (!channel) {
+                    console.warn(`No active business channel for Facebook page ${pageId}`);
+                    continue;
+                }
 
                 // Process messaging events
                 if (entry.messaging) {
                     for (const event of entry.messaging) {
-                        const senderPsid = event.sender.id;
-                        const eventId = event.message?.mid || `evt_${Date.now()}_${Math.random()}`; // Use message ID or generate one
+                        await withTenantContext({
+                            businessId: channel.businessId.toString(),
+                            userId: 'facebook-system',
+                            membershipId: 'facebook-system',
+                            role: 'Staff',
+                        }, async () => {
+                            const senderPsid = event.sender.id;
+                            const eventId = event.message?.mid || `evt_${Date.now()}_${Math.random()}`;
 
-                        // 1. Deduplication: Check if event exists
-                        const existing = await WebhookEvent.findOne({ eventId });
-                        if (existing) {
-                            console.log(`Duplicate event ${eventId} ignored`);
-                            continue;
-                        }
+                            const existing = await WebhookEvent.findOne({ eventId });
+                            if (existing) {
+                                console.log(`Duplicate event ${eventId} ignored`);
+                                return;
+                            }
 
-                        // 2. Persist Event
-                        await WebhookEvent.create({
-                            eventId,
-                            source: 'facebook',
-                            eventType: event.message ? 'message' : 'other',
-                            psid: senderPsid,
-                            payload: event,
+                            await WebhookEvent.create({
+                                eventId,
+                                source: 'facebook',
+                                eventType: event.message ? 'message' : 'other',
+                                psid: senderPsid,
+                                payload: event,
+                            });
+
+                            await webhookQueue.add('process-facebook-event', {
+                                businessId: channel.businessId.toString(),
+                                eventId,
+                                psid: senderPsid,
+                                message: event.message?.text,
+                                attachments: event.message?.attachments || [],
+                                payload: event,
+                                source: 'facebook',
+                                pageId,
+                            });
+
+                            console.log(`Event ${eventId} queued for PSID ${senderPsid}`);
                         });
-
-                        // 3. Push to Queue
-                        await webhookQueue.add('process-facebook-event', {
-                            eventId,
-                            psid: senderPsid,
-                            message: event.message?.text, // Optional, can be parsed deeper in worker
-                            attachments: event.message?.attachments || [], // Pass attachments including images
-                            payload: event,
-                            source: 'facebook',
-                            pageId
-                        });
-
-                        console.log(`Event ${eventId} queued for PSID ${senderPsid}`);
                     }
                 }
             }

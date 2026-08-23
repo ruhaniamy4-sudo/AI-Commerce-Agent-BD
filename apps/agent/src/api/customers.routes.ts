@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { Customer } from '../models/Customer';
 import { Order } from '../models/Order';
 import { Conversation } from '../models/Conversation';
+import { requireAdministrator } from '../auth/middleware';
+import { tenantDocument } from '../tenancy/context';
 
 const router = Router();
 
@@ -88,7 +90,7 @@ router.get('/customers/:id', async (req, res) => {
 });
 
 // Create or update customer
-router.post('/customers', async (req, res) => {
+router.post('/customers', requireAdministrator, async (req, res) => {
     try {
         const { psid, name, phone, email, language } = req.body;
 
@@ -110,14 +112,14 @@ router.post('/customers', async (req, res) => {
             await customer.save();
         } else {
             // Create new customer
-            customer = new Customer({
+            customer = new Customer(tenantDocument({
                 psid,
                 name,
                 phone,
                 email,
                 language: language || 'en',
                 lastMessageAt: new Date(),
-            });
+            }));
 
             await customer.save();
         }
@@ -130,10 +132,10 @@ router.post('/customers', async (req, res) => {
 });
 
 // Update customer
-router.patch('/customers/:id', async (req, res) => {
+router.patch('/customers/:id', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
+        const { businessId: _ignoredBusinessId, ...updates } = req.body;
 
         const customer = await Customer.findByIdAndUpdate(id, updates, {
             new: true,
@@ -152,7 +154,7 @@ router.patch('/customers/:id', async (req, res) => {
 });
 
 // Add address to customer
-router.post('/customers/:id/addresses', async (req, res) => {
+router.post('/customers/:id/addresses', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
         const addressData = req.body;
