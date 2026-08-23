@@ -22,13 +22,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
-        const saved = localStorage.getItem('cart');
-        if (saved) {
-            try {
-                setItems(JSON.parse(saved));
-            } catch (e) { console.error(e) }
-        }
-        setMounted(true);
+        let active = true;
+        queueMicrotask(() => {
+            if (!active) return;
+            const saved = localStorage.getItem('cart');
+            if (saved) {
+                try {
+                    setItems(JSON.parse(saved));
+                } catch (e) { console.error(e) }
+            }
+            setMounted(true);
+        });
+        return () => { active = false; };
     }, []);
 
     useEffect(() => {

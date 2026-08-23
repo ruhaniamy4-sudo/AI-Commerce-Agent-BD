@@ -5,7 +5,9 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 
-const CustomerForm = ({ onSubmit }: { onSubmit: (data: any) => void }) => {
+interface CustomerData { fullName: string; phone: string; address: string }
+
+const CustomerForm = ({ onSubmit }: { onSubmit: (data: CustomerData) => void }) => {
     const [data, setData] = useState({ fullName: '', phone: '', address: '' });
     return (
         <form onSubmit={(e) => { e.preventDefault(); onSubmit(data); }} className="space-y-4">
@@ -32,7 +34,7 @@ export default function CartPage() {
     const { items, removeFromCart, updateQuantity, total } = useCart();
     const [step, setStep] = useState<'cart' | 'checkout'>('cart');
 
-    const handleCheckout = async (formData: any) => {
+    const handleCheckout = async (formData: CustomerData) => {
         void formData;
         // Milestone 1 deliberately disables checkout instead of claiming a fake order succeeded.
     };
@@ -45,7 +47,7 @@ export default function CartPage() {
                 {items.length === 0 ? (
                     <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-300">
                         <p className="text-slate-500 mb-4">Your cart is empty.</p>
-                        <Link href="/" className="inline-block bg-slate-900 text-white px-6 py-2 rounded-full text-sm font-medium">Start Shopping</Link>
+                        <Link href="/shop" className="inline-block bg-slate-900 text-white px-6 py-2 rounded-full text-sm font-medium">Start Shopping</Link>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">

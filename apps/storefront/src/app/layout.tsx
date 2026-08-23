@@ -2,40 +2,27 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/context/cart-context";
-import { CartIcon } from "@/components/cart-icon";
-import Link from "next/link";
+import { MarketingNav } from "@/components/marketing-nav";
+import { MarketingFooter } from "@/components/marketing";
 
-const inter = Inter({ subsets: ["latin"] });
-
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 export const metadata: Metadata = {
-  title: "Digitross - A E-commerce Store",
-  description: "Premium Tech for Modern Creators",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://digitross.com"),
+  title: { default: "Digitross — AI Commerce Agent for Bangladesh", template: "%s | Digitross" },
+  description: "Turn customer conversations into sales with an AI commerce agent built for businesses in Bangladesh.",
+  openGraph: {
+    title: "Digitross — AI Commerce Agent for Bangladesh",
+    description: "Turn customer conversations into revenue with AI commerce infrastructure built for Bangladesh.",
+    type: "website",
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Digitross AI Commerce Agent for Bangladesh" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Digitross — AI Commerce Agent for Bangladesh",
+    description: "Turn customer conversations into revenue.",
+    images: ["/og.png"],
+  },
 };
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="en">
-      <body className={`${inter.className} bg-slate-50 text-slate-900`}>
-        <CartProvider>
-          <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
-            <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-              <Link href="/" className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                Digitross
-              </Link>
-              <div className="flex items-center gap-6 text-sm font-medium text-slate-600">
-                <Link href="/" className="hover:text-blue-600 transition-colors">Home</Link>
-                <Link href="#" className="hover:text-blue-600 transition-colors">Shop</Link>
-                <CartIcon />
-              </div>
-            </div>
-          </nav>
-          {children}
-        </CartProvider>
-      </body>
-    </html>
-  );
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return <html lang="en"><body className={`${inter.variable} bg-white text-slate-950 antialiased`}><CartProvider><MarketingNav />{children}<MarketingFooter /></CartProvider></body></html>;
 }

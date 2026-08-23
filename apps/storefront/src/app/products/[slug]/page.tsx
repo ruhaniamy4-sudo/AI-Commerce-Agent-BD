@@ -1,12 +1,29 @@
 import { getProduct } from '@/lib/api';
-import { cn } from '@/lib/utils';
-import { Check, ShoppingBag, Truck, Shield } from 'lucide-react';
+import { Check, Truck, Shield } from 'lucide-react';
 import { AddToCartButton } from '@/components/add-to-cart';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 
-export default async function ProductPage({ params }: { params: { slug: string } }) {
-    const product = await getProduct(params.slug);
+type ProductPageProps = { params: Promise<{ slug: string }> };
+
+export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
+    const { slug } = await params;
+    const product = await getProduct(slug);
+    if (!product) return { title: 'Product not found', openGraph: { images: [] }, twitter: { images: [] } };
+    const description = product.description || `View ${product.name} in the Digitross connected storefront.`;
+    const image = product.images[0];
+    return {
+        title: product.name,
+        description,
+        openGraph: { title: product.name, description, images: image ? [image] : [] },
+        twitter: { card: 'summary_large_image', title: product.name, description, images: image ? [image] : [] },
+    };
+}
+
+export default async function ProductPage({ params }: ProductPageProps) {
+    const { slug } = await params;
+    const product = await getProduct(slug);
 
     if (!product) {
         notFound();
