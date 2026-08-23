@@ -79,6 +79,7 @@ describe('order creation and stock safety', () => {
         vi.spyOn(Product, 'findOneAndUpdate').mockResolvedValue({ _id: productId } as never);
 
         const order = await asTenant(() => createOrderWithStock({
+            businessId,
             customerId,
             items: [{ productId, quantity: 2 }],
             shippingAddress: {
@@ -102,6 +103,7 @@ describe('order creation and stock safety', () => {
         vi.spyOn(Product, 'findOneAndUpdate').mockResolvedValue(null);
 
         await expect(asTenant(() => createOrderWithStock({
+            businessId,
             customerId,
             items: [{ productId, quantity: 99 }],
             shippingAddress: {

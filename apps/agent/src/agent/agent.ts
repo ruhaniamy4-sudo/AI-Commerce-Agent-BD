@@ -5,6 +5,7 @@ import * as dotenv from 'dotenv';
 // Tools import removed
 import { SYSTEM_PROMPT } from './prompts';
 import { retrieveContext, formatContextPack } from '../services/rag.service';
+import { assertTenantBusinessId } from '../tenancy/context';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ export { llm };
 import { AgentState } from './state';
 
 async function callModel(state: AgentState) {
+    const businessId = assertTenantBusinessId(state.businessId, 'agent-model');
     // 1. Get the last user message to extract query
     const lastMessage = state.messages[state.messages.length - 1];
     const userQuery = lastMessage.content.toString();
@@ -36,7 +38,7 @@ async function callModel(state: AgentState) {
     // Only perform RAG if it's a Human Message or we need context
     let contextStr = '{}';
     if (lastMessage instanceof HumanMessage) {
-        const context = await retrieveContext(psid, userQuery, state.messages);
+        const context = await retrieveContext(businessId, psid, userQuery, state.messages);
         contextStr = formatContextPack(context);
     }
 
@@ -56,6 +58,10 @@ import { Annotation } from '@langchain/langgraph';
 
 // Define the state schema using Annotation.Root
 const AgentStateAnnotation = Annotation.Root({
+    businessId: Annotation<string>({
+        reducer: (x, y) => y ?? x,
+        default: () => '',
+    }),
     messages: Annotation<BaseMessage[]>({
         reducer: (x, y) => x.concat(y),
         default: () => [],

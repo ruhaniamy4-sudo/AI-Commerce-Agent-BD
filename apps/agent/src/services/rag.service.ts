@@ -3,8 +3,10 @@ import { Knowledge } from '../models/Knowledge';
 import { Customer } from '../models/Customer';
 import { Order } from '../models/Order';
 import { BaseMessage } from '@langchain/core/messages';
+import { assertTenantBusinessId } from '../tenancy/context';
 
 interface RAGContext {
+    businessId: string;
     catalogHits: any[];
     knowledgeEntries: any[];
     customerProfile: any;
@@ -12,10 +14,12 @@ interface RAGContext {
 }
 
 export const retrieveContext = async (
+    businessId: string,
     psid: string,
     messageText: string,
     history: BaseMessage[]
 ): Promise<RAGContext> => {
+    assertTenantBusinessId(businessId, 'rag.retrieveContext');
     // 1. Identify Customer & History
     const customer = await Customer.findOne({ psid }).lean();
     let lastOrders: any[] = [];
@@ -53,6 +57,7 @@ export const retrieveContext = async (
     }).limit(5).select('name basePrice stock specs variants compatibilityTags').lean();
 
     return {
+        businessId,
         catalogHits,
         knowledgeEntries,
         customerProfile: customer || { psid, status: 'guest' },

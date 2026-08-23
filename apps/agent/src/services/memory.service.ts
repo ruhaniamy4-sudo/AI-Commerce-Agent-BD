@@ -2,11 +2,14 @@ import { Customer } from '../models/Customer';
 import { Conversation } from '../models/Conversation';
 import { Message } from '../models/Message';
 import { getSenderProfile } from './facebook.service';
+import { assertTenantBusinessId } from '../tenancy/context';
 
 export async function ensureConversation(
+    businessId: string,
     conversationId: string,
     clientInfo?: { name?: string; email?: string; phone?: string; senderId?: string }
 ) {
+    assertTenantBusinessId(businessId, 'memory.ensureConversation');
     let conversation = await Conversation.findOne({ conversationId });
 
     if (!conversation) {
@@ -56,6 +59,7 @@ export async function ensureConversation(
         conversation = await Conversation.create({
             conversationId,
             customerId: client._id,
+            psid: client.psid,
             platform: conversationId.startsWith('fb_') ? 'facebook' : 'web-widget',
         });
     } else if (!conversation.customerId && clientInfo) {
@@ -83,18 +87,23 @@ export async function ensureConversation(
         }
 
         conversation.customerId = client._id;
+        conversation.psid = client.psid;
         await conversation.save();
     }
+
+    return conversation;
 }
 
 
 
 export async function saveMessage(
+    businessId: string,
     conversationId: string,
     role: 'user' | 'assistant',
     content: string,
     imageUrl?: string
 ) {
+    assertTenantBusinessId(businessId, 'memory.saveMessage');
     const messageData: any = {
         conversationId,
         role,

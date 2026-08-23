@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HumanMessage } from '@langchain/core/messages';
+import mongoose from 'mongoose';
+import { withTenantContext } from '../tenancy/context';
+import { retrieveContext } from '../services/rag.service';
 
 // Mock RAG Service
 vi.mock('../services/rag.service', () => ({
@@ -33,6 +36,7 @@ describe('AI Agent Logic', () => {
     });
 
     it('should process a human message and return a JSON response', async () => {
+        const businessId = new mongoose.Types.ObjectId().toString();
         // Mock LLM response
         const mockJson = JSON.stringify({
             type: 'reply',
@@ -49,6 +53,7 @@ describe('AI Agent Logic', () => {
 
         // Run Agent
         const initialState = {
+            businessId,
             messages: [new HumanMessage('Hi there')],
             conversationId: 'fb_12345',
             psid: '12345',
@@ -56,10 +61,21 @@ describe('AI Agent Logic', () => {
             lastHumanActivity: Date.now()
         };
 
-        const result = await aiAgent.invoke(initialState);
+        const result = await withTenantContext({
+            businessId,
+            userId: 'agent-test',
+            membershipId: 'agent-test',
+            role: 'Staff',
+        }, () => aiAgent.invoke(initialState));
 
         // Assertions
         expect(mockInvoke).toHaveBeenCalledTimes(1);
+        expect(retrieveContext).toHaveBeenCalledWith(
+            businessId,
+            '12345',
+            'Hi there',
+            initialState.messages
+        );
 
         // Result messages should contain the response
         const messages = result.messages;

@@ -2,9 +2,14 @@ import { BaseMessage } from '@langchain/core/messages';
 import { Annotation, START, StateGraph } from '@langchain/langgraph';
 import { aiAgent } from './agent';
 import { AgentState } from './state';
+import { assertTenantBusinessId } from '../tenancy/context';
 
 // Define the state schema using Annotation.Root to ensure runtime validation and correct reducer application
 const GraphState = Annotation.Root({
+    businessId: Annotation<string>({
+        reducer: (x, y) => y ?? x,
+        default: () => '',
+    }),
     conversationId: Annotation<string>({
         reducer: (x, y) => y ?? x,
         default: () => 'default_id',
@@ -29,6 +34,7 @@ const GraphState = Annotation.Root({
 
 const graph = new StateGraph(GraphState)
     .addNode('chat', async (state) => {
+        assertTenantBusinessId(state.businessId, 'agent-graph');
         if (state.agentStatus !== 'active') {
             return { messages: [] };
         }
@@ -36,10 +42,11 @@ const graph = new StateGraph(GraphState)
         const response = await aiAgent.invoke(
             {
                 messages: state.messages as BaseMessage[],
+                businessId: state.businessId,
                 conversationId: state.conversationId as string,
                 psid: state.psid,
             },
-            { configurable: { conversationId: state.conversationId } }
+            { configurable: { conversationId: state.conversationId, businessId: state.businessId } }
         );
 
         // The createAgent internal loop has finished.

@@ -1,7 +1,9 @@
 import { Message } from "../models/Message";
 import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
+import { assertTenantBusinessId } from '../tenancy/context';
 
-export async function loadConversationHistory(conversationId: string): Promise<BaseMessage[]> {
+export async function loadConversationHistory(businessId: string, conversationId: string): Promise<BaseMessage[]> {
+    assertTenantBusinessId(businessId, 'memory.loadHistory');
     const messages = await Message.find({ conversationId })
         .sort({ createdAt: 1 })
         .lean();

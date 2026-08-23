@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { Order } from '../models/Order';
 import { createOrderWithStock, OrderCreationError } from '../services/checkout.service';
 import { requireAdministrator } from '../auth/middleware';
+import { requireTenantContext } from '../tenancy/context';
 
 const router = Router();
 
@@ -62,7 +63,10 @@ router.post('/orders', async (req, res) => {
                 error: 'Customer ID and items are required',
             });
         }
-        const order = await createOrderWithStock(req.body);
+        const order = await createOrderWithStock({
+            ...req.body,
+            businessId: requireTenantContext().businessId,
+        });
         res.status(201).json(order);
     } catch (error) {
         console.error('Error creating order:', error);
@@ -141,6 +145,7 @@ router.post('/orders/manual', requireAdministrator, async (req, res) => {
         }
         const order = await createOrderWithStock({
             ...req.body,
+            businessId: requireTenantContext().businessId,
             source: 'admin',
             createdBy: req.body.createdBy || 'admin',
         });

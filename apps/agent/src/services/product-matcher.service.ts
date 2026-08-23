@@ -1,7 +1,9 @@
 import { Product } from '../models/Product';
 import { getImageEmbedding, findSimilarProductsByEmbedding, cosineSimilarity } from './embedding.service';
+import { assertTenantBusinessId } from '../tenancy/context';
 
 export interface ProductMatchParams {
+    businessId: string;
     imageUrl?: string; // Customer's image
     imageEmbedding?: number[]; // Pre-computed embedding
     textQuery?: string; // Optional text from customer
@@ -17,6 +19,7 @@ export interface ProductMatchParams {
  * Secondary: Text search for refinement
  */
 export async function matchProductsWithRAG(params: ProductMatchParams) {
+    assertTenantBusinessId(params.businessId, 'products.matchWithRag');
     const {
         imageUrl,
         imageEmbedding: providedEmbedd,
@@ -133,6 +136,7 @@ export async function matchProductsWithRAG(params: ProductMatchParams) {
  * Legacy text-based matching (fallback)
  */
 export async function matchProductsWithImageContext(params: any) {
+    assertTenantBusinessId(params.businessId, 'products.matchWithImageContext');
     const {
         imageDescription,
         textQuery,
