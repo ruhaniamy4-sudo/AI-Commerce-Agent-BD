@@ -4,6 +4,7 @@ import { Customer } from '../models/Customer';
 import { Order } from '../models/Order';
 import { BaseMessage } from '@langchain/core/messages';
 import { assertTenantBusinessId } from '../tenancy/context';
+import { getRagTopK } from './ai-config';
 
 interface RAGContext {
     businessId: string;
@@ -20,6 +21,7 @@ export const retrieveContext = async (
     history: BaseMessage[]
 ): Promise<RAGContext> => {
     assertTenantBusinessId(businessId, 'rag.retrieveContext');
+    const topK = getRagTopK();
     // 1. Identify Customer & History
     const customer = await Customer.findOne({ psid }).lean();
     let lastOrders: any[] = [];
@@ -44,7 +46,7 @@ export const retrieveContext = async (
             { title: { $in: regexQuery } }, // Simple regex match
             { content: { $in: regexQuery } }
         ]
-    }).limit(5).lean();
+    }).limit(topK).lean();
 
     // 4. Catalog Retrieval
     // Search products by name, specs, or compatibility tags
@@ -54,7 +56,7 @@ export const retrieveContext = async (
             { name: { $in: regexQuery } },
             { compatibilityTags: { $in: keywords } }
         ]
-    }).limit(5).select('name basePrice stock specs variants compatibilityTags').lean();
+    }).limit(topK).select('name basePrice stock specs variants compatibilityTags').lean();
 
     return {
         businessId,
@@ -81,13 +83,13 @@ export const formatContextPack = (context: RAGContext): string => {
             name: p.name,
             price: p.basePrice,
             stock: p.stock,
-            specs: p.specs,
-            tags: p.compatibilityTags
+            specs: JSON.stringify(p.specs || {}).slice(0, 500),
+            tags: (p.compatibilityTags || []).slice(0, 10)
         })),
         knowledge_base: context.knowledgeEntries.map(k => ({
             type: k.type,
             title: k.title,
-            content: k.content
+            content: String(k.content || '').slice(0, 1200)
         }))
     }, null, 2);
 };

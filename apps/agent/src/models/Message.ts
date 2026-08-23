@@ -41,6 +41,10 @@ MessageSchema.plugin(tenantPlugin);
 
 // Indexes
 MessageSchema.index({ businessId: 1, conversationId: 1, createdAt: 1 });
+MessageSchema.index(
+    { businessId: 1, conversationId: 1, 'metadata.messageId': 1 },
+    { unique: true, partialFilterExpression: { 'metadata.messageId': { $type: 'string' } } }
+);
 MessageSchema.index({ businessId: 1, content: 'text' });
 MessageSchema.index({ businessId: 1, 'metadata.platform': 1 });
 MessageSchema.index({ businessId: 1, role: 1, createdAt: -1 });

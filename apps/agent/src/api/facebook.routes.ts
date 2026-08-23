@@ -6,6 +6,7 @@ import { webhookQueue } from '../services/queue.service';
 import { logError } from '../services/error.service';
 import { BusinessChannel } from '../models/BusinessChannel';
 import { withTenantContext } from '../tenancy/context';
+import { registerInboundEvent } from '../services/inbound-idempotency.service';
 
 dotenv.config();
 
@@ -94,19 +95,16 @@ router.post('/', verifySignature, async (req, res) => {
                             const senderPsid = event.sender.id;
                             const eventId = event.message?.mid || `evt_${Date.now()}_${Math.random()}`;
 
-                            const existing = await WebhookEvent.findOne({ eventId });
-                            if (existing) {
-                                console.log(`Duplicate event ${eventId} ignored`);
-                                return;
-                            }
-
-                            await WebhookEvent.create({
+                            const isNew = await registerInboundEvent({
                                 eventId,
                                 source: 'facebook',
-                                eventType: event.message ? 'message' : 'other',
                                 psid: senderPsid,
                                 payload: event,
                             });
+                            if (!isNew) {
+                                console.log(`Duplicate event ${eventId} ignored`);
+                                return;
+                            }
 
                             await webhookQueue.add('process-facebook-event', {
                                 businessId: channel.businessId.toString(),

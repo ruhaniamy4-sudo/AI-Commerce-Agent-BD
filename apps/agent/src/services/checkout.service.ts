@@ -9,6 +9,7 @@ interface CreateOrderParams {
     psid: string;
     items: { sku: string; quantity: number; variantId?: string }[];
     address?: any;
+    idempotencyKey?: string;
 }
 
 export interface CreateOrderWithStockParams {
@@ -32,12 +33,17 @@ export interface CreateOrderWithStockParams {
     createdBy?: string;
     customerNote?: string;
     adminNote?: string;
+    idempotencyKey?: string;
 }
 
 export class OrderCreationError extends Error {}
 
 export const createOrderWithStock = async (params: CreateOrderWithStockParams) => {
     assertTenantBusinessId(params.businessId, 'orders.createWithStock');
+    if (params.idempotencyKey) {
+        const existing = await Order.findOne({ idempotencyKey: params.idempotencyKey });
+        if (existing) return existing;
+    }
     if (!params.items?.length) throw new OrderCreationError('At least one order item is required');
 
     const deliveryFee = Number(params.deliveryFee || 0);
@@ -122,6 +128,7 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
 
             createdOrder = new Order({
                 customerId: customer._id,
+                idempotencyKey: params.idempotencyKey,
                 psid: params.psid,
                 items: normalizedItems,
                 subtotal,
@@ -164,6 +171,7 @@ export const createOrder = async (params: CreateOrderParams) => {
 
         const order = await createOrderWithStock({
             businessId: params.businessId,
+            idempotencyKey: params.idempotencyKey,
             customerId: customer._id,
             psid: params.psid,
             items: params.items,

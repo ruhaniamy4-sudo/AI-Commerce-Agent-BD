@@ -5,6 +5,7 @@ import { Conversation } from '../models/Conversation';
 import { Customer } from '../models/Customer';
 import { Knowledge } from '../models/Knowledge';
 import { Message } from '../models/Message';
+import { AIUsage } from '../models/AIUsage';
 import { Order } from '../models/Order';
 import { Product } from '../models/Product';
 import { tenantDocument, withTenantContext } from './context';
@@ -24,7 +25,7 @@ function asBusiness<T>(businessId: mongoose.Types.ObjectId, work: () => T) {
 describe('tenant query isolation', () => {
     afterEach(() => vi.restoreAllMocks());
 
-    const models: mongoose.Model<any>[] = [Product, Category, Customer, Order, Knowledge, Conversation, Message];
+    const models: mongoose.Model<any>[] = [Product, Category, Customer, Order, Knowledge, Conversation, Message, AIUsage];
 
     it.each(models)('$modelName requires businessId and declares tenant-first indexes', (model) => {
         expect(model.schema.path('businessId').options.required).toBe(true);
@@ -60,6 +61,17 @@ describe('tenant query isolation', () => {
 
     it('fails closed when a tenant model is queried without authentication context', async () => {
         await expect(Product.findOne({}).exec()).rejects.toThrow('tenant context is required');
+    });
+
+    it('tenant-scopes AI usage aggregation so Business A cannot summarize Business B', async () => {
+        const aggregate = vi.spyOn(AIUsage.collection, 'aggregate').mockReturnValue({
+            toArray: vi.fn().mockResolvedValue([]),
+        } as never);
+        await asBusiness(businessA, async () =>
+            await AIUsage.aggregate([{ $group: { _id: null, requests: { $sum: 1 } } }])
+        );
+        const pipeline = aggregate.mock.calls[0][0] as any[];
+        expect(pipeline[0].$match.businessId.toString()).toBe(businessA.toString());
     });
 
     it('rejects Business B identifiers supplied in a Business A write payload', () => {

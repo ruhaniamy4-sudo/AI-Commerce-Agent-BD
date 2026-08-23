@@ -9,6 +9,7 @@ export type ConversationIntent =
     | 'handoff'
     | 'general'
     | 'unknown';
+export type ConversationControlMode = 'AI_ACTIVE' | 'HUMAN_ACTIVE';
 
 export interface IConversation extends Document {
     businessId: mongoose.Types.ObjectId;
@@ -24,6 +25,10 @@ export interface IConversation extends Document {
     aiEnabled: boolean; // AI on/off toggle per conversation
     needsHumanHandoff: boolean; // Escalation flag
     handoffReason?: string; // Why escalated
+    controlMode: ConversationControlMode;
+    summary?: string;
+    summarizedMessageCount: number;
+    summaryUpdatedAt?: Date;
 
     // State Management
     status: 'active' | 'archived' | 'resolved' | 'spam';
@@ -69,6 +74,16 @@ const ConversationSchema = new Schema(
         aiEnabled: { type: Boolean, default: true, index: true },
         needsHumanHandoff: { type: Boolean, default: false, index: true },
         handoffReason: { type: String },
+        controlMode: {
+            type: String,
+            enum: ['AI_ACTIVE', 'HUMAN_ACTIVE'],
+            default: 'AI_ACTIVE',
+            required: true,
+            index: true,
+        },
+        summary: { type: String, maxlength: 2000 },
+        summarizedMessageCount: { type: Number, default: 0, min: 0 },
+        summaryUpdatedAt: { type: Date },
 
         status: {
             type: String,
@@ -122,6 +137,7 @@ ConversationSchema.index({ businessId: 1, status: 1, lastMessageAt: -1 });
 ConversationSchema.index({ businessId: 1, platform: 1, status: 1 });
 ConversationSchema.index({ businessId: 1, assignedTo: 1, status: 1 });
 ConversationSchema.index({ businessId: 1, needsHumanHandoff: 1, status: 1 });
+ConversationSchema.index({ businessId: 1, controlMode: 1, lastMessageAt: -1 });
 ConversationSchema.index({ businessId: 1, psid: 1 });
 
 export const Conversation = mongoose.model<IConversation>('Conversation', ConversationSchema);

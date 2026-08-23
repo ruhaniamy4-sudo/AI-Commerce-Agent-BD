@@ -3,12 +3,14 @@ import * as dotenv from 'dotenv';
 import { agentGraph } from './agent/graph';
 import { connectMongo } from './db/mongodb';
 import { initializeScriptTenantContext } from './tenancy/script-context';
+import { randomUUID } from 'node:crypto';
 dotenv.config();
 
 async function testAgent(businessId: string, message: string) {
     console.log(`\n--- Testing with message: "${message}" ---`);
     const state = await agentGraph.invoke({
         businessId,
+        eventIdentifier: randomUUID(),
         messages: [new HumanMessage(message)],
         agentStatus: 'active',
         lastHumanActivity: Date.now(),
@@ -41,6 +43,7 @@ async function runTests() {
         );
         const clientState = await agentGraph.invoke({
             businessId,
+            eventIdentifier: randomUUID(),
             messages: [
                 new HumanMessage(
                     'আমার ফোন নম্বর ০১৭০০০০০০০০, আমি একটি স্কুল চালাই আর আমাদের ১০০০ স্টুডেন্ট আছে।'

@@ -141,7 +141,7 @@ describe('Facebook Webhook API', () => {
             .createHmac('sha256', 'test_secret')
             .update(JSON.stringify(payload))
             .digest('hex');
-        mockWebHookEvent.findOne.mockResolvedValue({ eventId: 'mid_duplicate' });
+        mockWebHookEvent.create.mockRejectedValue({ code: 11000 });
 
         const response = await request(app)
             .post('/webhook')
@@ -149,7 +149,7 @@ describe('Facebook Webhook API', () => {
             .send(payload);
 
         expect(response.status).toBe(200);
-        expect(mockWebHookEvent.create).not.toHaveBeenCalled();
+        expect(mockWebHookEvent.create).toHaveBeenCalledTimes(1);
         expect(mockQueueAdd).not.toHaveBeenCalled();
     });
 });

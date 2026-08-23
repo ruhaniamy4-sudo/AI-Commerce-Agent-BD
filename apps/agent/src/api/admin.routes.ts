@@ -9,6 +9,7 @@ import { Message } from '../models/Message';
 import { Order } from '../models/Order';
 import { SystemPrompt } from '../models/SystemPrompt';
 import { invalidatePromptCache } from '../services/systemPrompt.service';
+import { returnConversationToAI, takeOverConversation } from '../services/conversation-control.service';
 
 const router = Router();
 
@@ -28,8 +29,17 @@ router.get('/conversations', async (req, res) => {
         pipeline.push({
             $lookup: {
                 from: 'customers',
-                localField: 'customerId', // Ensure Conversation model has this
-                foreignField: '_id',
+                let: { customerId: '$customerId', businessId: '$businessId' },
+                pipeline: [{
+                    $match: {
+                        $expr: {
+                            $and: [
+                                { $eq: ['$_id', '$$customerId'] },
+                                { $eq: ['$businessId', '$$businessId'] },
+                            ],
+                        },
+                    },
+                }],
                 as: 'customerData',
             },
         });
@@ -38,11 +48,14 @@ router.get('/conversations', async (req, res) => {
         pipeline.push({
             $lookup: {
                 from: 'messages',
-                let: { convId: '$conversationId' },
+                let: { convId: '$conversationId', businessId: '$businessId' },
                 pipeline: [
                     {
                         $match: {
-                            $expr: { $eq: ['$conversationId', '$$convId'] },
+                            $expr: { $and: [
+                                { $eq: ['$conversationId', '$$convId'] },
+                                { $eq: ['$businessId', '$$businessId'] },
+                            ] },
                         },
                     },
                     { $count: 'count' },
@@ -55,11 +68,14 @@ router.get('/conversations', async (req, res) => {
         pipeline.push({
             $lookup: {
                 from: 'messages',
-                let: { convId: '$conversationId' },
+                let: { convId: '$conversationId', businessId: '$businessId' },
                 pipeline: [
                     {
                         $match: {
-                            $expr: { $eq: ['$conversationId', '$$convId'] },
+                            $expr: { $and: [
+                                { $eq: ['$conversationId', '$$convId'] },
+                                { $eq: ['$businessId', '$$businessId'] },
+                            ] },
                         },
                     },
                     { $sort: { createdAt: -1 } },
@@ -132,6 +148,26 @@ router.get('/conversations', async (req, res) => {
 });
 
 // Get messages for a specific conversation
+router.get('/conversations/:id', async (req, res) => {
+    const conversation = await Conversation.findOne({
+        $or: [{ _id: req.params.id }, { conversationId: req.params.id }],
+    }).lean();
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    res.json(conversation);
+});
+
+router.post('/conversations/:id/take-over', async (req, res) => {
+    const conversation = await takeOverConversation(req.params.id, req.body?.reason);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    res.json(conversation);
+});
+
+router.post('/conversations/:id/return-to-ai', async (req, res) => {
+    const conversation = await returnConversationToAI(req.params.id);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    res.json(conversation);
+});
+
 router.get('/conversations/:id/messages', async (req, res) => {
     try {
         const { id } = req.params;

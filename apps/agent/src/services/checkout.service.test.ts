@@ -119,4 +119,20 @@ describe('order creation and stock safety', () => {
         expect(Order.prototype.save).not.toHaveBeenCalled();
         expect(Customer.updateOne).not.toHaveBeenCalled();
     });
+
+    it('returns the existing order for a repeated action without touching stock', async () => {
+        const existingOrder = { _id: new mongoose.Types.ObjectId(), orderNumber: 'ORD-EXISTING' };
+        vi.spyOn(Order, 'findOne').mockResolvedValue(existingOrder as never);
+        const stockUpdate = vi.spyOn(Product, 'findOneAndUpdate');
+        const order = await asTenant(() => createOrderWithStock({
+            businessId,
+            idempotencyKey: 'same-inbound-event',
+            customerId,
+            items: [{ productId, quantity: 1 }],
+            shippingAddress: {},
+        }));
+        expect(order).toBe(existingOrder);
+        expect(stockUpdate).not.toHaveBeenCalled();
+        expect(mongoose.startSession).not.toHaveBeenCalled();
+    });
 });

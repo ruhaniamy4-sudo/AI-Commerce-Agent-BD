@@ -8,6 +8,7 @@ export interface AgentResponse {
     action_payload?: Record<string, any>;
     quick_replies?: string[];
     suggested_products?: any[];
+    action_result?: { requested: string; confirmed: boolean; reference?: string; error?: string };
 }
 
 export function parseAgentResponse(content: unknown): AgentResponse {
@@ -27,14 +28,36 @@ export async function executeAgentAction(params: {
     businessId: string;
     conversationId: string;
     psid?: string;
+    eventIdentifier: string;
     response: AgentResponse;
 }) {
     assertTenantBusinessId(params.businessId, 'agent.executeAction');
     const { response } = params;
 
+    if (response.action && response.action !== 'none') {
+        const stillAIControlled = await Conversation.findOne({
+            conversationId: params.conversationId,
+            controlMode: 'AI_ACTIVE',
+        }).select('_id').lean();
+        if (!stillAIControlled) {
+            response.message_text = '';
+            response.action_result = {
+                requested: response.action,
+                confirmed: false,
+                error: 'Conversation is controlled by a human',
+            };
+            return response;
+        }
+    }
+
     if (response.action === 'create_order') {
         if (!params.psid) {
-            response.message_text += '\n\nI need a customer identity before I can create this order.';
+            response.message_text = 'I could not confirm the order because the customer identity is unavailable. A human can help complete it safely.';
+            response.action_result = {
+                requested: 'create_order',
+                confirmed: false,
+                error: 'Customer identity is unavailable',
+            };
             return response;
         }
         const orderResult = await createOrder({
@@ -42,21 +65,33 @@ export async function executeAgentAction(params: {
             psid: params.psid,
             items: response.action_payload?.items || [],
             address: response.action_payload?.address,
+            idempotencyKey: params.eventIdentifier,
         });
-        response.message_text += orderResult.success
-            ? `\n\nOrder #${orderResult.orderId} created successfully! Total: ${orderResult.total}`
-            : `\n\nFailed to create order: ${orderResult.error}`;
+        response.action_result = orderResult.success
+            ? { requested: 'create_order', confirmed: true, reference: String(orderResult.orderId) }
+            : { requested: 'create_order', confirmed: false, error: orderResult.error };
+        response.message_text = orderResult.success
+            ? `Order #${orderResult.orderId} was created successfully. Total: ${orderResult.total}`
+            : `I could not confirm the order. ${orderResult.error}. A human can help complete it safely.`;
     }
 
     if (response.action === 'handoff') {
-        await Conversation.updateOne(
+        const handoffResult = await Conversation.updateOne(
             { conversationId: params.conversationId },
             {
                 aiEnabled: false,
+                controlMode: 'HUMAN_ACTIVE',
                 needsHumanHandoff: true,
                 handoffReason: response.action_payload?.reason || 'AI requested human handoff',
             }
         );
+        const confirmed = handoffResult.matchedCount === 1;
+        response.action_result = confirmed
+            ? { requested: 'handoff', confirmed: true }
+            : { requested: 'handoff', confirmed: false, error: 'Conversation was not found' };
+        response.message_text = confirmed
+            ? 'A human agent will continue this conversation.'
+            : 'I could not confirm the handoff. Please contact support directly.';
     }
 
     return response;
