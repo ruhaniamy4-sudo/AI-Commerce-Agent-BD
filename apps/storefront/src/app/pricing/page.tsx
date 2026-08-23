@@ -1,7 +1,200 @@
 import type { Metadata } from "next";
+import { Check, ChevronDown, Gauge, ShieldCheck, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { ArrowRight, Check } from "lucide-react";
-import { PageHero } from "@/components/marketing";
-export const metadata: Metadata = { title: "Pricing", description: "Early-access Digitross plans for small, growing, and high-volume commerce teams." };
-const plans = [{ name: "Starter", audience: "For small businesses proving conversation-led commerce.", features: ["Facebook and web conversations", "Products, customers, and orders", "Human takeover", "Core AI cost controls"] }, { name: "Growth", audience: "For growing teams handling more customers and operations.", featured: true, features: ["Everything in Starter", "Owner, Admin, and Staff workflows", "Knowledge-grounded support", "AI usage summaries", "Priority onboarding"] }, { name: "Scale", audience: "For high-volume or multi-brand commerce operations.", features: ["Everything in Growth", "Multi-business operating model", "Higher-volume planning", "Custom workflow review", "Dedicated rollout support"] }];
-export default function PricingPage() { return <main><PageHero eyebrow="Simple early access" title="Start with the plan that matches your operation." copy="Digitross is in soft launch. We’ll scope usage and onboarding with you instead of inventing rigid pricing before the product is ready." /><section className="site-container py-20 sm:py-28"><div className="mb-10 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-center text-sm font-semibold text-blue-800">Early access pricing — contact us for current availability.</div><div className="grid gap-5 lg:grid-cols-3">{plans.map(plan => <article key={plan.name} className={`relative flex flex-col rounded-[1.5rem] border p-7 ${plan.featured ? "border-blue-500 bg-slate-950 text-white shadow-2xl shadow-blue-900/20" : "border-slate-200 bg-white shadow-lg shadow-slate-900/5"}`}>{plan.featured && <span className="absolute right-6 top-6 rounded-full bg-blue-500 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider">Most popular</span>}<p className={`text-sm font-bold ${plan.featured ? "text-blue-300" : "text-blue-600"}`}>{plan.name}</p><h2 className="mt-6 text-3xl font-semibold">Contact us</h2><p className={`mt-4 min-h-20 text-sm leading-6 ${plan.featured ? "text-slate-300" : "text-slate-600"}`}>{plan.audience}</p><ul className="mt-7 space-y-3">{plan.features.map(item => <li key={item} className="flex gap-3 text-sm"><Check className={`mt-0.5 h-4 w-4 shrink-0 ${plan.featured ? "text-blue-300" : "text-blue-600"}`} />{item}</li>)}</ul><Link href="/demo" className={plan.featured ? "button-primary mt-9" : "button-secondary mt-9"}>Request access <ArrowRight className="h-4 w-4" /></Link></article>)}</div><div className="mt-16 overflow-x-auto rounded-2xl border border-slate-200"><div className="min-w-[640px]"><div className="grid grid-cols-[1.4fr_repeat(3,1fr)] bg-slate-50 px-5 py-4 text-xs font-bold text-slate-500"><span>Capability</span><span>Starter</span><span>Growth</span><span>Scale</span></div>{[["AI conversations", "Included", "Included", "Included"], ["Human takeover", "Included", "Included", "Included"], ["Team roles", "—", "Included", "Included"], ["Multi-business planning", "—", "—", "Included"], ["Usage review", "Core", "Advanced", "Custom"]].map(row => <div key={row[0]} className="grid grid-cols-[1.4fr_repeat(3,1fr)] border-t border-slate-200 px-5 py-4 text-xs text-slate-600 sm:text-sm"><strong className="text-slate-900">{row[0]}</strong><span>{row[1]}</span><span>{row[2]}</span><span>{row[3]}</span></div>)}</div></div></section></main>; }
+import { FinalCTA, PageHero, SectionHeading } from "@/components/marketing";
+import { Reveal } from "@/components/reveal";
+
+export const metadata: Metadata = {
+  title: "Pricing",
+  description:
+    "Explore Digitross early-access plans for AI commerce teams in Bangladesh.",
+};
+
+const plans = [
+  {
+    name: "Launch",
+    label: "For a focused pilot",
+    copy: "Start with one business and the core conversation workflow.",
+    features: [
+      "One business workspace",
+      "Facebook Messenger and website chat",
+      "Product and knowledge context",
+      "Human takeover",
+      "Usage visibility",
+    ],
+  },
+  {
+    name: "Scale",
+    label: "For growing operations",
+    copy: "Add more team structure, channels, and operating capacity.",
+    features: [
+      "Everything in Launch",
+      "Expanded workspace roles",
+      "Higher usage capacity",
+      "Priority rollout support",
+      "Advanced operating controls",
+    ],
+    featured: true,
+  },
+  {
+    name: "Custom",
+    label: "For complex organizations",
+    copy: "Plan around multiple brands, custom workflows, and integration needs.",
+    features: [
+      "Multi-brand planning",
+      "Custom integration scope",
+      "Security and data review",
+      "Tailored usage model",
+      "Dedicated rollout planning",
+    ],
+  },
+];
+
+const faqs = [
+  [
+    "Is final pricing available?",
+    "Digitross is in early access. Final plan prices are not published yet because rollout scope and usage needs are still being validated with participating businesses.",
+  ],
+  [
+    "What determines AI usage cost?",
+    "Model choice, conversation volume, context size, and output length all affect provider cost. Digitross tracks token usage and supports configurable cost estimates by business.",
+  ],
+  [
+    "Can we start with one channel?",
+    "Yes. A focused rollout can begin with Facebook Messenger or website chat before expanding to additional supported channels.",
+  ],
+  [
+    "Does every plan include human takeover?",
+    "Human takeover is a core operating control and is included in the early-access plan structure shown here.",
+  ],
+  [
+    "Are WhatsApp and courier integrations included?",
+    "They are not available today. WhatsApp and courier automation are identified as coming-soon areas and will be scoped separately when ready.",
+  ],
+];
+
+export default function PricingPage() {
+  return (
+    <main>
+      <PageHero
+        eyebrow="Early-access plans"
+        title="Start focused. Scale with proof."
+        copy="Choose the shape of your rollout today. Final commercial pricing will be shared transparently as Digitross moves beyond early access."
+      />
+      <Reveal>
+        <section className="site-container pb-20 sm:pb-28">
+          <div className="grid gap-5 lg:grid-cols-3">
+            {plans.map((plan) => (
+              <article
+                key={plan.name}
+                className={`relative flex flex-col rounded-[1.75rem] border p-7 sm:p-8 ${plan.featured ? "border-blue-500 bg-slate-950 text-white shadow-[0_24px_70px_rgba(37,99,235,.2)]" : "border-[var(--line)] bg-[var(--surface)] text-[var(--ink)]"}`}
+              >
+                {plan.featured && (
+                  <span className="absolute right-6 top-6 rounded-full bg-blue-500 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-white">
+                    Recommended
+                  </span>
+                )}
+                <p
+                  className={`text-xs font-bold uppercase tracking-[.16em] ${plan.featured ? "text-cyan-300" : "text-blue-600 dark:text-blue-400"}`}
+                >
+                  {plan.label}
+                </p>
+                <h2 className="mt-4 text-3xl font-semibold tracking-tight">
+                  {plan.name}
+                </h2>
+                <p
+                  className={`mt-4 min-h-14 text-sm leading-6 ${plan.featured ? "text-slate-300" : "text-[var(--muted)]"}`}
+                >
+                  {plan.copy}
+                </p>
+                <div className="my-7 border-t border-current opacity-10" />
+                <p className="text-sm font-semibold">Early-access pricing</p>
+                <p
+                  className={`mt-1 text-sm ${plan.featured ? "text-slate-400" : "text-[var(--muted)]"}`}
+                >
+                  Discussed during your rollout call
+                </p>
+                <ul className="mt-7 flex-1 space-y-3">
+                  {plan.features.map((feature) => (
+                    <li
+                      key={feature}
+                      className={`flex gap-3 text-sm ${plan.featured ? "text-slate-200" : "text-[var(--muted)]"}`}
+                    >
+                      <Check
+                        className={`mt-0.5 h-4 w-4 shrink-0 ${plan.featured ? "text-cyan-300" : "text-emerald-500"}`}
+                      />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  href="/demo"
+                  className={`mt-8 justify-center ${plan.featured ? "button-primary" : "button-secondary"}`}
+                >
+                  Discuss {plan.name}
+                </Link>
+              </article>
+            ))}
+          </div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <div className="surface-card flex gap-4 p-5">
+              <Gauge className="h-5 w-5 shrink-0 text-blue-500" />
+              <p className="text-sm text-[var(--muted)]">
+                <strong className="block text-[var(--ink)]">
+                  Bounded usage
+                </strong>
+                Context and output limits protect cost.
+              </p>
+            </div>
+            <div className="surface-card flex gap-4 p-5">
+              <ShieldCheck className="h-5 w-5 shrink-0 text-violet-500" />
+              <p className="text-sm text-[var(--muted)]">
+                <strong className="block text-[var(--ink)]">
+                  Tenant isolation
+                </strong>
+                Business data stays business-scoped.
+              </p>
+            </div>
+            <div className="surface-card flex gap-4 p-5">
+              <Sparkles className="h-5 w-5 shrink-0 text-cyan-500" />
+              <p className="text-sm text-[var(--muted)]">
+                <strong className="block text-[var(--ink)]">
+                  No hidden claims
+                </strong>
+                Future features are labeled clearly.
+              </p>
+            </div>
+          </div>
+        </section>
+      </Reveal>
+      <Reveal>
+        <section className="bg-[var(--page-soft)] py-20 sm:py-28">
+          <div className="site-container max-w-4xl">
+            <SectionHeading
+              eyebrow="Pricing FAQ"
+              title="The questions worth asking before rollout."
+              center
+            />
+            <div className="mt-12 space-y-3">
+              {faqs.map(([question, answer]) => (
+                <details key={question} className="faq-item group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5 font-semibold text-[var(--ink)] sm:p-6">
+                    {question}
+                    <ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" />
+                  </summary>
+                  <p className="px-5 pb-5 text-sm leading-7 text-[var(--muted)] sm:px-6 sm:pb-6">
+                    {answer}
+                  </p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+      </Reveal>
+      <FinalCTA
+        title="Make the first rollout measurable."
+        copy="We’ll help you define a narrow workflow, the guardrails around it, and the signals that show whether it is working."
+      />
+    </main>
+  );
+}

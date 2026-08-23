@@ -23,6 +23,7 @@ export const metadata: Metadata = {
     images: ["/og.png"],
   },
 };
+const themeScript = `(function(){try{var saved=localStorage.getItem('digitross-theme');var dark=saved?saved==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.classList.toggle('dark',dark);document.documentElement.style.colorScheme=dark?'dark':'light'}catch(e){}})()`;
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${inter.variable} bg-white text-slate-950 antialiased`}><CartProvider><MarketingNav />{children}<MarketingFooter /></CartProvider></body></html>;
+  return <html lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className={`${inter.variable} antialiased`}><CartProvider><MarketingNav />{children}<MarketingFooter /></CartProvider></body></html>;
 }

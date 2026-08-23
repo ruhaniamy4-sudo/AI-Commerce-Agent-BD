@@ -1,88 +1,63 @@
 import Link from "next/link";
-import { ArrowRight, Bot, Boxes, Check, CircleDollarSign, Headphones, MessageCircle, PackageCheck, Search, ShieldCheck, Sparkles, Store, UserRoundCheck, UsersRound, Workflow } from "lucide-react";
+import { ArrowRight, BarChart3, Bot, Boxes, Check, CheckCircle2, CircleDollarSign, Clock3, Headphones, ImageIcon, Inbox, Languages, MessageCircle, PackageCheck, SearchCheck, ShieldCheck, ShoppingBag, Sparkles, Store, UserRoundCheck, UsersRound, Workflow, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { FinalCTA, SectionHeading } from "@/components/marketing";
+import { ProductPreview } from "@/components/product-preview";
+import { Reveal } from "@/components/reveal";
+
+const problemItems = ["Messages are answered after the buyer has moved on", "Teams repeat the same stock and price answers all day", "Customer and order details disappear inside busy inboxes", "Manual handoffs interrupt the buying conversation"];
+const solutionItems = ["Instant, business-aware AI conversations", "Product and knowledge-grounded responses", "Backend-confirmed order workflows", "One clear switch between AI and human control"];
+const audiences: Array<[LucideIcon, string, string]> = [[Store, "Facebook sellers", "Messenger-first selling"], [ShoppingBag, "Ecommerce brands", "Conversation + catalog"], [Headphones, "Support teams", "AI with human control"], [Boxes, "Multi-brand operators", "Tenant-safe workspaces"]];
+const capabilityFacts: Array<[LucideIcon, string, string]> = [[Clock3,"24/7","AI availability"],[ShieldCheck,"Tenant","isolated data"],[Headphones,"Human","takeover"],[CircleDollarSign,"Usage","cost controls"]];
+const localCapabilities: Array<[LucideIcon, string, string]> = [[Languages,"Bangla · English · Banglish","Natural language direction"],[MessageCircle,"Messenger commerce","Available now"],[PackageCheck,"COD-friendly flow","Order details + confirmation"],[Workflow,"Courier direction","Integration coming soon"]];
 
 export default function Home() {
-  return (
-    <main>
-      <section className="hero-grid relative overflow-hidden pb-24 pt-20 sm:pt-28 lg:pb-32 lg:pt-36">
-        <div className="glow-orb -left-32 top-28 h-80 w-80 bg-blue-400/25" />
-        <div className="glow-orb -right-28 top-8 h-96 w-96 bg-cyan-300/25" />
-        <div className="site-container relative grid items-center gap-16 lg:grid-cols-[1.03fr_.97fr]">
-          <div className="reveal-up max-w-3xl">
-            <div className="eyebrow mb-6"><span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_0_5px_rgba(59,130,246,.12)]" />Built for Bangladesh commerce</div>
-            <h1 className="text-balance text-5xl font-semibold leading-[1.03] tracking-[-0.045em] text-slate-950 sm:text-6xl lg:text-7xl">Turn every customer conversation into revenue.</h1>
-            <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">Digitross is an AI commerce agent that helps Bangladesh businesses sell, support, create orders, and manage customers across the channels they already use.</p>
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-              <Link href="/demo" className="button-primary">Get early access <ArrowRight className="h-4 w-4" /></Link>
-              <Link href="/features" className="button-secondary">See how it works</Link>
-            </div>
-            <div className="mt-9 flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium text-slate-600">
-              <span className="inline-flex items-center gap-2"><Check className="h-4 w-4 text-blue-600" />Facebook Messenger</span>
-              <span className="inline-flex items-center gap-2"><Check className="h-4 w-4 text-blue-600" />Web chat</span>
-              <span className="inline-flex items-center gap-2 text-slate-400">WhatsApp · Coming soon</span>
-            </div>
+  return <main>
+    <section className="hero-grid relative overflow-hidden pb-24 pt-16 sm:pb-28 sm:pt-24 lg:pb-36 lg:pt-28">
+      <div className="aurora aurora-blue -left-32 top-16" /><div className="aurora aurora-violet -right-40 top-0" />
+      <div className="site-container relative grid items-center gap-14 lg:grid-cols-[1.02fr_.98fr] lg:gap-10">
+        <div className="reveal-up max-w-3xl">
+          <div className="eyebrow mb-7"><Sparkles className="h-3.5 w-3.5" />AI commerce agent for Bangladesh</div>
+          <h1 className="text-balance text-[clamp(3rem,6.8vw,5.25rem)] font-semibold leading-[.98] tracking-[-.062em] text-[var(--ink)]">Turn every customer conversation into <span className="text-blue-600 dark:text-blue-400">revenue.</span></h1>
+          <p className="mt-7 max-w-2xl text-lg leading-8 text-[var(--muted)] sm:text-xl">Digitross helps businesses talk to customers, recommend products, create confirmed orders, manage customer context, and bring in a human exactly when needed.</p>
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row"><Link href="/demo" className="button-primary">Get early access <ArrowRight className="h-4 w-4" /></Link><Link href="#workflow" className="button-secondary">See the workflow</Link></div>
+          <div className="mt-9 flex flex-wrap gap-2"><ChannelPill label="Facebook Messenger" status="Available" /><ChannelPill label="Website Chat" status="Available" /><ChannelPill label="WhatsApp" status="Coming soon" future /></div>
+        </div>
+        <div className="relative mx-auto w-full max-w-[620px] reveal-up [animation-delay:120ms]">
+          <div className="product-window">
+            <div className="window-bar"><div className="window-dots"><span /><span /><span /></div><span>Digitross · Conversations</span><span className="inline-flex items-center gap-2"><span className="status-dot" />Live</span></div>
+            <div className="hero-dashboard"><div className="hero-sidebar"><div className="sidebar-glyph is-active"><MessageCircle className="h-4 w-4" /></div><div className="sidebar-glyph"><UsersRound className="h-4 w-4" /></div><div className="sidebar-glyph"><PackageCheck className="h-4 w-4" /></div><div className="sidebar-glyph"><BarChart3 className="h-4 w-4" /></div></div><div className="hero-chat"><div className="chat-header"><div><p className="text-xs font-bold text-[var(--ink)]">Raisa · Messenger</p><p className="mt-1 text-[10px] text-[var(--muted)]">Product enquiry · Active now</p></div><span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">AI active</span></div><div className="mt-8 space-y-4"><div className="chat-bubble customer">Black color ta available?</div><div className="chat-bubble agent">Yes. Black is available. Would you like me to place an order?</div><div className="event-grid pt-3"><HeroEvent icon={<UserRoundCheck />} title="Customer identified" detail="Returning buyer" /><HeroEvent icon={<SearchCheck />} title="Stock checked" detail="12 available" /><HeroEvent icon={<PackageCheck />} title="Order ready" detail="COD workflow" /><HeroEvent icon={<Headphones />} title="Human takeover" detail="Available" /></div></div></div></div>
           </div>
-          <div className="reveal-up relative mx-auto w-full max-w-[590px] [animation-delay:120ms]">
-            <div className="dashboard-shell">
-              <div className="flex items-center justify-between border-b border-slate-200/80 px-5 py-4">
-                <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white"><Bot className="h-5 w-5" /></div><div><p className="text-sm font-semibold text-slate-950">Sales conversation</p><p className="text-xs text-slate-500">Facebook Messenger</p></div></div>
-                <span className="status-pill"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />AI active</span>
-              </div>
-              <div className="space-y-4 bg-slate-50/80 p-5 sm:p-7">
-                <div className="ml-auto max-w-[78%] rounded-2xl rounded-br-md bg-blue-600 px-4 py-3 text-sm leading-6 text-white shadow-lg shadow-blue-600/15">Black color ta available?</div>
-                <div className="max-w-[84%] rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm">Yes, Black is available. Would you like me to place an order?</div>
-                <div className="grid gap-3 pt-2 sm:grid-cols-2">
-                  <MiniCard icon={<PackageCheck className="h-4 w-4" />} title="Order ready" detail="1 item · Cash on delivery" />
-                  <MiniCard icon={<UserRoundCheck className="h-4 w-4" />} title="Customer identified" detail="Returning customer" />
-                </div>
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-200/80 bg-white px-5 py-4"><div className="flex items-center gap-2 text-xs font-medium text-slate-500"><ShieldCheck className="h-4 w-4 text-blue-600" />Tenant-safe workspace</div><span className="text-xs font-semibold text-blue-600">Take over</span></div>
-            </div>
-            <div className="floating-chip -left-5 top-24 hidden sm:flex"><MessageCircle className="h-4 w-4 text-blue-600" />Banglish understood</div>
-            <div className="floating-chip -right-5 bottom-24 hidden sm:flex"><PackageCheck className="h-4 w-4 text-emerald-600" />Order created</div>
-          </div>
+          <div className="floating-panel -left-6 top-28"><span className="inline-flex items-center gap-2"><Languages className="h-4 w-4 text-cyan-500" />Banglish understood</span></div><div className="floating-panel -right-5 bottom-20 [animation-delay:-2s]"><span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-500" />Order action confirmed</span></div>
         </div>
-      </section>
-      <section className="border-y border-slate-200 bg-white py-6"><div className="site-container flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-center text-sm font-semibold text-slate-600"><span>Bangla + Banglish</span><span>Multi-business ready</span><span>Human takeover</span><span>Low-cost AI controls</span><span>Messenger-first</span></div></section>
+      </div>
+    </section>
 
-      <section className="site-container py-20 sm:py-28">
-        <SectionHeading eyebrow="How it works" title="From first message to daily operations." copy="Digitross connects the customer conversation to the business data and team behind it." center />
-        <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            ["01", "Connect", "Bring Facebook Messenger and web conversations into one flow."],
-            ["02", "Train", "Add products, policies, FAQs, and the knowledge your business relies on."],
-            ["03", "Sell", "Let AI answer questions, recommend products, and prepare real orders."],
-            ["04", "Operate", "Manage conversations, customers, orders, and human handoffs together."],
-          ].map(([step, title, copy]) => <div key={step} className="surface-card p-6"><span className="text-xs font-extrabold text-blue-600">{step}</span><h3 className="mt-8 text-xl font-semibold text-slate-950">{title}</h3><p className="mt-3 text-sm leading-6 text-slate-600">{copy}</p></div>)}
-        </div>
-      </section>
+    <section className="border-y border-[var(--line)] bg-[var(--surface-solid)] py-6"><div className="site-container grid grid-cols-2 gap-4 sm:grid-cols-4">{capabilityFacts.map(([Icon,value,label]) => <div key={label} className="flex items-center justify-center gap-3"><Icon className="h-4 w-4 text-blue-500" /><div><strong className="block text-xs text-[var(--ink)]">{value}</strong><span className="text-[10px] text-[var(--muted)]">{label}</span></div></div>)}</div></section>
 
-      <section id="product" className="scroll-mt-24 bg-slate-50 py-20 sm:py-28"><div className="site-container">
-        <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><SectionHeading eyebrow="One commerce workspace" title="AI where it matters. Control where you need it." copy="A focused operating layer for conversations that lead to customers, orders, and long-term relationships." /><Link href="/features" className="inline-flex shrink-0 items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-700">Explore every feature <ArrowRight className="h-4 w-4" /></Link></div>
-        <div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            [<Sparkles key="i" />, "AI sales agent", "Concise, useful conversations grounded in business context."],
-            [<MessageCircle key="i" />, "Unified conversations", "Web and Messenger conversations in one operational view."],
-            [<Search key="i" />, "Smart product search", "Relevant product candidates instead of entire catalog dumps."],
-            [<PackageCheck key="i" />, "Order automation", "Backend-confirmed order creation with safer customer responses."],
-            [<Headphones key="i" />, "Human takeover", "Take control instantly and return future messages to AI."],
-            [<Boxes key="i" />, "Knowledge support", "Answers grounded in policies, products, and merchant knowledge."],
-            [<CircleDollarSign key="i" />, "AI cost controls", "Bounded context, usage tracking, and configurable limits."],
-            [<ShieldCheck key="i" />, "Business isolation", "Tenant-safe data access designed for multiple businesses."],
-          ].map(([icon, title, copy]) => <div key={String(title)} className="surface-card p-6"><div className="icon-tile [&>svg]:h-5 [&>svg]:w-5">{icon}</div><h3 className="mt-5 font-semibold text-slate-950">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{copy}</p></div>)}
-        </div>
-      </div></section>
+    <Reveal><section className="site-container py-20 sm:py-28"><SectionHeading eyebrow="The gap between interest and action" title="Busy inboxes quietly lose good customers." copy="Digitross turns the repetitive parts of conversation-led selling into a clear operating flow—without removing your team from the moments that matter." center /><div className="story-bridge mt-14 grid lg:grid-cols-2"><div className="story-column story-problem"><p className="section-kicker !text-rose-500">Without Digitross</p><h3 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--ink)]">Every message becomes manual work.</h3><div className="mt-7">{problemItems.map(item => <div key={item} className="story-item"><span className="story-item-icon bg-rose-500/10 text-rose-500"><X className="h-3.5 w-3.5" /></span><span>{item}</span></div>)}</div></div><div className="story-column story-solution"><p className="section-kicker">With Digitross</p><h3 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--ink)]">Conversation becomes an operation.</h3><div className="mt-7">{solutionItems.map(item => <div key={item} className="story-item"><span className="story-item-icon bg-blue-500/10 text-blue-500"><Check className="h-3.5 w-3.5" /></span><span>{item}</span></div>)}</div></div></div></section></Reveal>
 
-      <section className="site-container grid items-center gap-14 py-20 sm:py-28 lg:grid-cols-2">
-        <div><SectionHeading eyebrow="Built around local commerce" title="Bangladesh businesses sell through conversations." copy="Digitross is designed around Messenger-first discovery, Bangla and Banglish questions, cash-on-delivery operations, and the moment a growing team needs to step in." /><div className="mt-8 grid gap-4 sm:grid-cols-2">{[[<MessageCircle key="i" />, "Natural Banglish"], [<Store key="i" />, "Messenger commerce"], [<UsersRound key="i" />, "Human collaboration"], [<Workflow key="i" />, "Courier-ready direction"]].map(([icon, title]) => <div key={String(title)} className="flex items-center gap-3 rounded-xl border border-slate-200 p-4 text-sm font-semibold text-slate-800"><span className="text-blue-600 [&>svg]:h-5 [&>svg]:w-5">{icon}</span>{title}</div>)}</div><p className="mt-5 text-sm text-slate-500">Courier automation, including Steadfast integration, is coming soon and is not presented as live.</p></div>
-        <div className="rounded-[2rem] bg-blue-600 p-6 text-white shadow-2xl shadow-blue-600/20 sm:p-9"><p className="text-sm font-bold text-blue-100">A typical customer moment</p><div className="mt-7 space-y-4"><div className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-white/15 p-4 text-sm">Bhai, eta Dhakar baire COD hobe?</div><div className="max-w-[90%] rounded-2xl rounded-bl-md bg-white p-4 text-sm leading-6 text-slate-700">Yes—cash on delivery can be arranged. Share your district and area, and I’ll collect the delivery details for confirmation.</div><div className="grid gap-3 pt-3 sm:grid-cols-2"><div className="rounded-xl bg-blue-700/70 p-4"><UserRoundCheck className="h-5 w-5" /><p className="mt-4 text-sm font-semibold">Lead captured</p></div><div className="rounded-xl bg-blue-700/70 p-4"><PackageCheck className="h-5 w-5" /><p className="mt-4 text-sm font-semibold">COD workflow ready</p></div></div></div></div>
-      </section>
-      <FinalCTA />
-    </main>
-  );
+    <Reveal><section id="product" className="scroll-mt-24 bg-[var(--page-soft)] py-20 sm:py-28"><div className="site-container"><div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end"><SectionHeading eyebrow="One commerce operating layer" title="A product story, not a grid of promises." copy="Each capability connects to the next—from understanding the question to protecting the action." /><Link href="/features" className="inline-flex items-center gap-2 text-sm font-bold text-blue-600 dark:text-blue-400">Explore all capabilities <ArrowRight className="h-4 w-4" /></Link></div><div className="bento-grid mt-14">
+      <BentoChat /><BentoAnalytics />
+      <BentoCard span="bento-span-4" icon={<ImageIcon />} title="Image understanding" copy="Customer product images can be analyzed and matched against a bounded catalog candidate set."><div className="mt-6 grid grid-cols-3 gap-2"><div className="aspect-square rounded-xl bg-gradient-to-br from-blue-100 to-slate-200 dark:from-blue-950 dark:to-slate-800" /><div className="aspect-square rounded-xl border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/40" /><div className="aspect-square rounded-xl bg-gradient-to-br from-violet-100 to-cyan-100 dark:from-violet-950 dark:to-cyan-950" /></div></BentoCard>
+      <BentoCard span="bento-span-4" icon={<Headphones />} title="Human takeover" copy="One authoritative controller. Take over now, return future messages to AI when ready."><div className="mt-8 flex items-center justify-between rounded-xl border border-[var(--line)] bg-[var(--page-soft)] p-3 text-xs"><span className="inline-flex items-center gap-2"><span className="status-dot" />AI active</span><span className="rounded-lg bg-blue-600 px-3 py-2 font-bold text-white">Take over</span></div></BentoCard>
+      <BentoCard span="bento-span-4" icon={<ShieldCheck />} title="Multi-business security" copy="Conversation, usage, product, customer, and order data stay scoped to the correct business."><div className="mt-7 space-y-2">{["Business A","Business B","Business C"].map((name,index)=><div key={name} className="flex items-center gap-3 rounded-lg border border-[var(--line)] p-2.5 text-xs"><span className={`h-7 w-7 rounded-lg ${index===0?"bg-blue-500":index===1?"bg-violet-500":"bg-cyan-500"}`} /><span className="text-[var(--ink)]">{name}</span><ShieldCheck className="ml-auto h-3.5 w-3.5 text-emerald-500" /></div>)}</div></BentoCard>
+    </div></div></section></Reveal>
+
+    <Reveal><section id="workflow" className="site-container scroll-mt-24 py-20 sm:py-28"><SectionHeading eyebrow="Interactive product preview" title="Follow the work from message to outcome." copy="Choose any step or let the workflow advance. The interface changes to show what Digitross is doing at that moment." center /><div className="mt-14"><ProductPreview /></div></section></Reveal>
+
+    <Reveal><section className="relative overflow-hidden bg-slate-950 py-20 text-white sm:py-28"><div className="aurora aurora-blue -left-40 top-0 opacity-20" /><div className="aurora aurora-violet -right-40 bottom-0 opacity-20" /><div className="site-container relative grid items-center gap-14 lg:grid-cols-[.85fr_1.15fr]"><div><p className="section-kicker !text-cyan-300">Built for commerce in Bangladesh</p><h2 className="mt-4 text-balance text-4xl font-semibold tracking-[-.045em] sm:text-5xl">Local conversations deserve more than a generic chatbot.</h2><p className="mt-6 text-lg leading-8 text-slate-300">Digitross is shaped around Messenger-first discovery, Bangla and Banglish questions, cash-on-delivery workflows, and teams that want AI assistance without losing control.</p><p className="mt-5 text-sm text-slate-500">WhatsApp and courier integrations, including Steadfast, remain clearly marked as upcoming.</p></div><div className="grid gap-3 sm:grid-cols-2">{localCapabilities.map(([Icon,title,copy]) => <div key={title} className="rounded-2xl border border-white/10 bg-white/[.055] p-5 backdrop-blur-sm transition hover:-translate-y-1 hover:border-blue-400/30 hover:bg-white/[.08]"><Icon className="h-5 w-5 text-blue-300" /><h3 className="mt-5 font-semibold">{title}</h3><p className="mt-2 text-sm text-slate-400">{copy}</p></div>)}</div></div></section></Reveal>
+
+    <Reveal><section className="site-container py-20 sm:py-28"><SectionHeading eyebrow="Built for" title="A better operating model for conversation-led teams." copy="No invented logos or performance claims—just the businesses Digitross is being designed to serve." center /><div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{audiences.map(([Icon,title,copy],index)=><div key={String(title)} className="surface-card p-6" style={{transitionDelay:`${index*45}ms`}}><div className="icon-tile"><Icon className="h-5 w-5" /></div><h3 className="mt-6 font-semibold text-[var(--ink)]">{title}</h3><p className="mt-2 text-sm text-[var(--muted)]">{copy}</p></div>)}</div></section></Reveal>
+
+    <Reveal><section className="bg-[var(--page-soft)] py-20 sm:py-28"><div className="site-container grid items-center gap-12 lg:grid-cols-2"><div><SectionHeading eyebrow="About Digitross" title="AI and humans should operate commerce together." copy="Digitross is building an AI commerce operating layer for businesses that sell through conversations—not another chatbot that stops at a reply." /><Link href="/about" className="button-secondary mt-8">Why we are building Digitross <ArrowRight className="h-4 w-4" /></Link></div><div className="relative rounded-[1.7rem] border border-[var(--line)] bg-[var(--surface-solid)] p-7 shadow-[var(--shadow)]"><div className="absolute -right-3 -top-3 h-20 w-20 rounded-3xl bg-blue-500/10 blur-xl" /><div className="grid gap-4 sm:grid-cols-2"><MissionTile icon={<Inbox />} title="Conversation first" /><MissionTile icon={<Bot />} title="AI for repetition" /><MissionTile icon={<UsersRound />} title="Humans for judgment" /><MissionTile icon={<Workflow />} title="Operations beyond chat" /></div></div></div></section></Reveal>
+    <FinalCTA />
+  </main>;
 }
 
-function MiniCard({ icon, title, detail }: { icon: React.ReactNode; title: string; detail: string }) {
-  return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-transform duration-300 hover:-translate-y-1"><div className="mb-3 flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">{icon}</div><p className="text-sm font-semibold text-slate-900">{title}</p><p className="mt-1 text-xs text-slate-500">{detail}</p></div>;
-}
+function ChannelPill({ label, status, future = false }: { label: string; status: string; future?: boolean }) { return <span className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-1.5 text-[11px] font-semibold text-[var(--ink)] backdrop-blur"><span className={`h-1.5 w-1.5 rounded-full ${future ? "bg-amber-400" : "bg-emerald-500"}`} />{label}<span className="text-[var(--muted)]">· {status}</span></span>; }
+function HeroEvent({ icon, title, detail }: { icon: React.ReactNode; title: string; detail: string }) { return <div className="event-card"><span className="text-blue-500 [&>svg]:h-4 [&>svg]:w-4">{icon}</span><div><strong>{title}</strong><span>{detail}</span></div></div>; }
+function BentoCard({ span, icon, title, copy, children }: { span: string; icon: React.ReactNode; title: string; copy: string; children: React.ReactNode }) { return <article className={`bento-card ${span}`}><div className="icon-tile [&>svg]:h-5 [&>svg]:w-5">{icon}</div><h3 className="mt-5 text-[var(--ink)]">{title}</h3><p>{copy}</p>{children}</article>; }
+function BentoChat() { return <article className="bento-card bento-span-7 dark-panel"><div className="relative z-10 max-w-md"><p className="section-kicker !text-cyan-300">AI Sales Agent</p><h3 className="mt-3 !text-2xl">Conversations grounded in the business.</h3><p>Recent context, compact summaries, product candidates, and knowledge work together without dumping everything into the model.</p></div><div className="mt-8 grid gap-3 sm:grid-cols-[.8fr_1.2fr]"><div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-300">Blue ta available?<div className="mt-4 rounded-xl bg-blue-600 p-3 text-white">Yes—Blue is available in your selected size.</div></div><div className="rounded-2xl border border-white/10 bg-white/[.07] p-4"><div className="flex items-center justify-between text-[10px] text-slate-400"><span>Context pack</span><span>3 relevant items</span></div>{["Product · Blue variant","Policy · Delivery","Customer · Returning"].map(item=><div key={item} className="mt-3 rounded-lg bg-white/[.06] px-3 py-2 text-[11px] text-slate-300">{item}</div>)}</div></div></article>; }
+function BentoAnalytics() { return <article className="bento-card bento-span-5"><div className="flex items-start justify-between"><div><p className="section-kicker">AI cost controls</p><h3 className="mt-3 text-[var(--ink)]">Spend stays observable.</h3><p>Provider usage, model, operation, and configurable estimates stay tied to the right business.</p></div><CircleDollarSign className="h-5 w-5 text-blue-500" /></div><div className="mini-bars">{[38,58,44,78,61,92,70].map((height,index)=><span key={index} style={{height:`${height}%`,animationDelay:`${index*65}ms`}} />)}</div><div className="mt-4 flex justify-between text-[10px] font-semibold text-[var(--muted)]"><span>Bounded context</span><span>Usage recorded</span></div></article>; }
+function MissionTile({ icon, title }: { icon: React.ReactNode; title: string }) { return <div className="rounded-2xl border border-[var(--line)] bg-[var(--page-soft)] p-5"><span className="text-blue-500 [&>svg]:h-5 [&>svg]:w-5">{icon}</span><p className="mt-5 text-sm font-semibold text-[var(--ink)]">{title}</p></div>; }
