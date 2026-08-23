@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { tenantPlugin } from '../tenancy/plugin';
+import { ShipmentStatus } from '../courier/types';
 
 export interface IOrderItem {
     productId: mongoose.Types.ObjectId;
@@ -71,7 +72,19 @@ export interface IOrder extends Document {
     estimatedDeliveryDate?: Date;
     actualDeliveryDate?: Date;
     trackingNumber?: string;
-    courier?: string;
+    courier?: {
+        provider: 'steadfast';
+        externalId: string;
+        consignmentId?: string;
+        trackingCode?: string;
+        status: ShipmentStatus;
+        rawStatus?: string;
+        creationStatus: 'creating' | 'created' | 'failed' | 'uncertain';
+        requestToken: string;
+        createdAt?: Date;
+        lastSyncedAt?: Date;
+        error?: { code: string; message: string; at: Date };
+    };
 
     // Customer notes
     customerNote?: string;
@@ -169,7 +182,26 @@ const OrderSchema = new Schema(
         estimatedDeliveryDate: { type: Date },
         actualDeliveryDate: { type: Date },
         trackingNumber: { type: String },
-        courier: { type: String },
+        courier: {
+            provider: { type: String, enum: ['steadfast'] },
+            externalId: { type: String },
+            consignmentId: { type: String },
+            trackingCode: { type: String },
+            status: {
+                type: String,
+                enum: ['pending', 'submitted', 'in_transit', 'delivered', 'cancelled', 'returned', 'failed', 'unknown'],
+            },
+            rawStatus: { type: String },
+            creationStatus: { type: String, enum: ['creating', 'created', 'failed', 'uncertain'] },
+            requestToken: { type: String },
+            createdAt: { type: Date },
+            lastSyncedAt: { type: Date },
+            error: {
+                code: { type: String },
+                message: { type: String },
+                at: { type: Date },
+            },
+        },
 
         customerNote: { type: String },
         adminNote: { type: String },
@@ -198,6 +230,11 @@ OrderSchema.index(
 );
 OrderSchema.index({ businessId: 1, customerId: 1, createdAt: -1 });
 OrderSchema.index({ businessId: 1, status: 1, createdAt: -1 });
+OrderSchema.index({ businessId: 1, 'courier.provider': 1, 'courier.consignmentId': 1 }, {
+    unique: true,
+    partialFilterExpression: { 'courier.consignmentId': { $type: 'string' } },
+});
+OrderSchema.index({ businessId: 1, 'courier.status': 1, 'courier.lastSyncedAt': 1 });
 
 // Generate required identifiers before validation runs.
 OrderSchema.pre('validate', function (this: IOrder) {

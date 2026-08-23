@@ -11,7 +11,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { ordersApi } from '@/lib/api';
+import { courierIntegrationsApi, ordersApi } from '@/lib/api';
 import { Order, Customer, OrderItem } from '@/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -29,6 +29,8 @@ import {
     User,
     ShieldCheck,
     Plus,
+    RefreshCw,
+    Truck,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -69,6 +71,11 @@ export default function OrdersPage() {
         },
     });
 
+    const { data: courierIntegration } = useQuery({
+        queryKey: ['courier-integration', 'steadfast'],
+        queryFn: courierIntegrationsApi.getSteadfast,
+    });
+
     const orders = useMemo(() => response?.data || [], [response]);
     const pagination = response?.pagination;
 
@@ -79,6 +86,23 @@ export default function OrdersPage() {
             queryClient.invalidateQueries({ queryKey: ['orders'] });
             setSelectedOrder(null);
         },
+    });
+
+    const updateCourierState = (result: Awaited<ReturnType<typeof ordersApi.createCourier>>) => {
+        setSelectedOrder((current) => current ? {
+            ...current,
+            courier: result.courier,
+            status: result.orderStatus || current.status,
+        } : current);
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+    };
+    const createCourierMutation = useMutation({
+        mutationFn: (id: string) => ordersApi.createCourier(id),
+        onSuccess: updateCourierState,
+    });
+    const syncCourierMutation = useMutation({
+        mutationFn: (id: string) => ordersApi.syncCourier(id),
+        onSuccess: updateCourierState,
     });
 
     const getStatusStyles = (status: string) => {
@@ -480,6 +504,26 @@ export default function OrdersPage() {
                                         <div className="p-6 rounded-2xl bg-muted/5 border border-border space-y-3" >
                                             <div className="text-[11px] text-muted-foreground font-medium leading-relaxed italic opacity-60" >
                                                 {JSON.stringify(selectedOrder.shippingAddress, null, 2)}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground">
+                                            Courier
+                                        </h4>
+                                        <div className="space-y-4 rounded-2xl border border-border bg-muted/5 p-6">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-3"><Truck className="h-5 w-5 text-primary" /><div><p className="text-sm font-bold text-foreground">Steadfast</p><p className="text-[10px] uppercase tracking-wider text-muted-foreground">{selectedOrder.courier?.status?.replace('_', ' ') || 'Not created'}</p></div></div>
+                                                {selectedOrder.courier?.creationStatus && <span className="rounded-full border border-border px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-muted-foreground">{selectedOrder.courier.creationStatus}</span>}
+                                            </div>
+                                            {selectedOrder.courier?.consignmentId && <div className="grid gap-2 text-xs text-muted-foreground"><p><span className="font-semibold text-foreground">Consignment:</span> {selectedOrder.courier.consignmentId}</p>{selectedOrder.courier.trackingCode && <p><span className="font-semibold text-foreground">Tracking:</span> {selectedOrder.courier.trackingCode}</p>}{selectedOrder.courier.lastSyncedAt && <p><span className="font-semibold text-foreground">Last synced:</span> {format(new Date(selectedOrder.courier.lastSyncedAt), 'MMM d, HH:mm')}</p>}</div>}
+                                            {!courierIntegration?.connected && <p className="text-xs leading-5 text-amber-500">Configure Steadfast in Integrations before creating a delivery.</p>}
+                                            {selectedOrder.status === 'pending' && <p className="text-xs leading-5 text-muted-foreground">Approve this order before creating a delivery.</p>}
+                                            {(createCourierMutation.error || syncCourierMutation.error) && <p className="text-xs leading-5 text-rose-500">{(createCourierMutation.error || syncCourierMutation.error)?.message}</p>}
+                                            <div className="flex flex-wrap gap-2">
+                                                {(!selectedOrder.courier || selectedOrder.courier.creationStatus === 'failed') && ['confirmed', 'packed'].includes(selectedOrder.status) && <Button size="sm" onClick={() => createCourierMutation.mutate(selectedOrder._id)} disabled={!courierIntegration?.connected || createCourierMutation.isPending}>{createCourierMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}Create Delivery</Button>}
+                                                {selectedOrder.courier?.externalId && ['created', 'uncertain'].includes(selectedOrder.courier.creationStatus) && <Button size="sm" variant="outline" onClick={() => syncCourierMutation.mutate(selectedOrder._id)} disabled={!courierIntegration?.connected || syncCourierMutation.isPending}>{syncCourierMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Sync Status</Button>}
                                             </div>
                                         </div>
                                     </div>

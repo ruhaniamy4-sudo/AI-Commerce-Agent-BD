@@ -8,6 +8,7 @@ import { Message } from '../models/Message';
 import { AIUsage } from '../models/AIUsage';
 import { Order } from '../models/Order';
 import { Product } from '../models/Product';
+import { CourierIntegration } from '../models/CourierIntegration';
 import { tenantDocument, withTenantContext } from './context';
 
 const businessA = new mongoose.Types.ObjectId();
@@ -25,7 +26,7 @@ function asBusiness<T>(businessId: mongoose.Types.ObjectId, work: () => T) {
 describe('tenant query isolation', () => {
     afterEach(() => vi.restoreAllMocks());
 
-    const models: mongoose.Model<any>[] = [Product, Category, Customer, Order, Knowledge, Conversation, Message, AIUsage];
+    const models: mongoose.Model<any>[] = [Product, Category, Customer, Order, Knowledge, Conversation, Message, AIUsage, CourierIntegration];
 
     it.each(models)('$modelName requires businessId and declares tenant-first indexes', (model) => {
         expect(model.schema.path('businessId').options.required).toBe(true);
@@ -77,5 +78,16 @@ describe('tenant query isolation', () => {
     it('rejects Business B identifiers supplied in a Business A write payload', () => {
         expect(() => asBusiness(businessA, () => tenantDocument({ businessId: businessB, name: 'Injected' })))
             .toThrow('another business');
+    });
+
+    it('forces Business A scope when updating a Business B courier integration selector', async () => {
+        const update = vi.spyOn(CourierIntegration.collection, 'findOneAndUpdate').mockResolvedValue(null);
+        await asBusiness(businessA, () => CourierIntegration.findOneAndUpdate(
+            { businessId: businessB, provider: 'steadfast' },
+            { status: 'disabled' }
+        ).exec());
+        const databaseFilter = update.mock.calls[0][0] as Record<string, mongoose.Types.ObjectId>;
+        expect(databaseFilter.businessId.toString()).toBe(businessA.toString());
+        expect(databaseFilter.businessId.toString()).not.toBe(businessB.toString());
     });
 });

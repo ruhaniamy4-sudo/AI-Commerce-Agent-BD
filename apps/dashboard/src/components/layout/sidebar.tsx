@@ -15,8 +15,10 @@ import {
     Users,
     X,
     TrendingUp,
+    PlugZap,
 } from 'lucide-react';
 import { signOut } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -31,6 +33,7 @@ const navigation = [
     { name: 'Customers', href: '/customers', icon: Users },
     { name: 'Knowledge', href: '/knowledge', icon: BookOpen },
     { name: 'System Prompts', href: '/system-prompts', icon: Terminal },
+    { name: 'Integrations', href: '/settings/integrations', icon: PlugZap },
 ];
 
 const systemNav = [
@@ -46,6 +49,7 @@ interface SidebarProps {
 
 export function Sidebar({ onClose, className }: SidebarProps) {
     const pathname = usePathname();
+    const { data: session } = useSession();
 
     const NavItem = ({ item }: { item: typeof navigation[0] }) => {
         const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
@@ -95,7 +99,7 @@ export function Sidebar({ onClose, className }: SidebarProps) {
                 <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8 scrollbar-hide">
                     <div className="space-y-1.5">
                         <p className="px-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Management</p>
-                        {navigation.map((item) => (
+                        {navigation.filter((item) => item.href !== '/settings/integrations' || session?.role !== 'Staff').map((item) => (
                             <NavItem key={item.name} item={item} />
                         ))}
                     </div>

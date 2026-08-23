@@ -212,6 +212,29 @@ export type OrderStatus =
   | 'returned'
   | 'refunded';
 
+export type ShipmentStatus =
+  | 'pending'
+  | 'submitted'
+  | 'in_transit'
+  | 'delivered'
+  | 'cancelled'
+  | 'returned'
+  | 'failed'
+  | 'unknown';
+
+export interface OrderCourier {
+  provider: 'steadfast';
+  externalId: string;
+  consignmentId?: string;
+  trackingCode?: string;
+  status: ShipmentStatus;
+  rawStatus?: string;
+  creationStatus: 'creating' | 'created' | 'failed' | 'uncertain';
+  createdAt?: string;
+  lastSyncedAt?: string;
+  error?: { code: string; message: string; at: string };
+}
+
 export interface Order extends TenantEntity {
   _id: ID;
   orderNumber: string;
@@ -232,7 +255,7 @@ export interface Order extends TenantEntity {
   estimatedDeliveryDate?: string;
   actualDeliveryDate?: string;
   trackingNumber?: string;
-  courier?: string;
+  courier?: OrderCourier;
   customerNote?: string;
   adminNote?: string;
   source: 'messenger' | 'web' | 'admin';
