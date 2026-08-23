@@ -1,0 +1,25 @@
+{
+  "name": "edutechs-ai-platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:agent": "npm run dev -w apps/agent",
+    "dev:dashboard": "npm run dev -w apps/dashboard",
+    "dev:storefront": "npm run dev -w apps/storefront",
+    "start": "npm run start -w apps/agent",
+    "worker": "npm run worker -w apps/agent",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "smoke:baseline": "node scripts/smoke-baseline.mjs",
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f mongo redis"
+  },
+  "dependencies": {
+    "cheerio": "^1.1.2"
+  }
+}
