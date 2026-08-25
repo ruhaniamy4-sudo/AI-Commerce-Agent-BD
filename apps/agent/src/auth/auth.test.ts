@@ -3,9 +3,9 @@ import mongoose from 'mongoose';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BusinessMember } from '../models/BusinessMember';
-import { authenticate, authorize, AuthenticatedRequest } from './middleware';
+import { authenticate, authenticateAccount, authorize, AuthenticatedRequest } from './middleware';
 import { hashPassword, verifyPassword } from './password';
-import { signAccessToken } from './token';
+import { signAccessToken, signAccountToken } from './token';
 
 describe('authentication and role authorization', () => {
     const businessId = new mongoose.Types.ObjectId().toString();
@@ -34,6 +34,15 @@ describe('authentication and role authorization', () => {
     it('returns 401 without a bearer token', async () => {
         const app = express().get('/protected', authenticate, (_req, res) => res.sendStatus(204));
         await request(app).get('/protected').expect(401);
+    });
+
+    it('accepts a short-lived account token only on pre-business routes', async () => {
+        const accountToken = signAccountToken(userId);
+        const accountApp = express().get('/account', authenticateAccount, (req, res) => res.json((req as any).account));
+        const response = await request(accountApp).get('/account').set('authorization', `Bearer ${accountToken}`).expect(200);
+        expect(response.body.userId).toBe(userId);
+        const tenantApp = express().get('/tenant', authenticate, (_req, res) => res.sendStatus(204));
+        await request(tenantApp).get('/tenant').set('authorization', `Bearer ${accountToken}`).expect(401);
     });
 
     it('allows Owner and Admin but denies Staff on administrator routes', async () => {

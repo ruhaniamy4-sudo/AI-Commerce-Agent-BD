@@ -1,49 +1,142 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import { authenticate, AuthenticatedRequest, authorize, requireAdministrator } from '../auth/middleware';
+import { authenticate, authenticateAccount, AccountAuthenticatedRequest, AuthenticatedRequest, authorize, requireAdministrator } from '../auth/middleware';
 import { hashPassword, verifyPassword } from '../auth/password';
-import { signAccessToken } from '../auth/token';
+import { signAccessToken, signAccountToken } from '../auth/token';
 import { Business } from '../models/Business';
 import { BusinessMember } from '../models/BusinessMember';
 import { User } from '../models/User';
 import { BusinessChannel } from '../models/BusinessChannel';
 import { BUSINESS_ROLES } from '../tenancy/context';
+import { authRateLimit } from '../auth/rate-limit';
+import crypto from 'node:crypto';
 
 const router = Router();
 
-router.post('/login', async (req, res) => {
+const limited = authRateLimit();
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmail(value: unknown) { return String(value || '').trim().toLowerCase(); }
+function publicUser(user: { _id: unknown; name: string; email: string; emailVerified?: boolean }) {
+    return { id: user._id, name: user.name, email: user.email, emailVerified: Boolean(user.emailVerified) };
+}
+
+async function sessionForUser(user: { _id: mongoose.Types.ObjectId; name: string; email: string; emailVerified?: boolean }, requestedBusinessId?: string) {
+    const membershipQuery: Record<string, unknown> = { userId: user._id, status: 'active' };
+    if (requestedBusinessId) membershipQuery.businessId = requestedBusinessId;
+    const memberships = await BusinessMember.find(membershipQuery).limit(2).lean();
+    if (!requestedBusinessId && memberships.length > 1) return { conflict: true as const };
+    const membership = memberships[0];
+    if (!membership) return {
+        needsOnboarding: true as const,
+        accountToken: signAccountToken(user._id.toString()),
+        user: publicUser(user),
+    };
+    const business = await Business.findOne({ _id: membership.businessId, status: 'active' }).lean();
+    if (!business) return { forbidden: true as const };
+    return {
+        needsOnboarding: false as const,
+        accessToken: signAccessToken({
+            sub: user._id.toString(), businessId: membership.businessId.toString(),
+            membershipId: membership._id.toString(), role: membership.role,
+        }),
+        user: publicUser(user),
+        business: { id: business._id, name: business.name, slug: business.slug, onboardingComplete: Boolean(business.onboarding?.completedAt) },
+        role: membership.role,
+    };
+}
+
+router.post('/signup', limited, async (req, res) => {
+    const name = String(req.body?.name || '').trim();
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
+    if (name.length < 2 || name.length > 120 || !emailPattern.test(email) || password.length < 12 || password.length > 200) {
+        return res.status(400).json({ error: 'Enter a valid name, email, and password of at least 12 characters' });
+    }
+    try {
+        const user = await User.create({ name, email, passwordHash: await hashPassword(password), status: 'active', emailVerified: false });
+        return res.status(201).json({ needsOnboarding: true, accountToken: signAccountToken(user._id.toString()), user: publicUser(user) });
+    } catch (error: any) {
+        if (error?.code === 11000) return res.status(409).json({ error: 'An account with this email already exists' });
+        throw error;
+    }
+});
+
+router.post('/login', limited, async (req, res) => {
     const { email, password, businessId } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
-    const user = await User.findOne({ email: String(email).toLowerCase(), status: 'active' }).select('+passwordHash');
-    if (!user || !(await verifyPassword(String(password), user.passwordHash))) {
+    const user = await User.findOne({ email: normalizeEmail(email), status: 'active' }).select('+passwordHash');
+    if (!user || !user.passwordHash || !(await verifyPassword(String(password), user.passwordHash))) {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
-
-    const membershipQuery: Record<string, unknown> = { userId: user._id, status: 'active' };
-    if (businessId) membershipQuery.businessId = businessId;
-    const memberships = await BusinessMember.find(membershipQuery).limit(2).lean();
-    if (!businessId && memberships.length > 1) {
+    const result = await sessionForUser(user, businessId);
+    if ('conflict' in result) {
         return res.status(409).json({ error: 'businessId is required for users with multiple memberships' });
     }
-    const membership = memberships[0];
-    if (!membership) return res.status(403).json({ error: 'No active business membership' });
+    if ('forbidden' in result) return res.status(403).json({ error: 'Business is not active' });
+    return res.json(result);
+});
 
-    const business = await Business.findOne({ _id: membership.businessId, status: 'active' }).lean();
-    if (!business) return res.status(403).json({ error: 'Business is not active' });
+router.post('/oauth/exchange', limited, async (req, res) => {
+    const configured = process.env.OAUTH_INTERNAL_SECRET || '';
+    const supplied = String(req.headers['x-oauth-internal-secret'] || '');
+    const validSecret = configured.length >= 32 && supplied.length === configured.length &&
+        crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(configured));
+    if (!validSecret) return res.status(401).json({ error: 'OAuth exchange is not authorized' });
+    const provider = req.body?.provider as 'google' | 'facebook';
+    const accountId = String(req.body?.accountId || '').trim();
+    const email = normalizeEmail(req.body?.email);
+    const name = String(req.body?.name || '').trim();
+    if (!['google', 'facebook'].includes(provider) || !accountId || !emailPattern.test(email) || !name) {
+        return res.status(400).json({ error: 'Valid OAuth identity is required' });
+    }
+    let user = await User.findOne({ providerAccounts: { $elemMatch: { provider, accountId } } });
+    if (!user) {
+        user = await User.findOneAndUpdate(
+            { email },
+            { $setOnInsert: { name, email, status: 'active' }, $set: { emailVerified: true }, $addToSet: { providerAccounts: { provider, accountId } } },
+            { upsert: true, new: true, runValidators: true }
+        );
+    }
+    if (!user || user.status !== 'active') return res.status(403).json({ error: 'Account is unavailable' });
+    const result = await sessionForUser(user);
+    if ('conflict' in result) return res.status(409).json({ error: 'Choose a business using email sign in' });
+    if ('forbidden' in result) return res.status(403).json({ error: 'Business is not active' });
+    return res.json(result);
+});
 
-    const accessToken = signAccessToken({
-        sub: user._id.toString(),
-        businessId: membership.businessId.toString(),
-        membershipId: membership._id.toString(),
-        role: membership.role,
-    });
-    res.json({
-        accessToken,
-        user: { id: user._id, name: user.name, email: user.email },
-        business: { id: business._id, name: business.name, slug: business.slug },
-        role: membership.role,
-    });
+router.post('/business', authenticateAccount, async (req: AccountAuthenticatedRequest, res) => {
+    const user = await User.findOne({ _id: req.account!.userId, status: 'active' });
+    if (!user) return res.status(401).json({ error: 'Account is unavailable' });
+    const existingMembership = await BusinessMember.findOne({ userId: user._id, status: 'active' }).lean();
+    if (existingMembership) {
+        const result = await sessionForUser(user, existingMembership.businessId.toString());
+        return res.json(result);
+    }
+    const name = String(req.body?.name || '').trim();
+    const businessType = String(req.body?.businessType || '').trim();
+    const phone = String(req.body?.phone || '').trim();
+    const website = String(req.body?.website || '').trim();
+    const preferredLanguage = req.body?.preferredLanguage === 'en' ? 'en' : 'bn';
+    if (name.length < 2 || name.length > 160 || !businessType || phone.length < 7 || phone.length > 30 || website.length > 300) {
+        return res.status(400).json({ error: 'Valid business name, type, and phone are required' });
+    }
+    const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 50) || 'business';
+    const slug = `${baseSlug}-${crypto.randomBytes(3).toString('hex')}`;
+    let business: InstanceType<typeof Business> | undefined;
+    try {
+        business = await Business.create({ name, slug, businessType, phone, website: website || undefined, preferredLanguage, currency: 'BDT', status: 'active' });
+        const membership = await BusinessMember.create({ businessId: business._id, userId: user._id, role: 'Owner', status: 'active' });
+        return res.status(201).json({
+            needsOnboarding: false,
+            accessToken: signAccessToken({ sub: user._id.toString(), businessId: business._id.toString(), membershipId: membership._id.toString(), role: 'Owner' }),
+            user: publicUser(user), business: { id: business._id, name: business.name, slug: business.slug, onboardingComplete: false }, role: 'Owner',
+        });
+    } catch (error) {
+        if (business?._id) await Business.deleteOne({ _id: business._id });
+        throw error;
+    }
 });
 
 router.get('/me', authenticate, (req: AuthenticatedRequest, res) => {

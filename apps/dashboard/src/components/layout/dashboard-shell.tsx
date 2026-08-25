@@ -4,9 +4,12 @@ import { useState } from "react";
 import { Sidebar } from "./sidebar";
 import { Menu, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePathname } from "next/navigation";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const pathname = usePathname();
+    if (pathname === '/login' || pathname === '/signup' || pathname === '/onboarding') return <>{children}</>;
 
     return (
         <div className="flex h-screen overflow-hidden bg-background font-sans antialiased text-foreground">
@@ -46,7 +49,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                         <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-indigo-500/20 flex items-center justify-center">
                             <Bot className="h-5 w-5 text-white" />
                         </div>
-                        <span className="font-bold text-foreground tracking-tight text-lg">Digitross</span>
+                        <span className="font-bold text-foreground tracking-tight text-lg">SellPilot</span>
                     </div>
                     <div className="w-10" /> {/* Spacer */}
                 </header>

@@ -4,7 +4,7 @@ import { tenantPlugin } from '../tenancy/plugin';
 export interface IWebhookEvent extends Document {
     businessId: mongoose.Types.ObjectId;
     eventId: string; // Unique ID from Facebook or generated
-    source: 'facebook' | 'web';
+    source: 'facebook' | 'web' | 'test';
     eventType: string; // 'message', 'postback', 'delivery', etc.
     psid: string; // Sender PSID
     payload: any; // Full webhook payload
@@ -23,7 +23,7 @@ const WebhookEventSchema = new Schema(
         source: {
             type: String,
             required: true,
-            enum: ['facebook', 'web'],
+            enum: ['facebook', 'web', 'test'],
             default: 'facebook',
         },
         eventType: { type: String, required: true },

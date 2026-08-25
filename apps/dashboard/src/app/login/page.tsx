@@ -1,144 +1,19 @@
-"use client"
-
-import { useState } from "react"
-import { signIn } from "next-auth/react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, Lock, Mail } from "lucide-react"
-
+'use client';
+import { useState } from 'react';
+import { signIn } from 'next-auth/react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { OAuthButtons } from '@/components/oauth-buttons';
 export default function LoginPage() {
-    const [email, setEmail] = useState("")
-    const [password, setPassword] = useState("")
-    const [businessId, setBusinessId] = useState("")
-    const [error, setError] = useState("")
-    const [isLoading, setIsLoading] = useState(false)
-    const router = useRouter()
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-        setIsLoading(true)
-        setError("")
-
-        try {
-            const result = await signIn("credentials", {
-                redirect: false,
-                email,
-                password,
-                businessId,
-            })
-
-            if (result?.error) {
-                setError("Invalid email or password")
-            } else {
-                router.push("/agent")
-                router.refresh()
-            }
-        } catch {
-            setError("An unexpected error occurred")
-        } finally {
-            setIsLoading(false)
-        }
-    }
-
-    return (
-        <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12 dark:bg-slate-950">
-            <Card className="w-full max-w-md border-none shadow-2xl">
-                <CardHeader className="space-y-1 text-center">
-                    <div className="flex justify-center mb-4">
-                        <div className="rounded-full bg-blue-100 p-3 dark:bg-blue-900/30">
-                            <Lock className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-                        </div>
-                    </div>
-                    <CardTitle className="text-3xl font-bold tracking-tight">Welcome Back</CardTitle>
-                    <CardDescription className="text-slate-500 dark:text-slate-400">
-                        Enter your credentials to access the EduTechs Dashboard
-                    </CardDescription>
-                </CardHeader>
-                <form onSubmit={handleSubmit}>
-                    <CardContent className="space-y-4 pt-4">
-                        {error && (
-                            <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
-                                {error}
-                            </div>
-                        )}
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70" htmlFor="email">
-                                Email Address
-                            </label>
-                            <div className="relative">
-                                <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                                <Input
-                                    id="email"
-                                    placeholder="name@example.com"
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="pl-10"
-                                    required
-                                />
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70" htmlFor="password">
-                                Password
-                            </label>
-                            <div className="relative">
-                                <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                                <Input
-                                    id="password"
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="pl-10"
-                                    required
-                                />
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium leading-none" htmlFor="businessId">
-                                Business ID <span className="text-slate-400">(only for multi-business users)</span>
-                            </label>
-                            <Input
-                                id="businessId"
-                                value={businessId}
-                                onChange={(e) => setBusinessId(e.target.value)}
-                            />
-                        </div>
-                    </CardContent>
-                    <CardFooter className="flex flex-col space-y-4 pt-4">
-                        <Button
-                            className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800"
-                            type="submit"
-                            disabled={isLoading}
-                        >
-                            {isLoading ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Authenticating...
-                                </>
-                            ) : (
-                                "Sign In"
-                            )}
-                        </Button>
-                        <p className="px-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                            By clicking sign in, you agree to our{" "}
-                            <a className="underline underline-offset-4 hover:text-blue-600" href="/terms">
-                                Terms of Service
-                            </a>{" "}
-                            and{" "}
-                            <a className="underline underline-offset-4 hover:text-blue-600" href="/privacy">
-                                Privacy Policy
-                            </a>
-                            .
-                        </p>
-                    </CardFooter>
-                </form>
-            </Card>
-            <div className="fixed bottom-0 left-0 right-0 p-4 text-center text-xs text-slate-400">
-                © 2026 EduTechs-AI Platform. All rights reserved.
-            </div>
-        </div>
-    )
+    const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [businessId, setBusinessId] = useState(''); const [error, setError] = useState(''); const [loading, setLoading] = useState(false); const router = useRouter();
+    async function submit(event: React.FormEvent) { event.preventDefault(); setLoading(true); setError(''); const result = await signIn('credentials', { redirect: false, email, password, businessId });
+        if (result?.error) setError('Invalid email or password.'); else { router.push('/'); router.refresh(); } setLoading(false); }
+    return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4"><Card className="w-full max-w-md"><CardHeader><CardTitle className="text-3xl">Welcome to SellPilot</CardTitle><p className="text-sm text-muted-foreground">Sign in to your merchant workspace.</p></CardHeader>
+        <CardContent className="space-y-5"><OAuthButtons/><div className="text-center text-xs text-muted-foreground">OR CONTINUE WITH EMAIL</div><form onSubmit={submit} className="space-y-4">{error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        <Input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required/><Input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required/><Input placeholder="Business ID (only for multi-business accounts)" value={businessId} onChange={e => setBusinessId(e.target.value)}/>
+        <div className="text-right text-xs text-muted-foreground">Forgot password? <span className="font-medium">Coming soon</span></div><Button className="w-full" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</Button></form>
+        <p className="text-center text-sm">New to SellPilot? <Link className="font-semibold text-primary" href="/signup">Start free</Link></p></CardContent></Card></main>;
 }
