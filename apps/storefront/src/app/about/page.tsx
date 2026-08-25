@@ -7,7 +7,7 @@ import { Reveal } from "@/components/reveal";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Why Digitross is building practical AI commerce infrastructure for Bangladesh businesses.",
+    "Why SellPilot is building practical AI commerce infrastructure for Bangladesh businesses.",
 };
 const principles: Array<[LucideIcon, string, string]> = [
   [MapPin, "Local context", "Build for how Bangladesh businesses sell today."],
@@ -32,9 +32,9 @@ export default function AboutPage() {
   return (
     <main>
       <PageHero
-        eyebrow="About Digitross"
+        eyebrow="About SellPilot"
         title="Commerce AI should understand the business behind the conversation."
-        copy="Digitross is being built for teams in Bangladesh that already sell through messages—and need a dependable operating layer around those conversations."
+        copy="SellPilot is being built for teams in Bangladesh that already sell through messages—and need a dependable operating layer around those conversations."
       />
       <Reveal>
         <section className="site-container grid gap-12 py-20 sm:py-28 lg:grid-cols-[.42fr_.58fr]">
@@ -49,7 +49,7 @@ export default function AboutPage() {
               business to understand the context.
             </p>
             <p>
-              That is why Digitross combines grounded AI conversation with
+              That is why SellPilot combines grounded AI conversation with
               product data, customer context, confirmed commerce actions, human
               control, and tenant isolation. The aim is practical: help teams
               respond with more clarity while keeping people accountable for the
