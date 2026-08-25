@@ -1,7 +1,8 @@
 import { NextFunction, Request, Response } from 'express';
 import { BusinessMember } from '../models/BusinessMember';
 import { BUSINESS_ROLES, BusinessRole, TenantPrincipal, withTenantContext } from '../tenancy/context';
-import { verifyAccessToken, verifyAccountToken } from './token';
+import { verifyAccessToken, verifyAccountToken, verifyPlatformAdminToken } from './token';
+import { PlatformAdmin } from '../models/PlatformAdmin';
 
 export interface AuthenticatedRequest extends Request {
     auth?: TenantPrincipal;
@@ -9,6 +10,10 @@ export interface AuthenticatedRequest extends Request {
 
 export interface AccountAuthenticatedRequest extends Request {
     account?: { userId: string };
+}
+
+export interface PlatformAdminAuthenticatedRequest extends Request {
+    platformAdmin?: { id: string; email: string; name: string };
 }
 
 function bearerToken(req: Request) {
@@ -52,6 +57,20 @@ export async function authenticateAccount(req: AccountAuthenticatedRequest, res:
         return next();
     } catch {
         return res.status(401).json({ error: 'Invalid or expired account token' });
+    }
+}
+
+export async function authenticatePlatformAdmin(req: PlatformAdminAuthenticatedRequest, res: Response, next: NextFunction) {
+    const token = bearerToken(req);
+    if (!token) return res.status(401).json({ error: 'Platform administrator authentication required' });
+    try {
+        const payload = verifyPlatformAdminToken(token);
+        const admin = await PlatformAdmin.findOne({ _id: payload.sub, status: 'active' }).lean();
+        if (!admin) return res.status(401).json({ error: 'Platform administrator session is unavailable' });
+        req.platformAdmin = { id: admin._id.toString(), email: admin.email, name: admin.name };
+        return next();
+    } catch {
+        return res.status(401).json({ error: 'Invalid or expired platform administrator session' });
     }
 }
 

@@ -52,8 +52,8 @@ export default function ConversationsPage() {
         <div className="h-24 w-24 bg-rose-500/10 rounded-3xl flex items-center justify-center border border-rose-500/20 mb-8">
           <Signal className="h-10 w-10 text-rose-500 animate-pulse" />
         </div>
-        <h2 className="text-3xl font-black text-white tracking-tighter mb-2">Signal Interrupted</h2>
-        <p className="text-muted-foreground text-center max-w-sm font-medium">Unable to synchronize with the neural nexus. Verify your uplink status.</p>
+        <h2 className="text-3xl font-black text-foreground tracking-tighter mb-2">Couldn&apos;t load conversations</h2>
+        <p className="text-muted-foreground text-center max-w-sm font-medium">Check that the SellPilot agent API and database are running.</p>
         <Button variant="outline" onClick={() => window.location.reload()} className="mt-8 rounded-2xl bg-white/5 border-white/10 text-white font-bold h-14 px-12 hover:bg-white/10">Retry Sync</Button>
       </div>
     )
@@ -64,16 +64,16 @@ export default function ConversationsPage() {
   return (
     <div className="flex flex-col h-full min-h-[90vh]">
       <PageHeader
-        title="Signal Terminal"
-        description="Monitor and orchestrate real-time AI-to-Entity interactions across all channels."
+        title="Conversations"
+        description="See customer messages and decide when your team should take over from AI."
       />
       <div className="py-8">
         <div className="glass-card rounded-3xl overflow-hidden border-white/5 shadow-premium">
           <div className="p-8 border-b border-white/5 bg-white/[0.01]">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
               <div className="space-y-1">
-                <h2 className="text-2xl font-black text-white tracking-tight">Active Streams</h2>
-                <p className="text-sm text-muted-foreground font-medium">{pagination?.total || 0} active communication channels</p>
+                <h2 className="text-2xl font-black text-foreground tracking-tight">Customer conversations</h2>
+                <p className="text-sm text-muted-foreground font-medium">{pagination?.total || 0} conversations across connected channels</p>
               </div>
               <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
                 <div className="flex bg-white/[0.03] p-1.5 rounded-2xl border border-white/5">
@@ -114,7 +114,7 @@ export default function ConversationsPage() {
                       setPage(1)
                     }}
                   >
-                    Density
+                    Most messages
                     {sortBy === 'messageCount' && (
                       order === 'desc' ? <ArrowDownAZ className="ml-2 h-3.5 w-3.5" /> : <ArrowUpAZ className="ml-2 h-3.5 w-3.5" />
                     )}
@@ -123,7 +123,7 @@ export default function ConversationsPage() {
                 <div className="relative w-full md:w-80 group">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
                   <Input
-                    placeholder="Search client or payload..."
+                    placeholder="Search customer or message..."
                     value={searchQuery}
                     onChange={(e) => handleSearch(e.target.value)}
                     className="pl-12 h-14 bg-white/[0.03] border-white/5 rounded-2xl focus:bg-white/[0.05] transition-all shadow-inner text-white placeholder:text-muted-foreground/30"
@@ -138,10 +138,10 @@ export default function ConversationsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-white/[0.02] hover:bg-white/[0.02] border-b border-white/5">
-                      <TableHead className="font-bold py-5 pl-8 text-muted-foreground uppercase text-[10px] tracking-widest">Entity Signature</TableHead>
-                      <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Payload Snippet</TableHead>
-                      <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Temporal Log</TableHead>
-                      <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Pulse</TableHead>
+                      <TableHead className="font-bold py-5 pl-8 text-muted-foreground uppercase text-[10px] tracking-widest">Customer</TableHead>
+                      <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Latest message</TableHead>
+                      <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Last activity</TableHead>
+                      <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Messages</TableHead>
                       <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest text-right pr-8">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -160,14 +160,14 @@ export default function ConversationsPage() {
                               </span>
                             </div>
                             <div className="flex flex-col min-w-0">
-                              <span className="text-base font-black text-white tracking-tight truncate max-w-[150px]">{conversation.customer?.name || 'External Envoy'}</span>
-                              <span className="text-[10px] text-muted-foreground font-mono mt-0.5 opacity-60 italic">{conversation.customer?.phone || 'Encrypted Signal'}</span>
+                              <span className="text-base font-black text-foreground tracking-tight truncate max-w-[150px]">{conversation.customer?.name || 'Unknown customer'}</span>
+                              <span className="text-[10px] text-muted-foreground mt-0.5">{conversation.customer?.phone || conversation.platform || 'No phone'}</span>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell className="py-6">
                           <div className="max-w-[320px] text-xs font-medium text-muted-foreground/80 line-clamp-2 leading-relaxed italic pr-4">
-                            &quot;{conversation.lastMessage || <span className="opacity-30">Zero payload detected</span>}&quot;
+                            &quot;{conversation.lastMessage || <span className="opacity-30">No messages yet</span>}&quot;
                           </div>
                         </TableCell>
                         <TableCell className="py-6">
@@ -199,7 +199,7 @@ export default function ConversationsPage() {
                 <div className="p-8 border-t border-white/5 bg-white/[0.01] flex flex-col md:flex-row items-center justify-between gap-6">
                   <div className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground flex items-center gap-3">
                     <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                    Channel Stream Index {pagination?.page || 1} / {pagination?.totalPages || 1}
+                    Page {pagination?.page || 1} of {pagination?.totalPages || 1}
                   </div>
                   <div className="flex items-center gap-3">
                     <Button
@@ -246,8 +246,8 @@ export default function ConversationsPage() {
                   <MessageSquare className="h-12 w-12 text-muted-foreground/20" />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-xl font-bold text-white">Stream Silence Detected</h3>
-                  <p className="text-sm text-muted-foreground max-w-xs mx-auto">No communication signals currently active in this terminal sector.</p>
+                  <h3 className="text-xl font-bold text-foreground">No conversations yet</h3>
+                  <p className="text-sm text-muted-foreground max-w-xs mx-auto">Customer messages will appear here after a channel starts receiving them.</p>
                 </div>
               </div>
             )}

@@ -222,6 +222,10 @@ export const errorsApi = {
     clearAll: () => apiClient.post('/admin/errors/clear', {}),
 };
 
+export const aiUsageApi = {
+    summary: (days = 30) => apiClient.get<{ period: { from: string; to: string; days: number }; requests: number; inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number | null }>('/api/ai-usage/summary', { params: { days } }),
+};
+
 export interface SetupStatus {
     business: boolean; productAdded: boolean; knowledgeAdded: boolean; aiTested: boolean;
     facebookConnected: boolean; websiteConnected: boolean; steadfastConnected: boolean; completed: boolean;
@@ -246,4 +250,23 @@ export const testAiApi = {
     current: () => apiClient.get<TestAiState>('/api/test-ai'),
     newConversation: () => apiClient.post<TestAiState>('/api/test-ai/conversations'),
     send: (message: string, conversationId?: string) => apiClient.post<TestAiState>('/api/test-ai/messages', { message, conversationId }),
+};
+
+export interface MerchantOverview {
+    business: { name: string; onboardingComplete: boolean; onboarding: Record<string, unknown> } | null;
+    conversations: number; humanControlled: number; customers: number; newCustomers: number; products: number; knowledge: number;
+    orders: Record<string, number>; revenue: number; salesOrders: number;
+    usage: { requests: number; totalTokens: number; estimatedCost: number };
+    channels: Array<{ _id: string; platform: string; name: string; status: string }>;
+    courier: string; recentOrders: Array<{ _id: string; orderNumber: string; total: number; status: string; createdAt: string }>; agentStatus: string;
+}
+export const dashboardApi = { overview: () => apiClient.get<MerchantOverview>('/api/dashboard/overview') };
+
+export interface TeamMember { _id: string; role: 'Owner'|'Admin'|'Staff'; status: string; userId: { _id: string; name: string; email: string; status: string } }
+export interface BusinessProfile { _id: string; name: string; businessType?: string; phone?: string; website?: string; preferredLanguage: 'bn'|'en'; currency: 'BDT' }
+export const businessApi = {
+    get: () => apiClient.get<BusinessProfile>('/auth/business'), update: (data: Partial<BusinessProfile>) => apiClient.patch<BusinessProfile>('/auth/business', data),
+    members: () => apiClient.get<TeamMember[]>('/auth/members'), addMember: (data: {name:string;email:string;password:string;role:string}) => apiClient.post<TeamMember>('/auth/members', data),
+    updateMember: (id:string,data:{role?:string;status?:string}) => apiClient.patch<TeamMember>(`/auth/members/${id}`,data),
+    channels: () => apiClient.get<Array<{_id:string;platform:string;name:string;status:string}>>('/auth/channels'),
 };

@@ -17,6 +17,13 @@ export interface AccountTokenPayload {
     exp: number;
 }
 
+export interface PlatformAdminTokenPayload {
+    sub: string;
+    purpose: 'platform-admin';
+    iat: number;
+    exp: number;
+}
+
 function secret() {
     const value = process.env.AUTH_JWT_SECRET;
     if (!value || value.length < 32) throw new Error('AUTH_JWT_SECRET must contain at least 32 characters');
@@ -65,5 +72,15 @@ export function signAccountToken(userId: string, ttlSeconds = 30 * 60) {
 export function verifyAccountToken(token: string): AccountTokenPayload {
     const payload = verifyPayload(token) as unknown as AccountTokenPayload;
     if (!payload.sub || payload.purpose !== 'account') throw new Error('Invalid account token claims');
+    return payload;
+}
+
+export function signPlatformAdminToken(adminId: string, ttlSeconds = 3600) {
+    return signPayload({ sub: adminId, purpose: 'platform-admin' }, ttlSeconds);
+}
+
+export function verifyPlatformAdminToken(token: string): PlatformAdminTokenPayload {
+    const payload = verifyPayload(token) as unknown as PlatformAdminTokenPayload;
+    if (!payload.sub || payload.purpose !== 'platform-admin') throw new Error('Invalid platform admin token claims');
     return payload;
 }

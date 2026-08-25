@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { conversationsApi } from "@/lib/api"
 import { PageHeader } from "@/components/layout/page-header"
 import { CardContent } from "@/components/ui/card"
-import { Loader2, ArrowLeft, Bot, User, Clock, Terminal, ShieldCheck, Zap } from "lucide-react"
+import { Loader2, ArrowLeft, Bot, User, Clock, Terminal, Zap } from "lucide-react"
 import { format } from "date-fns"
 import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -45,9 +45,9 @@ export default function ConversationDetailPage() {
         <div className="h-24 w-24 bg-rose-500/10 rounded-3xl flex items-center justify-center border border-rose-500/20 mb-8">
           <Terminal className="h-10 w-10 text-rose-500" />
         </div>
-        <h2 className="text-2xl font-black text-white tracking-tighter mb-2">Payload Corruption</h2>
-        <p className="text-muted-foreground text-center max-w-sm font-medium">The requested signal stream cannot be decrypted. Check permissions or network uplink.</p>
-        <Button variant="outline" onClick={() => router.back()} className="mt-8 rounded-2xl bg-white/5 border-white/10 text-white font-bold h-14 px-12 hover:bg-white/10">Abandone Stream</Button>
+        <h2 className="text-2xl font-black text-foreground tracking-tighter mb-2">Conversation unavailable</h2>
+        <p className="text-muted-foreground text-center max-w-sm font-medium">Check your access or connection and try again.</p>
+        <Button variant="outline" onClick={() => router.back()} className="mt-8 rounded-2xl font-bold h-14 px-12">Back to conversations</Button>
       </div>
     )
   }
@@ -55,8 +55,8 @@ export default function ConversationDetailPage() {
   return (
     <div className="flex flex-col h-full min-h-[90vh]">
       <PageHeader
-        title="Signal Analysis"
-        description={`Decoding transaction layer for segment ${conversationId.slice(-12).toUpperCase()}`}
+        title="Conversation"
+        description={`Customer message history · ${conversation?.platform || 'channel'}`}
         actions={
           <Button
             variant="outline"
@@ -64,7 +64,7 @@ export default function ConversationDetailPage() {
             className="flex items-center gap-2 h-14 px-8 rounded-2xl bg-white/5 border-white/10 text-white hover:bg-white/10 font-bold transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-black/40"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Terminal
+            Back to conversations
           </Button>
         }
       />
@@ -76,8 +76,8 @@ export default function ConversationDetailPage() {
                 <Zap className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-white tracking-widest uppercase">Stream Ledger</h3>
-                <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest opacity-60">Real-time neural telemetry active</p>
+                <h3 className="text-sm font-black text-foreground tracking-widest uppercase">Message history</h3>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest opacity-60">Persisted customer and AI messages</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -103,14 +103,6 @@ export default function ConversationDetailPage() {
                   ? <Loader2 className="h-4 w-4 animate-spin" />
                   : conversation?.controlMode === "HUMAN_ACTIVE" ? "Return to AI" : "Take Over"}
               </Button>
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Encrypted.256</span>
-              </div>
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/5 border border-white/10">
-                <ShieldCheck className="h-3 w-3 text-muted-foreground" />
-                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Verified Envoy</span>
-              </div>
             </div>
           </div>
 
@@ -143,7 +135,7 @@ export default function ConversationDetailPage() {
                           "text-[10px] font-black uppercase tracking-[0.2em]",
                           message.role === "user" ? "text-muted-foreground" : "text-primary text-right"
                         )}>
-                          {message.role === "user" ? "Entity Signature" : "Neural Nexus"}
+                          {message.role === "user" ? "Customer" : "SellPilot AI"}
                         </span>
                         <div className="flex items-center gap-2 mt-0.5">
                           <Clock className="h-2.5 w-2.5 text-muted-foreground/40" />
@@ -169,7 +161,7 @@ export default function ConversationDetailPage() {
                         "absolute -bottom-6 opacity-0 group-hover:opacity-40 transition-opacity text-[8px] font-mono tracking-tighter uppercase",
                         message.role === "user" ? "left-0" : "right-0"
                       )}>
-                        Checksum: {message._id.slice(-12).toUpperCase()}
+                        {message.role === 'user' ? 'Customer message' : 'AI reply'}
                       </div>
                     </div>
                   </div>
@@ -180,8 +172,8 @@ export default function ConversationDetailPage() {
                     <Terminal className="h-8 w-8 text-muted-foreground/20" />
                   </div>
                   <div className="space-y-2">
-                    <h3 className="text-lg font-bold text-white">Zero Packet Loss</h3>
-                    <p className="text-sm text-muted-foreground max-w-xs mx-auto">The stream is established but no payload has been transmitted through this sector yet.</p>
+                    <h3 className="text-lg font-bold text-foreground">No messages yet</h3>
+                    <p className="text-sm text-muted-foreground max-w-xs mx-auto">This conversation exists but no messages have been recorded.</p>
                   </div>
                 </div>
               )}
@@ -190,7 +182,7 @@ export default function ConversationDetailPage() {
           <div className="p-8 bg-white/[0.01] border-t border-white/5">
             <div className="flex items-center justify-center gap-4 text-[10px] font-black uppercase tracking-[0.4em] text-muted-foreground/40">
               <div className="h-[1px] w-24 bg-gradient-to-r from-transparent to-white/10" />
-              End of Segment Data
+              End of conversation history
               <div className="h-[1px] w-24 bg-gradient-to-l from-transparent to-white/10" />
             </div>
           </div>

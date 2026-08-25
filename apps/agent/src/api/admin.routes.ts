@@ -293,7 +293,7 @@ router.delete('/knowledge/:id', requireAdministrator, async (req, res) => {
 });
 
 // System Prompts
-router.get('/system-prompts', async (req, res) => {
+router.get('/system-prompts', requireAdministrator, async (req, res) => {
     try {
         const prompts = await SystemPrompt.find().sort({ createdAt: -1 });
         res.json({ data: prompts, pagination: { total: prompts.length, page: 1, limit: 100, totalPages: 1 } });
@@ -302,7 +302,7 @@ router.get('/system-prompts', async (req, res) => {
     }
 });
 
-router.get('/system-prompts/active', async (_req, res) => {
+router.get('/system-prompts/active', requireAdministrator, async (_req, res) => {
     try {
         const prompt = await SystemPrompt.findOne({ isActive: true }).sort({ updatedAt: -1 });
         if (!prompt) return res.status(404).json({ error: 'No active prompt found' });

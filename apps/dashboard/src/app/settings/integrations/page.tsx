@@ -2,14 +2,14 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, KeyRound, Loader2, PlugZap, ShieldCheck, Unplug } from 'lucide-react';
+import { CheckCircle2, Globe, KeyRound, Loader2, MessageCircle, PlugZap, ShieldCheck, Unplug } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { courierIntegrationsApi } from '@/lib/api';
+import { businessApi, courierIntegrationsApi } from '@/lib/api';
 import { useSession } from 'next-auth/react';
 
 export default function IntegrationsPage() {
@@ -20,6 +20,7 @@ export default function IntegrationsPage() {
     const [message, setMessage] = useState('');
     const canManage = session?.role === 'Owner' || session?.role === 'Admin';
     const statusQuery = useQuery({ queryKey: ['courier-integration', 'steadfast'], queryFn: courierIntegrationsApi.getSteadfast, enabled: canManage });
+    const channelsQuery = useQuery({ queryKey: ['business-channels'], queryFn: businessApi.channels, enabled: canManage });
 
     const save = useMutation({
         mutationFn: () => courierIntegrationsApi.saveSteadfast({ apiKey, secretKey, deliveryType: 0 }),
@@ -55,7 +56,12 @@ export default function IntegrationsPage() {
     }
 
     return <div className="space-y-8">
-        <PageHeader title="Integrations" description="Manage business-scoped courier connections." />
+        <PageHeader title="Integrations" description="Connect customer channels and business-scoped services." />
+        <div className="grid gap-4 md:grid-cols-3">
+            <IntegrationCard icon={MessageCircle} name="Facebook Messenger" status={channelsQuery.data?.some(channel => channel.platform === 'facebook' && channel.status === 'active') ? 'Connected' : 'Not connected'} />
+            <IntegrationCard icon={Globe} name="Website Chat" status={channelsQuery.data?.some(channel => channel.platform === 'web' && channel.status === 'active') ? 'Connected' : 'Available'} />
+            <IntegrationCard icon={MessageCircle} name="WhatsApp" status="Coming soon" muted />
+        </div>
         <Card className="max-w-3xl border-border shadow-premium">
             <CardHeader className="border-b border-border">
                 <div className="flex items-start justify-between gap-4">
@@ -78,4 +84,8 @@ export default function IntegrationsPage() {
             </CardContent>
         </Card>
     </div>;
+}
+
+function IntegrationCard({ icon: Icon, name, status, muted = false }: { icon: React.ElementType; name: string; status: string; muted?: boolean }) {
+    return <Card className={muted ? 'opacity-60' : ''}><CardContent className="flex items-center justify-between p-5"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10"><Icon className="h-5 w-5 text-primary" /></div><div><b>{name}</b><p className="text-xs text-muted-foreground">{status}</p></div></div><Badge variant={status === 'Connected' ? 'default' : 'secondary'}>{status}</Badge></CardContent></Card>;
 }

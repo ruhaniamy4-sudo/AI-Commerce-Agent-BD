@@ -44,6 +44,7 @@ import { ImageUpload } from '@/components/ui/image-upload';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import Link from 'next/link';
 
 export default function ProductsPage() {
     const queryClient = useQueryClient();
@@ -226,9 +227,9 @@ export default function ProductsPage() {
                 title="Product Inventory"
                 description="Manage your store's products and stock."
                 actions={
-                    <Button onClick={() => setIsDialogOpen(true)} className="flex items-center gap-2 bg-primary hover:bg-violet-600 text-white rounded-xl px-6 py-6 shadow-xl shadow-primary/20 transition-all hover:scale-[1.05] active:scale-95 text-sm font-bold">
+                    <div className="flex gap-2"><Button asChild variant="outline"><Link href="/categories"><Layers className="mr-2 h-4 w-4"/>Categories</Link></Button><Button onClick={() => setIsDialogOpen(true)} className="flex items-center gap-2 bg-primary hover:bg-violet-600 text-white rounded-xl px-6 py-6 shadow-xl shadow-primary/20 transition-all hover:scale-[1.05] active:scale-95 text-sm font-bold">
                         <Plus className="h-5 w-5" /> Add Product
-                    </Button>
+                    </Button></div>
                 }
             />
 
