@@ -25,7 +25,7 @@ export function ProductPreview() {
   const CurrentIcon = current.icon;
   return (
     <div className="workflow-grid">
-      <div className="space-y-2" role="tablist" aria-label="Digitross workflow">
+      <div className="space-y-2" role="tablist" aria-label="SellPilot workflow">
         {steps.map((step, index) => {
           const Icon = step.icon;
           return <button key={step.title} type="button" role="tab" aria-selected={active === index} onClick={() => setActive(index)} className={`workflow-step ${active === index ? "is-active" : ""}`}><span className="workflow-index">0{index + 1}</span><span className="workflow-icon"><Icon className="h-4 w-4" /></span><span className="text-left"><strong>{step.title}</strong><small>{step.copy}</small></span></button>;

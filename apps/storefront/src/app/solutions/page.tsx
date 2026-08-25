@@ -17,7 +17,7 @@ import { Reveal } from "@/components/reveal";
 export const metadata: Metadata = {
   title: "Solutions",
   description:
-    "See how Digitross supports Facebook sellers, ecommerce teams, customer support, and multi-brand operations in Bangladesh.",
+    "See how SellPilot supports Facebook sellers, ecommerce teams, customer support, and multi-brand operations in Bangladesh.",
 };
 
 const solutions: Array<{
@@ -101,7 +101,7 @@ export default function SolutionsPage() {
       <PageHero
         eyebrow="Designed around real operations"
         title="A clearer path from customer question to commerce action."
-        copy="Digitross meets Bangladesh businesses where selling already happens, then adds the context, control, and isolation needed to operate with confidence."
+        copy="SellPilot meets Bangladesh businesses where selling already happens, then adds the context, control, and isolation needed to operate with confidence."
       />
       {solutions.map((solution, index) => {
         const Icon = solution.icon;

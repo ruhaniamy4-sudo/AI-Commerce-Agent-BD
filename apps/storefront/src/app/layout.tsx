@@ -4,26 +4,30 @@ import "./globals.css";
 import { CartProvider } from "@/context/cart-context";
 import { MarketingNav } from "@/components/marketing-nav";
 import { MarketingFooter } from "@/components/marketing";
+import { LanguageProvider, type Locale } from "@/context/language-context";
+import { BRAND } from "@/lib/marketing-config";
+import { headers } from "next/headers";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://digitross.com"),
-  title: { default: "Digitross — AI Commerce Agent for Bangladesh", template: "%s | Digitross" },
-  description: "Turn customer conversations into sales with an AI commerce agent built for businesses in Bangladesh.",
+  metadataBase: new URL(BRAND.siteUrl),
+  title: { default: "SellPilot — AI Sales Agent for Bangladesh Commerce", template: "%s | SellPilot" },
+  description: "Turn Messenger and website conversations into organized sales workflows with SellPilot, an AI commerce agent built for Bangladesh.",
   openGraph: {
-    title: "Digitross — AI Commerce Agent for Bangladesh",
-    description: "Turn customer conversations into revenue with AI commerce infrastructure built for Bangladesh.",
+    title: "SellPilot — AI Sales Agent for Bangladesh Commerce",
+    description: "AI sales conversations, products, customers, orders, and human control in one Bangladesh-first commerce workflow.",
     type: "website",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Digitross AI Commerce Agent for Bangladesh" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Digitross — AI Commerce Agent for Bangladesh",
-    description: "Turn customer conversations into revenue.",
-    images: ["/og.png"],
+    title: "SellPilot — AI Sales Agent for Bangladesh Commerce",
+    description: "Turn customer conversations into organized sales workflows.",
   },
 };
-const themeScript = `(function(){try{var saved=localStorage.getItem('digitross-theme');var dark=saved?saved==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.classList.toggle('dark',dark);document.documentElement.style.colorScheme=dark?'dark':'light'}catch(e){}})()`;
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className={`${inter.variable} antialiased`}><CartProvider><MarketingNav />{children}<MarketingFooter /></CartProvider></body></html>;
+const themeScript = `(function(){try{var saved=localStorage.getItem('sellpilot-theme')||localStorage.getItem('digitross-theme');var dark=saved?saved==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.classList.toggle('dark',dark);document.documentElement.style.colorScheme=dark?'dark':'light'}catch(e){}})()`;
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const requestHeaders = await headers();
+  const country = (requestHeaders.get("x-vercel-ip-country") || requestHeaders.get("cf-ipcountry") || "").toUpperCase();
+  const detectedLocale: Locale = country === "BD" ? "bn" : "en";
+  return <html lang={detectedLocale === "bn" ? "bn-BD" : "en"} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className={`${inter.variable} antialiased`}><LanguageProvider detectedLocale={detectedLocale}><CartProvider><MarketingNav />{children}<MarketingFooter /></CartProvider></LanguageProvider></body></html>;
 }
