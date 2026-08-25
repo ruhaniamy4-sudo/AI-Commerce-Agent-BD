@@ -26,7 +26,7 @@ import { Reveal } from "@/components/reveal";
 export const metadata: Metadata = {
   title: "Features",
   description:
-    "Explore Digitross AI conversations, commerce operations, human control, security, and cost controls.",
+    "Explore SellPilot AI conversations, commerce operations, human control, security, and cost controls.",
 };
 
 const capabilityGroups: Array<{
@@ -126,7 +126,7 @@ export default function FeaturesPage() {
       <PageHero
         eyebrow="Product capabilities"
         title="A commerce agent that understands when to talk—and when to act."
-        copy="Digitross brings AI conversation, real commerce context, team control, and cost visibility into one carefully bounded workflow."
+        copy="SellPilot brings AI conversation, real commerce context, team control, and cost visibility into one carefully bounded workflow."
       />
       <Reveal>
         <section className="site-container py-20 sm:py-28">
@@ -261,7 +261,7 @@ export default function FeaturesPage() {
           <SectionHeading
             eyebrow="Channels and roadmap"
             title="Clear about what is live today."
-            copy="Digitross does not present future integrations as finished product."
+            copy="SellPilot does not present future integrations as finished product."
             center
           />
           <div className="mt-12 grid gap-4 md:grid-cols-3">
@@ -273,8 +273,8 @@ export default function FeaturesPage() {
             <StatusCard title="Website chat" status="Available now" live />
             <StatusCard title="WhatsApp" status="Coming soon" />
             <StatusCard title="Instagram" status="Future direction" />
-            <StatusCard title="Courier automation" status="Coming soon" />
-            <StatusCard title="Steadfast integration" status="Coming soon" />
+            <StatusCard title="Courier automation" status="Foundation only" />
+            <StatusCard title="Steadfast courier" status="Foundation implemented" live />
           </div>
           <div id="coming-soon" className="scroll-mt-24 pt-8 text-center">
             <Link

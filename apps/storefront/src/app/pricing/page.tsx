@@ -3,61 +3,24 @@ import { Check, ChevronDown, Gauge, ShieldCheck, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FinalCTA, PageHero, SectionHeading } from "@/components/marketing";
 import { Reveal } from "@/components/reveal";
+import { PRICING_PLANS } from "@/lib/marketing-config";
 
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Explore Digitross early-access plans for AI commerce teams in Bangladesh.",
+    "Explore SellPilot early-access plans for AI commerce teams in Bangladesh.",
 };
 
-const plans = [
-  {
-    name: "Launch",
-    label: "For a focused pilot",
-    copy: "Start with one business and the core conversation workflow.",
-    features: [
-      "One business workspace",
-      "Facebook Messenger and website chat",
-      "Product and knowledge context",
-      "Human takeover",
-      "Usage visibility",
-    ],
-  },
-  {
-    name: "Scale",
-    label: "For growing operations",
-    copy: "Add more team structure, channels, and operating capacity.",
-    features: [
-      "Everything in Launch",
-      "Expanded workspace roles",
-      "Higher usage capacity",
-      "Priority rollout support",
-      "Advanced operating controls",
-    ],
-    featured: true,
-  },
-  {
-    name: "Custom",
-    label: "For complex organizations",
-    copy: "Plan around multiple brands, custom workflows, and integration needs.",
-    features: [
-      "Multi-brand planning",
-      "Custom integration scope",
-      "Security and data review",
-      "Tailored usage model",
-      "Dedicated rollout planning",
-    ],
-  },
-];
+const plans = PRICING_PLANS;
 
 const faqs = [
   [
     "Is final pricing available?",
-    "Digitross is in early access. Final plan prices are not published yet because rollout scope and usage needs are still being validated with participating businesses.",
+    "SellPilot is in early access. Final plan prices are not published yet because rollout scope and usage needs are still being validated with participating businesses.",
   ],
   [
     "What determines AI usage cost?",
-    "Model choice, conversation volume, context size, and output length all affect provider cost. Digitross tracks token usage and supports configurable cost estimates by business.",
+    "Model choice, conversation volume, context size, and output length all affect provider cost. SellPilot tracks token usage and supports configurable cost estimates by business.",
   ],
   [
     "Can we start with one channel?",
@@ -69,7 +32,7 @@ const faqs = [
   ],
   [
     "Are WhatsApp and courier integrations included?",
-    "They are not available today. WhatsApp and courier automation are identified as coming-soon areas and will be scoped separately when ready.",
+    "WhatsApp is not available today. A Steadfast courier foundation exists, while production courier automation and rollout validation are scoped separately.",
   ],
 ];
 
@@ -79,7 +42,7 @@ export default function PricingPage() {
       <PageHero
         eyebrow="Early-access plans"
         title="Start focused. Scale with proof."
-        copy="Choose the shape of your rollout today. Final commercial pricing will be shared transparently as Digitross moves beyond early access."
+        copy="Choose the shape of your rollout today. Final commercial pricing will be shared transparently as SellPilot moves beyond early access."
       />
       <Reveal>
         <section className="site-container pb-20 sm:pb-28">
@@ -105,7 +68,7 @@ export default function PricingPage() {
                 <p
                   className={`mt-4 min-h-14 text-sm leading-6 ${plan.featured ? "text-slate-300" : "text-[var(--muted)]"}`}
                 >
-                  {plan.copy}
+                  {plan.description}
                 </p>
                 <div className="my-7 border-t border-current opacity-10" />
                 <p className="text-sm font-semibold">Early-access pricing</p>
@@ -128,7 +91,7 @@ export default function PricingPage() {
                   ))}
                 </ul>
                 <Link
-                  href="/demo"
+                  href="/signup"
                   className={`mt-8 justify-center ${plan.featured ? "button-primary" : "button-secondary"}`}
                 >
                   Discuss {plan.name}
