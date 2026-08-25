@@ -11,7 +11,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
     const { slug } = await params;
     const product = await getProduct(slug);
     if (!product) return { title: 'Product not found', openGraph: { images: [] }, twitter: { images: [] } };
-    const description = product.description || `View ${product.name} in the Digitross connected storefront.`;
+    const description = product.description || `View ${product.name} in the SellPilot connected storefront.`;
     const image = product.images[0];
     return {
         title: product.name,

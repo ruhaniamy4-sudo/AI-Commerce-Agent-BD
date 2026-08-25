@@ -15,7 +15,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
     const next = !document.documentElement.classList.contains("dark");
     document.documentElement.classList.toggle("dark", next);
     document.documentElement.style.colorScheme = next ? "dark" : "light";
-    localStorage.setItem("digitross-theme", next ? "dark" : "light");
+    localStorage.setItem("sellpilot-theme", next ? "dark" : "light");
     setDark(next);
   }
 
