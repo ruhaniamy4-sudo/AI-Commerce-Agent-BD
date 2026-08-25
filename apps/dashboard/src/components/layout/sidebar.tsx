@@ -24,6 +24,7 @@ import { usePathname } from 'next/navigation';
 
 
 const navigation = [
+    { name: 'Setup', href: '/', icon: TrendingUp },
     { name: 'Analytics', href: '/admin/analytics', icon: TrendingUp },
     { name: 'Agent AI', href: '/agent', icon: Bot },
     { name: 'Inbox', href: '/conversations', icon: MessageSquare },
@@ -37,7 +38,7 @@ const navigation = [
 ];
 
 const systemNav = [
-    { name: 'Manual Test', href: '/manual-test', icon: TestTube },
+    { name: 'Test AI', href: '/test-ai', icon: TestTube },
     { name: 'System Errors', href: '/errors', icon: Terminal },
     { name: 'Unanswered', href: '/unanswered', icon: HelpCircle },
 ];
@@ -84,7 +85,7 @@ export function Sidebar({ onClose, className }: SidebarProps) {
                             <Bot className="h-6 w-6 text-white" />
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-sm font-bold tracking-tight text-foreground leading-tight">Digitross</span>
+                            <span className="text-sm font-bold tracking-tight text-foreground leading-tight">SellPilot</span>
                             <span className="text-[10px] font-medium text-primary uppercase tracking-widest">AI Agent</span>
                         </div>
                     </div>

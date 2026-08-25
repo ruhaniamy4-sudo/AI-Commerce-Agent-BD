@@ -1,15 +1,23 @@
 import { NextFunction, Request, Response } from 'express';
 import { BusinessMember } from '../models/BusinessMember';
 import { BUSINESS_ROLES, BusinessRole, TenantPrincipal, withTenantContext } from '../tenancy/context';
-import { verifyAccessToken } from './token';
+import { verifyAccessToken, verifyAccountToken } from './token';
 
 export interface AuthenticatedRequest extends Request {
     auth?: TenantPrincipal;
 }
 
-export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export interface AccountAuthenticatedRequest extends Request {
+    account?: { userId: string };
+}
+
+function bearerToken(req: Request) {
     const value = req.headers.authorization;
-    const token = value?.startsWith('Bearer ') ? value.slice(7) : undefined;
+    return value?.startsWith('Bearer ') ? value.slice(7) : undefined;
+}
+
+export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    const token = bearerToken(req);
     if (!token) return res.status(401).json({ error: 'Authentication required' });
 
     try {
@@ -32,6 +40,18 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
         return withTenantContext(req.auth, () => next());
     } catch {
         return res.status(401).json({ error: 'Invalid or expired access token' });
+    }
+}
+
+export async function authenticateAccount(req: AccountAuthenticatedRequest, res: Response, next: NextFunction) {
+    const token = bearerToken(req);
+    if (!token) return res.status(401).json({ error: 'Authentication required' });
+    try {
+        const payload = verifyAccountToken(token);
+        req.account = { userId: payload.sub };
+        return next();
+    } catch {
+        return res.status(401).json({ error: 'Invalid or expired account token' });
     }
 }
 

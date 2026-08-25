@@ -7,8 +7,8 @@ import { DashboardShell } from "@/components/layout/dashboard-shell"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Digitross - Admin Dashboard",
-  description: "Admin dashboard for managing Digitross",
+  title: "SellPilot Dashboard",
+  description: "Manage your SellPilot commerce AI",
 }
 
 export default function RootLayout({

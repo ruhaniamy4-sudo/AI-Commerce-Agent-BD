@@ -1,69 +1,70 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import GoogleProvider from 'next-auth/providers/google';
+import FacebookProvider from 'next-auth/providers/facebook';
 
-interface LoginResponse {
-    accessToken: string;
-    role: 'Owner' | 'Admin' | 'Staff';
-    business: { id: string; name: string; slug: string };
+type BusinessRole = 'Owner' | 'Admin' | 'Staff';
+interface AgentSession {
+    accessToken?: string; accountToken?: string; needsOnboarding: boolean; role?: BusinessRole;
+    business?: { id: string; name: string; slug: string; onboardingComplete: boolean };
     user: { id: string; name: string; email: string };
 }
 
-export const authOptions: NextAuthOptions = {
-    providers: [
-        CredentialsProvider({
-            name: 'Credentials',
-            credentials: {
-                email: { label: 'Email', type: 'email' },
-                password: { label: 'Password', type: 'password' },
-                businessId: { label: 'Business ID', type: 'text' },
-            },
-            async authorize(credentials) {
-                if (!credentials?.email || !credentials.password) return null;
-                const apiBaseUrl = process.env.AGENT_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
-                if (!apiBaseUrl) throw new Error('Agent API URL is not configured');
+const apiBaseUrl = process.env.AGENT_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
+const providers: NextAuthOptions['providers'] = [CredentialsProvider({
+    name: 'Email and password',
+    credentials: { email: { label: 'Email', type: 'email' }, password: { label: 'Password', type: 'password' }, businessId: { label: 'Business ID', type: 'text' } },
+    async authorize(credentials) {
+        if (!apiBaseUrl || !credentials?.email || !credentials.password) return null;
+        const response = await fetch(`${apiBaseUrl}/auth/login`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ email: credentials.email, password: credentials.password, businessId: credentials.businessId || undefined }),
+        });
+        if (!response.ok) return null;
+        const result = await response.json() as AgentSession;
+        return { id: result.user.id, name: result.user.name, email: result.user.email,
+            accessToken: result.accessToken, accountToken: result.accountToken, needsOnboarding: result.needsOnboarding,
+            businessId: result.business?.id, businessName: result.business?.name,
+            onboardingComplete: result.business?.onboardingComplete, role: result.role };
+    },
+})];
 
-                const response = await fetch(`${apiBaseUrl}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({
-                        email: credentials.email,
-                        password: credentials.password,
-                        businessId: credentials.businessId || undefined,
-                    }),
-                });
-                if (!response.ok) return null;
-                const result = (await response.json()) as LoginResponse;
-                return {
-                    id: result.user.id,
-                    name: result.user.name,
-                    email: result.user.email,
-                    accessToken: result.accessToken,
-                    businessId: result.business.id,
-                    businessName: result.business.name,
-                    role: result.role,
-                };
-            },
-        }),
-    ],
-    pages: { signIn: '/login' },
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) providers.push(GoogleProvider({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET }));
+if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) providers.push(FacebookProvider({ clientId: process.env.FACEBOOK_APP_ID, clientSecret: process.env.FACEBOOK_APP_SECRET }));
+
+export const authOptions: NextAuthOptions = {
+    providers, pages: { signIn: '/login' }, session: { strategy: 'jwt', maxAge: 60 * 60 * 24 * 7 },
     callbacks: {
-        async jwt({ token, user }) {
-            if (user) {
-                token.accessToken = user.accessToken;
-                token.businessId = user.businessId;
-                token.businessName = user.businessName;
-                token.role = user.role;
+        async signIn({ user, account }) {
+            if (account?.provider === 'credentials') return true;
+            if (!apiBaseUrl || !process.env.OAUTH_INTERNAL_SECRET || !account?.providerAccountId || !user.email || !user.name) return false;
+            const response = await fetch(`${apiBaseUrl}/auth/oauth/exchange`, {
+                method: 'POST', headers: { 'content-type': 'application/json', 'x-oauth-internal-secret': process.env.OAUTH_INTERNAL_SECRET },
+                body: JSON.stringify({ provider: account.provider, accountId: account.providerAccountId, email: user.email, name: user.name }),
+            });
+            if (!response.ok) return false;
+            const result = await response.json() as AgentSession;
+            Object.assign(user, { id: result.user.id, accessToken: result.accessToken, accountToken: result.accountToken,
+                needsOnboarding: result.needsOnboarding, businessId: result.business?.id, businessName: result.business?.name,
+                onboardingComplete: result.business?.onboardingComplete, role: result.role });
+            return true;
+        },
+        async jwt({ token, user, trigger, session }) {
+            if (user) Object.assign(token, { accessToken: user.accessToken, accountToken: user.accountToken,
+                needsOnboarding: user.needsOnboarding, businessId: user.businessId, businessName: user.businessName,
+                onboardingComplete: user.onboardingComplete, role: user.role });
+            if (trigger === 'update' && session) {
+                const update = session as Record<string, unknown>;
+                for (const key of ['accessToken', 'accountToken', 'needsOnboarding', 'businessId', 'businessName', 'onboardingComplete', 'role'] as const) if (key in update) token[key] = update[key] as never;
             }
             return token;
         },
         async session({ session, token }) {
             if (session.user) session.user.id = token.sub;
-            session.accessToken = token.accessToken;
-            session.businessId = token.businessId;
-            session.businessName = token.businessName;
-            session.role = token.role;
+            Object.assign(session, { accessToken: token.accessToken, accountToken: token.accountToken,
+                needsOnboarding: token.needsOnboarding, businessId: token.businessId, businessName: token.businessName,
+                onboardingComplete: token.onboardingComplete, role: token.role });
             return session;
         },
-    },
-    secret: process.env.NEXTAUTH_SECRET,
+    }, secret: process.env.NEXTAUTH_SECRET,
 };

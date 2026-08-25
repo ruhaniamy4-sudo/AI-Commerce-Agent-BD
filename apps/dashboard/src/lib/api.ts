@@ -221,3 +221,29 @@ export const errorsApi = {
     delete: (id: string) => apiClient.delete(`/admin/errors/${id}`),
     clearAll: () => apiClient.post('/admin/errors/clear', {}),
 };
+
+export interface SetupStatus {
+    business: boolean; productAdded: boolean; knowledgeAdded: boolean; aiTested: boolean;
+    facebookConnected: boolean; websiteConnected: boolean; steadfastConnected: boolean; completed: boolean;
+}
+export const onboardingApi = {
+    status: () => apiClient.get<SetupStatus>('/onboarding/status'),
+    createBusiness: (data: Record<string, unknown>) => apiClient.post<{ accessToken: string; business: { id: string; name: string }; role: 'Owner'; needsOnboarding: false }>('/auth/business', data),
+    addProduct: (data: Record<string, unknown>) => apiClient.post('/onboarding/product', data),
+    addKnowledge: (data: Record<string, unknown>) => apiClient.post('/onboarding/knowledge', data),
+    configureChannel: () => apiClient.post('/onboarding/channel', { platform: 'web' }),
+    complete: () => apiClient.post<SetupStatus>('/onboarding/complete'),
+};
+
+export interface TestAiMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: string; }
+export interface TestAiState {
+    conversation: { id: string; controlMode: string; createdAt: string; updatedAt: string } | null;
+    messages: TestAiMessage[];
+    usage: { aiReplies: number; totalTokens: number; estimatedCost: number };
+    reply?: string;
+}
+export const testAiApi = {
+    current: () => apiClient.get<TestAiState>('/api/test-ai'),
+    newConversation: () => apiClient.post<TestAiState>('/api/test-ai/conversations'),
+    send: (message: string, conversationId?: string) => apiClient.post<TestAiState>('/api/test-ai/messages', { message, conversationId }),
+};

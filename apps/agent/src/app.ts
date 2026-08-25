@@ -19,6 +19,8 @@ import { resolvePublicChannel } from './auth/channel.middleware';
 import publicRoutes from './api/public.routes';
 import aiUsageRoutes from './api/ai-usage.routes';
 import courierRoutes from './api/courier.routes';
+import onboardingRoutes from './api/onboarding.routes';
+import testAiRoutes from './api/test-ai.routes';
 import { connectMongo } from './db/mongodb';
 import { getAgentStatus } from './services/agentManager';
 import { warmPromptCache } from './services/systemPrompt.service';
@@ -81,6 +83,8 @@ app.use('/public/:channelId', resolvePublicChannel, publicRoutes);
 app.use('/google', authenticate, requireAdministrator, googleRoutes);
 app.use('/admin', authenticate, adminRoutes);
 app.use('/api', authenticate, productsRoutes, ordersRoutes, customersRoutes, aiUsageRoutes, courierRoutes);
+app.use('/onboarding', authenticate, onboardingRoutes);
+app.use('/api/test-ai', authenticate, testAiRoutes);
 app.use('/api', authenticate, requireAdministrator, uploadRoutes);
 // Connect to MongoDB
 connectMongo()

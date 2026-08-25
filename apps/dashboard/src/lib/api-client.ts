@@ -26,7 +26,8 @@ const axiosInstance: AxiosInstance = axios.create({
 axiosInstance.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
         const session = await getSession();
-        if (session?.accessToken) config.headers.Authorization = `Bearer ${session.accessToken}`;
+        const token = session?.accessToken || session?.accountToken;
+        if (token) config.headers.Authorization = `Bearer ${token}`;
         return config;
     },
     (error: AxiosError) => {
