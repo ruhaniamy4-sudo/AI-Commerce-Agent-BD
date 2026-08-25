@@ -21,10 +21,15 @@ import aiUsageRoutes from './api/ai-usage.routes';
 import courierRoutes from './api/courier.routes';
 import onboardingRoutes from './api/onboarding.routes';
 import testAiRoutes from './api/test-ai.routes';
+import platformAuthRoutes from './api/platform-auth.routes';
+import platformAdminRoutes from './api/platform-admin.routes';
+import dashboardRoutes from './api/dashboard.routes';
+import { authenticatePlatformAdmin } from './auth/middleware';
 import { connectMongo } from './db/mongodb';
 import { getAgentStatus } from './services/agentManager';
 import { warmPromptCache } from './services/systemPrompt.service';
 import morgan from 'morgan';
+import { ensurePlatformAdmin } from './services/platform-admin-bootstrap.service';
 
 // var morgan = require('morgan');
 dotenv.config();
@@ -76,6 +81,8 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/auth', authRoutes);
+app.use('/platform-auth', platformAuthRoutes);
+app.use('/platform-admin', authenticatePlatformAdmin, platformAdminRoutes);
 app.use('/chat', authenticate, chatRoutes);
 app.use('/agent', authenticate, requireAdministrator, agentRoutes);
 app.use('/facebook', facebookRoutes);
@@ -83,12 +90,14 @@ app.use('/public/:channelId', resolvePublicChannel, publicRoutes);
 app.use('/google', authenticate, requireAdministrator, googleRoutes);
 app.use('/admin', authenticate, adminRoutes);
 app.use('/api', authenticate, productsRoutes, ordersRoutes, customersRoutes, aiUsageRoutes, courierRoutes);
+app.use('/api', authenticate, dashboardRoutes);
 app.use('/onboarding', authenticate, onboardingRoutes);
 app.use('/api/test-ai', authenticate, testAiRoutes);
 app.use('/api', authenticate, requireAdministrator, uploadRoutes);
 // Connect to MongoDB
 connectMongo()
     .then(async () => {
+        await ensurePlatformAdmin();
         console.log(
             'Effective LLM Model:',
             (llm as any).modelName || (llm as any).model

@@ -150,11 +150,15 @@ router.get('/business', authenticate, async (req: AuthenticatedRequest, res) => 
 });
 
 router.patch('/business', authenticate, authorize('Owner'), async (req: AuthenticatedRequest, res) => {
-    const { name } = req.body || {};
-    if (!name) return res.status(400).json({ error: 'Business name is required' });
+    const allowed = ['name', 'businessType', 'phone', 'website', 'preferredLanguage'] as const;
+    const updates: Record<string, string> = {};
+    for (const field of allowed) if (req.body?.[field] !== undefined) updates[field] = String(req.body[field]).trim();
+    if (!updates.name || updates.name.length < 2 || updates.name.length > 160) return res.status(400).json({ error: 'A valid business name is required' });
+    if (updates.businessType && updates.businessType.length > 120 || updates.phone && updates.phone.length > 30 || updates.website && updates.website.length > 300) return res.status(400).json({ error: 'Business profile fields are too long' });
+    if (updates.preferredLanguage && !['bn', 'en'].includes(updates.preferredLanguage)) return res.status(400).json({ error: 'Preferred language must be bn or en' });
     const business = await Business.findByIdAndUpdate(
         req.auth!.businessId,
-        { $set: { name: String(name).trim() } },
+        { $set: updates },
         { new: true, runValidators: true }
     );
     res.json(business);
@@ -170,14 +174,15 @@ router.get('/members', authenticate, requireAdministrator, async (req: Authentic
 
 router.post('/members', authenticate, authorize('Owner'), async (req: AuthenticatedRequest, res) => {
     const { name, email, password, role } = req.body || {};
-    if (!name || !email || !password || !BUSINESS_ROLES.includes(role)) {
-        return res.status(400).json({ error: 'Name, email, password, and a valid role are required' });
+    const normalizedName = String(name || '').trim();
+    const normalizedEmail = normalizeEmail(email);
+    if (normalizedName.length < 2 || normalizedName.length > 120 || !emailPattern.test(normalizedEmail) || String(password || '').length < 12 || String(password).length > 200 || !BUSINESS_ROLES.includes(role)) {
+        return res.status(400).json({ error: 'Valid name, email, password of at least 12 characters, and role are required' });
     }
-    const normalizedEmail = String(email).toLowerCase().trim();
     let user = await User.findOne({ email: normalizedEmail });
     if (!user) {
         user = await User.create({
-            name,
+            name: normalizedName,
             email: normalizedEmail,
             passwordHash: await hashPassword(String(password)),
             status: 'active',

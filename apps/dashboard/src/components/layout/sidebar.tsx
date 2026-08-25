@@ -4,18 +4,18 @@ import { cn } from '@/lib/utils';
 import {
     BookOpen,
     Bot,
-    HelpCircle,
-    Layers,
     LogOut,
     MessageSquare,
     Package,
     ShoppingCart,
-    Terminal,
     TestTube,
     Users,
     X,
-    TrendingUp,
     PlugZap,
+    LayoutDashboard,
+    BarChart3,
+    UserRoundCog,
+    Settings,
 } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { useSession } from 'next-auth/react';
@@ -24,23 +24,17 @@ import { usePathname } from 'next/navigation';
 
 
 const navigation = [
-    { name: 'Setup', href: '/', icon: TrendingUp },
-    { name: 'Analytics', href: '/admin/analytics', icon: TrendingUp },
-    { name: 'Agent AI', href: '/agent', icon: Bot },
-    { name: 'Inbox', href: '/conversations', icon: MessageSquare },
-    { name: 'Products', href: '/products', icon: ShoppingCart },
-    { name: 'Categories', href: '/categories', icon: Layers },
-    { name: 'Orders', href: '/orders', icon: Package },
+    { name: 'Overview', href: '/', icon: LayoutDashboard },
+    { name: 'Conversations', href: '/conversations', icon: MessageSquare },
     { name: 'Customers', href: '/customers', icon: Users },
-    { name: 'Knowledge', href: '/knowledge', icon: BookOpen },
-    { name: 'System Prompts', href: '/system-prompts', icon: Terminal },
-    { name: 'Integrations', href: '/settings/integrations', icon: PlugZap },
-];
-
-const systemNav = [
+    { name: 'Orders', href: '/orders', icon: Package },
+    { name: 'Products & Inventory', href: '/products', icon: ShoppingCart },
+    { name: 'Knowledge / AI Training', href: '/knowledge', icon: BookOpen },
     { name: 'Test AI', href: '/test-ai', icon: TestTube },
-    { name: 'System Errors', href: '/errors', icon: Terminal },
-    { name: 'Unanswered', href: '/unanswered', icon: HelpCircle },
+    { name: 'AI Usage', href: '/ai-usage', icon: BarChart3 },
+    { name: 'Integrations', href: '/settings/integrations', icon: PlugZap },
+    { name: 'Team', href: '/settings/team', icon: UserRoundCog },
+    { name: 'Business Settings', href: '/settings/business', icon: Settings },
 ];
 
 interface SidebarProps {
@@ -100,17 +94,11 @@ export function Sidebar({ onClose, className }: SidebarProps) {
                 <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8 scrollbar-hide">
                     <div className="space-y-1.5">
                         <p className="px-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Management</p>
-                        {navigation.filter((item) => item.href !== '/settings/integrations' || session?.role !== 'Staff').map((item) => (
+                        {navigation.filter((item) => !item.href.startsWith('/settings/') || session?.role !== 'Staff').map((item) => (
                             <NavItem key={item.name} item={item} />
                         ))}
                     </div>
 
-                    <div className="space-y-1.5">
-                        <p className="px-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">System</p>
-                        {systemNav.map((item) => (
-                            <NavItem key={item.name} item={item} />
-                        ))}
-                    </div>
                 </div>
 
                 {/* Footer Section */}

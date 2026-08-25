@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
 export function DashboardShell({ children }: { children: React.ReactNode }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const pathname = usePathname();
-    if (pathname === '/login' || pathname === '/signup' || pathname === '/onboarding') return <>{children}</>;
+    if (pathname === '/login' || pathname === '/signup' || pathname === '/onboarding' || pathname === '/admin/login' || pathname.startsWith('/platform-admin')) return <>{children}</>;
 
     return (
         <div className="flex h-screen overflow-hidden bg-background font-sans antialiased text-foreground">
