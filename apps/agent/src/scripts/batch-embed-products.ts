@@ -14,7 +14,8 @@ async function runBatchEmbedding() {
         console.log('Starting batch embedding for products...');
 
         // Connect to MongoDB
-        const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/edutechs';
+        const mongoUri = process.env.MONGODB_URI;
+        if (!mongoUri) throw new Error('MONGODB_URI is required');
         await mongoose.connect(mongoUri);
         console.log('Connected to MongoDB');
         await initializeScriptTenantContext();

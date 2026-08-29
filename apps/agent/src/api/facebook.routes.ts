@@ -102,8 +102,12 @@ router.post('/', verifySignature, async (req, res) => {
                                 payload: event,
                             });
                             if (!isNew) {
-                                console.log(`Duplicate event ${eventId} ignored`);
-                                return;
+                                const existing = await WebhookEvent.findOne({ eventId }).select('processed').lean();
+                                if (existing?.processed) {
+                                    console.log(`Duplicate completed event ${eventId} ignored`);
+                                    return;
+                                }
+                                console.log(`Pending event ${eventId} will be queued again`);
                             }
 
                             await webhookQueue.add('process-facebook-event', {
@@ -129,7 +133,8 @@ router.post('/', verifySignature, async (req, res) => {
     } catch (error) {
         await logError('FACEBOOK_WEBHOOK_ERROR', error, { body: req.body });
         console.error('Error in Facebook webhook:', error);
-        res.sendStatus(500);
+        const unavailable = error instanceof Error && error.message.startsWith('Redis is not configured');
+        res.status(unavailable ? 503 : 500).json({ error: unavailable ? 'Facebook queue is unavailable because Redis is not configured' : 'Facebook webhook processing failed' });
     }
 });
 

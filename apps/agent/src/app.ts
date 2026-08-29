@@ -1,7 +1,6 @@
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
-import mongoose from 'mongoose';
 
 import { llm } from './agent/agent';
 import adminRoutes from './api/admin.routes';
@@ -30,6 +29,8 @@ import { getAgentStatus } from './services/agentManager';
 import { warmPromptCache } from './services/systemPrompt.service';
 import morgan from 'morgan';
 import { ensurePlatformAdmin } from './services/platform-admin-bootstrap.service';
+import { getHealthStatus, printDeveloperStatus } from './services/health.service';
+import { TEST_AI_API } from '@edutechs/shared';
 
 // var morgan = require('morgan');
 dotenv.config();
@@ -64,20 +65,9 @@ app.get('/', (req, res) => {
     res.send('Edutechs AI Agent Server');
 });
 
-app.get('/health', (_req, res) => {
-    const mongoStates: Record<number, string> = {
-        0: 'disconnected',
-        1: 'connected',
-        2: 'connecting',
-        3: 'disconnecting',
-    };
-    const mongo = mongoStates[mongoose.connection.readyState] || 'unknown';
-    res.status(mongo === 'connected' ? 200 : 503).json({
-        status: mongo === 'connected' ? 'ok' : 'degraded',
-        service: 'agent',
-        mongo,
-        timestamp: new Date().toISOString(),
-    });
+app.get('/health', async (_req, res) => {
+    const health = await getHealthStatus();
+    res.status(health.status === 'ok' ? 200 : 503).json({ ...health, timestamp: new Date().toISOString() });
 });
 
 app.use('/auth', authRoutes);
@@ -92,7 +82,7 @@ app.use('/admin', authenticate, adminRoutes);
 app.use('/api', authenticate, productsRoutes, ordersRoutes, customersRoutes, aiUsageRoutes, courierRoutes);
 app.use('/api', authenticate, dashboardRoutes);
 app.use('/onboarding', authenticate, onboardingRoutes);
-app.use('/api/test-ai', authenticate, testAiRoutes);
+app.use(TEST_AI_API.base, authenticate, testAiRoutes);
 app.use('/api', authenticate, requireAdministrator, uploadRoutes);
 // Connect to MongoDB
 connectMongo()
@@ -104,7 +94,11 @@ connectMongo()
         );
         await warmPromptCache();
         await getAgentStatus();
+        printDeveloperStatus('Connected');
     })
-    .catch(console.error);
+    .catch((error) => {
+        console.error(`MongoDB startup failed: ${error instanceof Error ? error.message : String(error)}`);
+        printDeveloperStatus('Unavailable');
+    });
 
 export default app;

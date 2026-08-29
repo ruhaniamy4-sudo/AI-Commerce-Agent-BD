@@ -15,6 +15,8 @@ import { Order } from '../models/Order';
 import { Product } from '../models/Product';
 import { WebhookEvent } from '../models/WebhookEvent';
 import { AIUsage } from '../models/AIUsage';
+import { repairLanguageNeutralTextIndexes } from '../db/text-index-migration';
+import { PASSWORD_MIN_LENGTH } from '@edutechs/shared';
 
 dotenv.config();
 
@@ -44,6 +46,9 @@ async function main() {
     const ownerPassword = process.env.BOOTSTRAP_OWNER_PASSWORD;
     if (!ownerEmail || !ownerPassword) {
         throw new Error('BOOTSTRAP_OWNER_EMAIL and BOOTSTRAP_OWNER_PASSWORD are required');
+    }
+    if (ownerPassword.length < PASSWORD_MIN_LENGTH) {
+        throw new Error(`BOOTSTRAP_OWNER_PASSWORD must be at least ${PASSWORD_MIN_LENGTH} characters`);
     }
 
     await connectMongo();
@@ -116,6 +121,7 @@ async function main() {
     );
 
     await dropLegacyGlobalUniqueIndexes();
+    await repairLanguageNeutralTextIndexes(mongoose.connection);
     for (const model of tenantModels) await model.syncIndexes();
 
     console.log(`Tenancy migration complete for ${business.name} (${business._id})`);

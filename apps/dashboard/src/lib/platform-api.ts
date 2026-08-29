@@ -4,7 +4,7 @@ export interface PlatformBusiness { _id:string;name:string;slug:string;status:'a
 export interface PlatformUser { _id:string;name:string;email:string;emailVerified:boolean;status:string;createdAt:string;memberships:Array<{role:string;status:string;business?:{_id:string;name:string}}> }
 export interface PlatformUsage { businessId:string;businessName:string;requests:number;inputTokens:number;outputTokens:number;totalTokens:number;estimatedCost:number }
 export interface PlatformIntegrations { channels:Array<{_id:Record<string,string>;count:number}>;couriers:Array<{_id:Record<string,string>;count:number}> }
-export interface PlatformHealth { api:string;mongo:string;redis:string;worker:string;openaiConfigured:boolean;facebookConfigured:boolean;facebookChannels:number;steadfastConnections:number }
+export interface PlatformHealth { status:string;api:string;mongo:string;redis:string;worker:string;aiProvider:'groq'|'openai';aiConfigured:boolean;facebook:string;steadfastEncryption:string;facebookChannels:number;steadfastConnections:number }
 export interface PlatformError { _id:string;type:string;message:string;timestamp:string }
 interface Paginated<T>{data:T[];pagination:{page:number;limit:number;total:number;totalPages:number}}
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

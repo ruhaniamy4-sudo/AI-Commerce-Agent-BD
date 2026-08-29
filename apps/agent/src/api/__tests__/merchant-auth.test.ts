@@ -20,17 +20,24 @@ describe('merchant account and business onboarding', () => {
 
     it('normalizes signup email, hashes the password, and never returns the hash', async () => {
         const create = vi.spyOn(User, 'create').mockImplementation(async (data: any) => ({ _id: userId, ...data }) as any);
-        const response = await request(app).post('/auth/signup').send({ name: 'Merchant', email: ' OWNER@Example.COM ', password: 'a secure password' }).expect(201);
+        const response = await request(app).post('/auth/signup').send({ name: 'Merchant', email: ' OWNER@Example.COM ', password: '12345678' }).expect(201);
         expect(create).toHaveBeenCalledWith(expect.objectContaining({ email: 'owner@example.com' }));
         const saved = create.mock.calls[0][0] as any;
-        expect(saved.passwordHash).not.toContain('a secure password');
+        expect(saved.passwordHash).not.toContain('12345678');
         expect(response.body).not.toHaveProperty('passwordHash');
         expect(response.body.needsOnboarding).toBe(true);
     });
 
+    it('rejects merchant signup passwords shorter than eight characters', async () => {
+        const create = vi.spyOn(User, 'create');
+        const response = await request(app).post('/auth/signup').send({ name: 'Merchant', email: 'owner@example.com', password: '1234567' }).expect(400);
+        expect(response.body.error).toContain('at least 8 characters');
+        expect(create).not.toHaveBeenCalled();
+    });
+
     it('rejects duplicate email without exposing account data', async () => {
         vi.spyOn(User, 'create').mockRejectedValue(Object.assign(new Error('duplicate'), { code: 11000 }));
-        const response = await request(app).post('/auth/signup').send({ name: 'Merchant', email: 'owner@example.com', password: 'a secure password' }).expect(409);
+        const response = await request(app).post('/auth/signup').send({ name: 'Merchant', email: 'owner@example.com', password: '12345678' }).expect(409);
         expect(response.body).toEqual({ error: 'An account with this email already exists' });
     });
 

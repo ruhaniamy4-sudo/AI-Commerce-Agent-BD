@@ -10,6 +10,7 @@ import { BusinessChannel } from '../models/BusinessChannel';
 import { BUSINESS_ROLES } from '../tenancy/context';
 import { authRateLimit } from '../auth/rate-limit';
 import crypto from 'node:crypto';
+import { PASSWORD_MIN_LENGTH } from '@edutechs/shared';
 
 const router = Router();
 
@@ -50,8 +51,8 @@ router.post('/signup', limited, async (req, res) => {
     const name = String(req.body?.name || '').trim();
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || '');
-    if (name.length < 2 || name.length > 120 || !emailPattern.test(email) || password.length < 12 || password.length > 200) {
-        return res.status(400).json({ error: 'Enter a valid name, email, and password of at least 12 characters' });
+    if (name.length < 2 || name.length > 120 || !emailPattern.test(email) || password.length < PASSWORD_MIN_LENGTH || password.length > 200) {
+        return res.status(400).json({ error: `Enter a valid name, email, and password of at least ${PASSWORD_MIN_LENGTH} characters` });
     }
     try {
         const user = await User.create({ name, email, passwordHash: await hashPassword(password), status: 'active', emailVerified: false });
@@ -176,8 +177,8 @@ router.post('/members', authenticate, authorize('Owner'), async (req: Authentica
     const { name, email, password, role } = req.body || {};
     const normalizedName = String(name || '').trim();
     const normalizedEmail = normalizeEmail(email);
-    if (normalizedName.length < 2 || normalizedName.length > 120 || !emailPattern.test(normalizedEmail) || String(password || '').length < 12 || String(password).length > 200 || !BUSINESS_ROLES.includes(role)) {
-        return res.status(400).json({ error: 'Valid name, email, password of at least 12 characters, and role are required' });
+    if (normalizedName.length < 2 || normalizedName.length > 120 || !emailPattern.test(normalizedEmail) || String(password || '').length < PASSWORD_MIN_LENGTH || String(password).length > 200 || !BUSINESS_ROLES.includes(role)) {
+        return res.status(400).json({ error: `Valid name, email, password of at least ${PASSWORD_MIN_LENGTH} characters, and role are required` });
     }
     let user = await User.findOne({ email: normalizedEmail });
     if (!user) {
