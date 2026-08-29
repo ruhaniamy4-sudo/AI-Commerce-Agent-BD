@@ -1,108 +1,82 @@
-# Edutechs AI Commerce Platform
+# SellPilot
 
-Archive-first monorepo containing:
+SellPilot is a multi-tenant AI commerce platform with an Express agent API, merchant dashboard, public storefront, MongoDB persistence, and BullMQ background processing.
 
-- `apps/agent`: Express, MongoDB, BullMQ, OpenAI/LangGraph, RAG, Facebook, commerce, and meetings.
-- `apps/dashboard`: Next.js administration dashboard.
-- `apps/storefront`: Next.js storefront. Product browsing is connected; checkout is intentionally disabled until a real checkout API contract is completed.
-- `packages/shared`: TypeScript contracts shared by the applications.
+## Quick start (recommended)
 
-## Prerequisites
+Docker is not required. The normal development workflow uses MongoDB Atlas, Groq, and local Node applications.
 
-- Node.js 20+
-- npm 10+
-- Docker with Compose
-
-## Setup
-
-1. Copy each `.env.example` to its local environment filename. Never commit the resulting files.
-2. Replace placeholder secrets. `AUTH_JWT_SECRET` must contain at least 32 characters and bootstrap passwords must contain at least 12 characters.
-3. Install and start infrastructure:
+1. Create a MongoDB Atlas free/development deployment where available. It must support transactions; keep retryable writes enabled.
+2. Copy its `mongodb+srv://...` connection string.
+3. Create a Groq API key (subject to Groq's current limits).
+4. Optionally create a managed Redis/Redis Cloud/Upstash-compatible Redis database for background features.
+5. Run:
 
 ```bash
-npm ci
-npm run infra:up
-npm run migrate:tenancy
+git clone <repository-url>
+cd AI-Commerce-Agent-BD-main
+npm install
+npm run setup:env
 ```
 
-The idempotent tenancy migration creates the default business, Owner user, membership, storefront channel, optional Facebook channel, backfills legacy records, removes global unique indexes, and creates tenant indexes. Run it before starting the applications and after restoring a pre-tenancy database.
+6. Edit `apps/agent/.env`:
 
-MongoDB runs as a single-node replica set because order and stock writes use transactions. Redis is used by the existing BullMQ worker.
-
-## Authentication and tenancy
-
-- Dashboard credentials are validated by `POST /auth/login`; plaintext credentials are not stored in dashboard configuration.
-- Access tokens are bound to one active `BusinessMember` and are revalidated on each request.
-- Roles are `Owner`, `Admin`, and `Staff`. Owner manages members and the business; Owner/Admin manage catalog, knowledge, channels, and administrative mutations; Staff has authenticated read and operational access.
-- Authenticated tenant APIs derive `businessId` from the access token. Client-supplied tenant identifiers are ignored or rejected.
-- Public storefront catalog reads use `/public/:channelId`; the channel resolves the tenant without exposing authenticated administration APIs.
-- Facebook page IDs resolve through `BusinessChannel`, and queued jobs carry their resolved `businessId`.
-
-Tenant administration endpoints are available under `/auth/business`, `/auth/members`, and `/auth/channels`.
-
-### Tenant-aware message pipeline
-
-Facebook page events and public web chat requests resolve a `BusinessChannel` before processing. The resulting `businessId` is carried explicitly through Conversation, agent state, Memory, RAG, product matching, Knowledge/Customer retrieval, and order actions. Every stage compares that value with the request-scoped tenant context and fails before accessing data when they differ.
-
-- Facebook entry: `/facebook` resolves the page ID and includes `businessId` in the BullMQ job.
-- Web entry: `/public/:channelId/chat` resolves the storefront/web channel before invoking the same chat pipeline.
-- Authenticated manual chat: `/chat` uses the business bound to the validated membership token.
-- Agent-created orders resolve the customer and products under that same tenant and retain the existing MongoDB transaction boundary.
-
-## Human takeover and AI cost controls
-
-Each conversation has one authoritative controller: `AI_ACTIVE` or `HUMAN_ACTIVE`. Owner, Admin, and Staff users can use the tenant-scoped dashboard controls or the backend actions below. A human-controlled conversation still persists inbound messages, but skips image processing, RAG, OpenAI, product tools, and AI actions. Returning to AI affects only future messages; historical inbound events are not replayed.
-
-- `POST /admin/conversations/:id/take-over`
-- `POST /admin/conversations/:id/return-to-ai`
-- `GET /api/ai-usage/summary?days=30`
-
-Inbound Facebook and web events use leased processing claims. Completed events return their stored result, retries reuse checkpointed AI output, message IDs are unique per conversation, and order actions carry a tenant-scoped idempotency key. Backend-generated action confirmations replace unverified model claims.
-
-AI context and cost configuration:
-
-- `AI_RECENT_MESSAGE_LIMIT` bounds raw conversation messages.
-- `AI_SUMMARY_THRESHOLD` controls infrequent deterministic summary compaction without another LLM call.
-- `RAG_TOP_K` bounds Knowledge and Product candidates.
-- `AI_MAX_OUTPUT_TOKENS` caps normal model output; order/action confirmations are generated by the backend after confirmation.
-- `OPENAI_MODEL` and `OPENAI_VISION_MODEL` preserve configurable provider models.
-- `AI_MODEL_PRICING_JSON` optionally maps models to per-million input/output token prices. Unknown prices remain `null`; token counts come from provider metadata and are never estimated.
-
-Usage records are tenant-scoped and include conversation/event identity, model, provider token counts, optional estimated cost, operation type, and timestamp. Chat, RAG-assisted chat, vision, and OpenAI embedding calls are recorded when provider usage metadata is available.
-
-## Run locally
-
-Use separate terminals:
-
-```bash
-npm run dev:agent
-npm run worker
-npm run dev:dashboard
-npm run dev:storefront
+```dotenv
+MONGODB_URI=mongodb+srv://...
+AI_PROVIDER=groq
+GROQ_API_KEY=...
 ```
 
-Default endpoints:
-
-- Agent API: `http://localhost:4000`
-- Health: `http://localhost:4000/health`
-- Dashboard: `http://localhost:3000`
-- Storefront: `http://localhost:3001` when port 3000 is occupied
-
-Redis uses `REDIS_HOST` and `REDIS_PORT`. Browser origins are configured with comma-separated `CORS_ORIGINS`.
-
-## Verification
+7. Keep or change the locally generated `BOOTSTRAP_OWNER_EMAIL`, then run:
 
 ```bash
+npm run migrate
+npm run dev
+```
+
+Open the dashboard at `http://localhost:3000`, sign up or sign in, complete onboarding, and open **Test AI**. The API is at `http://localhost:4000`; the storefront is at `http://localhost:3001`.
+
+## Core and full modes
+
+`npm run dev` starts the Agent API, Dashboard, and Storefront in one labelled terminal. It does not require Redis. Signup, login, onboarding, dashboard data, synchronous commerce CRUD, knowledge, authenticated chat, public web chat, and Test AI remain available.
+
+`npm run dev:full` also starts the BullMQ worker and requires Redis. Set a managed TLS URL when required:
+
+```dotenv
+REDIS_URL=rediss://username:password@host:port
+```
+
+`REDIS_URL` has priority. Legacy `REDIS_HOST`/`REDIS_PORT` settings remain supported. Redis stores queues and background-job state; MongoDB remains the persistent business database. Facebook processing, queued retries, worker processing, and courier background sync require Redis. Missing Redis never silently drops a job: queue-dependent requests return an explicit unavailable error.
+
+## Useful commands
+
+```bash
+npm run setup:env       # create/preserve local env files and generate internal secrets
+npm run migrate         # idempotent tenancy migration and local owner bootstrap
+npm run migrate:text-indexes # repair legacy language-sensitive MongoDB text indexes
+npm run dev             # API + dashboard + storefront
+npm run dev:full        # core apps + worker; Redis required
+npm run health:check    # inspect the running API safely
+npm test
 npm run typecheck
-npm test -w apps/agent
 npm run build
-npm run smoke:baseline
 ```
 
-The smoke test requires the agent, MongoDB replica set, Redis infrastructure, and bootstrap owner environment variables. It authenticates first, creates isolated tenant records, verifies order retrieval, and checks that successful and failed orders handle stock correctly.
+## Optional Docker fallback
 
-## Known deferred gaps
+Docker Compose is retained only for developers who explicitly want local MongoDB and Redis:
 
-- Storefront checkout is visibly disabled; it no longer simulates order success.
-- Dashboard pages for unanswered questions, error management, availability/hosts, and meeting mutations reference APIs that are not yet implemented in the Archive backend.
-- Additional channel types and courier integrations remain deferred.
+```bash
+npm run infra:up
+npm run infra:down
+```
+
+If running Node on the host, use `localhost` in local service URLs. The Compose hostname `mongo` works only between Compose containers. The local Mongo container is a replica set because order and stock writes preserve transaction safety.
+
+## Architecture and security
+
+The simpler setup does not remove BullMQ, worker separation, queue retries, transaction boundaries, tenant isolation, RAG/memory, AI safeguards, idempotency, courier architecture, or platform-admin separation. OAuth, Facebook, Cloudinary, Steadfast, email, and other external providers are optional at core startup and fail only when their feature is used.
+
+Local `.env` and `.env.*` files are ignored by Git; safe `.env.example` templates remain tracked. Never expose provider keys in browser-prefixed variables. Health output reports only configuration presence, never values.
+
+See [docs/local-development.md](docs/local-development.md) for full environment details and practical troubleshooting.

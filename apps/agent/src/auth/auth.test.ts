@@ -31,6 +31,12 @@ describe('authentication and role authorization', () => {
         await expect(verifyPassword('wrong-password', encoded)).resolves.toBe(false);
     });
 
+    it('accepts exactly eight characters and rejects seven-character passwords', async () => {
+        const encoded = await hashPassword('12345678');
+        await expect(verifyPassword('12345678', encoded)).resolves.toBe(true);
+        await expect(hashPassword('1234567')).rejects.toThrow('Password must be at least 8 characters');
+    });
+
     it('returns 401 without a bearer token', async () => {
         const app = express().get('/protected', authenticate, (_req, res) => res.sendStatus(204));
         await request(app).get('/protected').expect(401);

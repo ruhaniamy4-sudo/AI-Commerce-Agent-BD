@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import Redis from 'ioredis';
 import { PlatformAdminAuthenticatedRequest } from '../auth/middleware';
 import { AIUsage } from '../models/AIUsage';
 import { Business } from '../models/Business';
@@ -12,6 +11,7 @@ import { Customer } from '../models/Customer';
 import { ErrorLog } from '../models/ErrorLog';
 import { Order } from '../models/Order';
 import { User } from '../models/User';
+import { getHealthStatus } from '../services/health.service';
 
 const router = Router();
 const safeRegex = (value: unknown) => new RegExp(String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 80), 'i');
@@ -86,12 +86,8 @@ router.get('/errors', async (_req, res) => {
 });
 
 router.get('/health', async (_req, res) => {
-    let redis: 'connected' | 'unavailable' = 'unavailable';
-    const client = new Redis({ host: process.env.REDIS_HOST || '127.0.0.1', port: Number(process.env.REDIS_PORT) || 6379, lazyConnect: true, connectTimeout: 1000, maxRetriesPerRequest: 0 });
-    try { await client.connect(); redis = await client.ping() === 'PONG' ? 'connected' : 'unavailable'; } catch { redis = 'unavailable'; } finally { client.disconnect(); }
-    const mongo = mongoose.connection.readyState === 1 ? 'connected' : 'unavailable';
     const [facebookChannels, steadfastConnections] = await Promise.all([BusinessChannel.collection.countDocuments({ platform: 'facebook', status: 'active' }), CourierIntegration.collection.countDocuments({ provider: 'steadfast', status: 'connected' })]);
-    res.json({ api: 'connected', mongo, redis, worker: 'not_observed', openaiConfigured: Boolean(process.env.OPENAI_API_KEY), facebookConfigured: Boolean(process.env.FB_APP_SECRET && process.env.FB_VERIFY_TOKEN), facebookChannels, steadfastConnections });
+    res.json({ ...(await getHealthStatus()), facebookChannels, steadfastConnections });
 });
 
 export default router;

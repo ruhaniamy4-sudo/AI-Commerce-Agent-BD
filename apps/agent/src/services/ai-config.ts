@@ -7,7 +7,7 @@ export const getAIRecentMessageLimit = () => boundedInteger('AI_RECENT_MESSAGE_L
 export const getAISummaryThreshold = () => boundedInteger('AI_SUMMARY_THRESHOLD', 20, 10, 200);
 export const getRagTopK = () => boundedInteger('RAG_TOP_K', 3, 1, 10);
 export const getAIMaxOutputTokens = () => boundedInteger('AI_MAX_OUTPUT_TOKENS', 500, 100, 2000);
-export const getAIModel = () => process.env.OPENAI_MODEL || 'gpt-5.2';
+export const getAIModel = () => getAIConfiguration().model;
 
 export function getModelPricing(model: string): { input: number; output: number } | undefined {
     try {
@@ -18,3 +18,4 @@ export function getModelPricing(model: string): { input: number; output: number 
         return undefined;
     }
 }
+import { getAIConfiguration } from '../config/runtime';

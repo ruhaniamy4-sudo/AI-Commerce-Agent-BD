@@ -11,16 +11,20 @@
  */
 
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
 import { Customer } from '../models/Customer';
 import { Conversation } from '../models/Conversation';
 import { Message } from '../models/Message';
 import { Meeting } from '../models/Meeting';
 import { initializeScriptTenantContext } from '../tenancy/script-context';
 
-const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/edutechs';
+dotenv.config();
+
+const MONGO_URI = process.env.MONGODB_URI;
 
 async function connectDB() {
     try {
+        if (!MONGO_URI) throw new Error('MONGODB_URI is required');
         await mongoose.connect(MONGO_URI);
         console.log('✅ Connected to MongoDB');
     } catch (error) {

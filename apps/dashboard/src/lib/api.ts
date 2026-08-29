@@ -18,6 +18,7 @@ import type {
     ErrorLog
 } from '@/types';
 import { apiClient } from './api-client';
+import { TEST_AI_API } from '@edutechs/shared';
 
 export const agentApi = {
     getStatus: () => apiClient.get<AgentStatusResponse>('/agent/status'),
@@ -247,9 +248,10 @@ export interface TestAiState {
     reply?: string;
 }
 export const testAiApi = {
-    current: () => apiClient.get<TestAiState>('/api/test-ai'),
-    newConversation: () => apiClient.post<TestAiState>('/api/test-ai/conversations'),
-    send: (message: string, conversationId?: string) => apiClient.post<TestAiState>('/api/test-ai/messages', { message, conversationId }),
+    current: () => apiClient.get<TestAiState>(`${TEST_AI_API.base}${TEST_AI_API.currentConversation}`),
+    history: () => apiClient.get<TestAiState>(`${TEST_AI_API.base}${TEST_AI_API.currentMessages}`),
+    newConversation: () => apiClient.post<TestAiState>(`${TEST_AI_API.base}${TEST_AI_API.conversations}`),
+    send: (message: string) => apiClient.post<TestAiState>(`${TEST_AI_API.base}${TEST_AI_API.currentMessages}`, { message }),
 };
 
 export interface MerchantOverview {

@@ -140,7 +140,14 @@ ProductSchema.index(
     { businessId: 1, 'variants.sku': 1 },
     { unique: true, partialFilterExpression: { 'variants.sku': { $exists: true } } }
 );
-ProductSchema.index({ businessId: 1, name: 'text', description: 'text' });
+ProductSchema.index(
+    { businessId: 1, name: 'text', description: 'text' },
+    {
+        name: 'businessId_1_name_text_description_text',
+        default_language: 'none',
+        language_override: '_mongoTextLanguage',
+    }
+);
 ProductSchema.index({ businessId: 1, categoryId: 1, isActive: 1 });
 ProductSchema.index({ businessId: 1, compatibilityTags: 1 });
 ProductSchema.index({ businessId: 1, basePrice: 1 });

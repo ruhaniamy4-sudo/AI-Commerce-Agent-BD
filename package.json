@@ -6,6 +6,9 @@
     "packages/*"
   ],
   "scripts": {
+    "setup:env": "node scripts/setup-env.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:full": "node scripts/dev.mjs --full",
     "dev:agent": "npm run dev -w apps/agent",
     "dev:dashboard": "npm run dev -w apps/dashboard",
     "dev:storefront": "npm run dev -w apps/storefront",
@@ -16,6 +19,9 @@
     "test": "npm test --workspaces --if-present",
     "smoke:baseline": "node scripts/smoke-baseline.mjs",
     "migrate:tenancy": "npm run migrate:tenancy -w apps/agent",
+    "migrate": "npm run migrate:tenancy",
+    "migrate:text-indexes": "npm run migrate:text-indexes -w apps/agent",
+    "health:check": "node scripts/health-check.mjs",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f mongo redis"
