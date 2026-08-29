@@ -7,8 +7,8 @@ dotenv.config();
 async function test() {
     try {
         console.log('Connecting to MongoDB...');
-        const mongoUri =
-            process.env.MONGODB_URI || 'mongodb://localhost:27017/edutechs-ai';
+        const mongoUri = process.env.MONGODB_URI;
+        if (!mongoUri) throw new Error('MONGODB_URI is required');
         await mongoose.connect(mongoUri);
         console.log('Connected.');
 

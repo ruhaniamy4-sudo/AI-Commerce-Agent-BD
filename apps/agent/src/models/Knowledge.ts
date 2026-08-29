@@ -84,7 +84,15 @@ const KnowledgeSchema = new Schema(
 KnowledgeSchema.plugin(tenantPlugin);
 
 // Indexes for retrieval
-KnowledgeSchema.index({ businessId: 1, title: 'text', content: 'text' });
+KnowledgeSchema.index(
+    { businessId: 1, title: 'text', content: 'text' },
+    {
+        name: 'businessId_1_title_text_content_text',
+        default_language: 'none',
+        // MongoDB otherwise defaults this to the application's `language` field.
+        language_override: '_mongoTextLanguage',
+    }
+);
 KnowledgeSchema.index({ businessId: 1, type: 1, language: 1, status: 1 });
 KnowledgeSchema.index({ businessId: 1, tags: 1, status: 1 });
 KnowledgeSchema.index({ businessId: 1, isPinned: 1, sourcePriority: 1 });

@@ -8,15 +8,17 @@ import { retrieveContext, formatContextPack } from '../services/rag.service';
 import { assertTenantBusinessId } from '../tenancy/context';
 import { getAIMaxOutputTokens, getAIModel } from '../services/ai-config';
 import { recordAIUsage } from '../services/ai-usage.service';
+import { getAIConfiguration } from '../config/runtime';
 
 dotenv.config();
 
-// Use GPT-4o as prompt requests high intelligence for grounding
+const aiConfig = getAIConfiguration();
 const llm = new ChatOpenAI({
     model: getAIModel(),
     maxTokens: getAIMaxOutputTokens(),
     temperature: 0,
-    apiKey: process.env.OPENAI_API_KEY,
+    apiKey: aiConfig.apiKey,
+    configuration: aiConfig.baseURL ? { baseURL: aiConfig.baseURL } : undefined,
     modelKwargs: { response_format: { type: 'json_object' } } // Enforce JSON
 });
 

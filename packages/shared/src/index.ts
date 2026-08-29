@@ -1,5 +1,13 @@
 export type ID = string;
 export type BusinessRole = 'Owner' | 'Admin' | 'Staff';
+export const PASSWORD_MIN_LENGTH = 8;
+
+export const TEST_AI_API = {
+  base: '/api/test-ai',
+  currentConversation: '/conversations/current',
+  currentMessages: '/conversations/current/messages',
+  conversations: '/conversations',
+} as const;
 
 export interface TenantEntity {
   businessId: ID;

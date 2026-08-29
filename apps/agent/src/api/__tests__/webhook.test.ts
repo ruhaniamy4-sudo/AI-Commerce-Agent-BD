@@ -142,6 +142,9 @@ describe('Facebook Webhook API', () => {
             .update(JSON.stringify(payload))
             .digest('hex');
         mockWebHookEvent.create.mockRejectedValue({ code: 11000 });
+        mockWebHookEvent.findOne.mockReturnValue({
+            select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue({ processed: true }) }),
+        });
 
         const response = await request(app)
             .post('/webhook')
@@ -151,5 +154,19 @@ describe('Facebook Webhook API', () => {
         expect(response.status).toBe(200);
         expect(mockWebHookEvent.create).toHaveBeenCalledTimes(1);
         expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+
+    it('requeues a duplicate event that was persisted but never processed', async () => {
+        const payload = { object: 'page', entry: [{ id: 'page_1', messaging: [{ sender: { id: 'user_1' }, message: { text: 'Retry', mid: 'mid_pending' } }] }] };
+        const signature = crypto.createHmac('sha256', 'test_secret').update(JSON.stringify(payload)).digest('hex');
+        mockWebHookEvent.create.mockRejectedValue({ code: 11000 });
+        mockWebHookEvent.findOne.mockReturnValue({
+            select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue({ processed: false }) }),
+        });
+
+        const response = await request(app).post('/webhook').set('x-hub-signature-256', `sha256=${signature}`).send(payload);
+
+        expect(response.status).toBe(200);
+        expect(mockQueueAdd).toHaveBeenCalledWith('process-facebook-event', expect.objectContaining({ eventId: 'mid_pending' }));
     });
 });

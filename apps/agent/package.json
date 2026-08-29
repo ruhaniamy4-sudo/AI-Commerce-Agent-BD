@@ -13,7 +13,8 @@
         "test-calendar": "ts-node src/test-calendar.ts",
         "test-calendar-v2": "ts-node src/test-calendar-v2.ts",
         "train-rag": "ts-node src/scripts/train-rag.ts",
-        "migrate:tenancy": "ts-node src/scripts/migrate-tenancy.ts"
+        "migrate:tenancy": "ts-node src/scripts/migrate-tenancy.ts",
+        "migrate:text-indexes": "ts-node src/scripts/migrate-text-indexes.ts"
     },
     "dependencies": {
         "@edutechs/shared": "*",

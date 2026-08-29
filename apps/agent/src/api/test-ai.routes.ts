@@ -7,13 +7,25 @@ import { Conversation } from '../models/Conversation';
 import { Message } from '../models/Message';
 import { processChatTurn } from '../services/chat-turn.service';
 import { tenantDocument } from '../tenancy/context';
+import { TEST_AI_API } from '@edutechs/shared';
 
 const router = Router();
 
 async function findOwnedConversation(req: AuthenticatedRequest, conversationId?: string) {
-    const query: Record<string, unknown> = { platform: 'manual', 'metadata.testMode': true, 'metadata.ownerUserId': req.auth!.userId };
+    const query: Record<string, unknown> = { platform: 'manual', status: 'active', 'metadata.testMode': true, 'metadata.ownerUserId': req.auth!.userId };
     if (conversationId) query.conversationId = conversationId;
     return Conversation.findOne(query).sort({ updatedAt: -1 });
+}
+
+async function createOwnedConversation(req: AuthenticatedRequest) {
+    const conversationId = `test_${req.auth!.businessId}_${req.auth!.userId}_${crypto.randomUUID()}`;
+    return Conversation.create(tenantDocument({
+        conversationId,
+        psid: `test:${req.auth!.userId}`,
+        platform: 'manual',
+        status: 'active',
+        metadata: { testMode: true, ownerUserId: req.auth!.userId, source: 'merchant-sandbox' },
+    }));
 }
 
 async function conversationPayload(req: AuthenticatedRequest, conversation: InstanceType<typeof Conversation> | null) {
@@ -33,29 +45,24 @@ async function conversationPayload(req: AuthenticatedRequest, conversation: Inst
     };
 }
 
-router.get('/', async (req: AuthenticatedRequest, res) => {
+router.get(TEST_AI_API.currentConversation, async (req: AuthenticatedRequest, res) => {
     res.json(await conversationPayload(req, await findOwnedConversation(req)));
 });
 
-router.post('/conversations', async (req: AuthenticatedRequest, res) => {
+router.get(TEST_AI_API.currentMessages, async (req: AuthenticatedRequest, res) => {
+    res.json(await conversationPayload(req, await findOwnedConversation(req)));
+});
+
+router.post(TEST_AI_API.conversations, async (req: AuthenticatedRequest, res) => {
     await Conversation.updateMany({ platform: 'manual', 'metadata.testMode': true, 'metadata.ownerUserId': req.auth!.userId, status: 'active' }, { $set: { status: 'archived' } });
-    const conversationId = `test_${req.auth!.businessId}_${req.auth!.userId}_${crypto.randomUUID()}`;
-    const conversation = await Conversation.create(tenantDocument({
-        conversationId, psid: `test:${req.auth!.userId}`, platform: 'manual', status: 'active',
-        metadata: { testMode: true, ownerUserId: req.auth!.userId, source: 'merchant-sandbox' },
-    }));
+    const conversation = await createOwnedConversation(req);
     res.status(201).json(await conversationPayload(req, conversation));
 });
 
-router.post('/messages', async (req: AuthenticatedRequest, res) => {
+router.post(TEST_AI_API.currentMessages, async (req: AuthenticatedRequest, res) => {
     const message = String(req.body?.message || '').trim();
     if (!message || message.length > 2000) return res.status(400).json({ error: 'Enter a message up to 2000 characters' });
-    let conversation = await findOwnedConversation(req, req.body?.conversationId);
-    if (!conversation && !req.body?.conversationId) {
-        const conversationId = `test_${req.auth!.businessId}_${req.auth!.userId}_${crypto.randomUUID()}`;
-        conversation = await Conversation.create(tenantDocument({ conversationId, psid: `test:${req.auth!.userId}`, platform: 'manual', status: 'active', metadata: { testMode: true, ownerUserId: req.auth!.userId, source: 'merchant-sandbox' } }));
-    }
-    if (!conversation) return res.status(404).json({ error: 'Test conversation not found' });
+    const conversation = await findOwnedConversation(req) || await createOwnedConversation(req);
     const result = await processChatTurn({
         businessId: req.auth!.businessId, conversationId: conversation.conversationId, message,
         eventIdentifier: String(req.headers['idempotency-key'] || crypto.randomUUID()), source: 'test',
