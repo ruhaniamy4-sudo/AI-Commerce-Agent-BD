@@ -163,7 +163,7 @@ router.post('/orders/:id/courier/create', requireAdministrator, async (req, res)
     try {
         const result = await createCourierDelivery({
             businessId: requireTenantContext().businessId,
-            orderId: req.params.id,
+            orderId: String(req.params.id),
         });
         res.status(result.created ? 201 : 200).json(result);
     } catch (error) {
@@ -175,7 +175,7 @@ router.post('/orders/:id/courier/sync', requireAdministrator, async (req, res) =
     try {
         res.json(await syncCourierDelivery({
             businessId: requireTenantContext().businessId,
-            orderId: req.params.id,
+            orderId: String(req.params.id),
         }));
     } catch (error) {
         courierErrorResponse(res, error);

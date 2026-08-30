@@ -10,6 +10,7 @@ import { Category } from '../../models/Category';
 import { Product } from '../../models/Product';
 import { Knowledge } from '../../models/Knowledge';
 import onboardingRoutes from '../onboarding.routes';
+import { User } from '../../models/User'; import { MerchantActivity } from '../../models/MerchantActivity';
 
 const app = express().use(express.json()).use('/onboarding', authenticate, onboardingRoutes);
 const businessId = new mongoose.Types.ObjectId(); const userId = new mongoose.Types.ObjectId(); const membershipId = new mongoose.Types.ObjectId(); const categoryId = new mongoose.Types.ObjectId();
@@ -19,6 +20,7 @@ describe('onboarding tenant writes', () => {
     beforeEach(() => {
         process.env.AUTH_JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters'; vi.restoreAllMocks();
         vi.spyOn(BusinessMember, 'findOne').mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: membershipId }) } as any);
+        vi.spyOn(User,'findOne').mockReturnValue({select:()=>({lean:()=>Promise.resolve({_id:userId})})} as any);vi.spyOn(Business,'findOne').mockReturnValue({select:()=>({lean:()=>Promise.resolve({_id:businessId})})} as any);vi.spyOn(MerchantActivity,'updateOne').mockResolvedValue({} as any);vi.spyOn(User,'updateOne').mockResolvedValue({} as any);
         vi.spyOn(Business, 'findByIdAndUpdate').mockResolvedValue({} as any);
     });
     it('preserves role authorization and denies Staff setup writes', async () => {

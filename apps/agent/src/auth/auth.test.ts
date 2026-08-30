@@ -3,6 +3,9 @@ import mongoose from 'mongoose';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BusinessMember } from '../models/BusinessMember';
+import { Business } from '../models/Business';
+import { User } from '../models/User';
+import { MerchantActivity } from '../models/MerchantActivity';
 import { authenticate, authenticateAccount, authorize, AuthenticatedRequest } from './middleware';
 import { hashPassword, verifyPassword } from './password';
 import { signAccessToken, signAccountToken } from './token';
@@ -18,6 +21,10 @@ describe('authentication and role authorization', () => {
         vi.spyOn(BusinessMember, 'findOne').mockReturnValue({
             lean: vi.fn().mockResolvedValue({ _id: membershipId }),
         } as never);
+        vi.spyOn(User, 'findOne').mockReturnValue({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: userId }) }) } as never);
+        vi.spyOn(Business, 'findOne').mockReturnValue({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: businessId }) }) } as never);
+        vi.spyOn(MerchantActivity, 'updateOne').mockResolvedValue({ acknowledged: true } as never);
+        vi.spyOn(User, 'updateOne').mockResolvedValue({ acknowledged: true } as never);
     });
 
     function token(role: 'Owner' | 'Admin' | 'Staff') {
@@ -40,6 +47,15 @@ describe('authentication and role authorization', () => {
     it('returns 401 without a bearer token', async () => {
         const app = express().get('/protected', authenticate, (_req, res) => res.sendStatus(204));
         await request(app).get('/protected').expect(401);
+    });
+
+    it('keeps user suspension separate from business suspension', async () => {
+        const app = express().get('/protected', authenticate, (_req, res) => res.sendStatus(204));
+        vi.mocked(User.findOne).mockReturnValueOnce({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }) } as never);
+        await request(app).get('/protected').set('authorization', `Bearer ${token('Owner')}`).expect(401);
+        vi.mocked(User.findOne).mockReturnValueOnce({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: userId }) }) } as never);
+        vi.mocked(Business.findOne).mockReturnValueOnce({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }) } as never);
+        await request(app).get('/protected').set('authorization', `Bearer ${token('Owner')}`).expect(403);
     });
 
     it('accepts a short-lived account token only on pre-business routes', async () => {

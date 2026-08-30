@@ -32,4 +32,12 @@ describe('agent action confirmation safety', () => {
         expect(response.message_text).not.toContain('created successfully');
         expect(response.message_text).toContain('could not confirm');
     });
+
+    it('moves an AI-requested handoff to human control while preserving the conversation', async () => {
+        const update = vi.spyOn(Conversation, 'updateOne').mockResolvedValue({ matchedCount: 1 } as never);
+        const response = { message_text: 'Connecting you.', action: 'handoff', action_payload: { reason: 'Customer requested a person' } };
+        await withTenantContext({ businessId, userId: 'u', membershipId: 'm', role: 'Staff' }, () => executeAgentAction({ businessId, conversationId: 'conversation-1', psid: 'customer-1', eventIdentifier: 'event-2', response }));
+        expect(update).toHaveBeenCalledWith({ conversationId: 'conversation-1' }, expect.objectContaining({ controlMode: 'HUMAN_ACTIVE', needsHumanHandoff: true }));
+        expect(response.message_text).toContain('human agent');
+    });
 });

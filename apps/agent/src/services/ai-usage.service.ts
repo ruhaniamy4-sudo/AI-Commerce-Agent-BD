@@ -1,5 +1,6 @@
 import { AIUsage, AIOperationType } from '../models/AIUsage';
 import { getAIModel, getModelPricing } from './ai-config';
+import { getAIConfiguration } from '../config/runtime';
 
 export function extractUsage(response: any) {
     const usage = response?.usage_metadata || response?.usage || response?.response_metadata?.usage || response?.response_metadata?.tokenUsage;
@@ -20,6 +21,7 @@ export async function recordAIUsage(params: {
 }) {
     const { response, model: suppliedModel, ...identity } = params;
     const model = suppliedModel || getAIModel();
+    const provider = getAIConfiguration().provider;
     const usage = extractUsage(response);
     const pricing = getModelPricing(model);
     const estimatedCost = pricing && usage.inputTokens !== null && usage.outputTokens !== null
@@ -27,7 +29,7 @@ export async function recordAIUsage(params: {
         : null;
     return AIUsage.findOneAndUpdate(
         { eventIdentifier: identity.eventIdentifier, operationType: identity.operationType },
-        { $setOnInsert: { ...identity, model, ...usage, estimatedCost } },
+        { $setOnInsert: { ...identity, provider, model, ...usage, estimatedCost } },
         { upsert: true, new: true }
     );
 }

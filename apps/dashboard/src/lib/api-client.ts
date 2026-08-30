@@ -25,6 +25,9 @@ const axiosInstance: AxiosInstance = axios.create({
 // Request Interceptor
 axiosInstance.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
+        if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+            config.headers.delete('Content-Type');
+        }
         const session = await getSession();
         const token = session?.accessToken || session?.accountToken;
         if (token) config.headers.Authorization = `Bearer ${token}`;

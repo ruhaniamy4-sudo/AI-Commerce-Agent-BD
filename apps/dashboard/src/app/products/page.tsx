@@ -38,9 +38,9 @@ import {
     ListChecks,
 } from 'lucide-react';
 import { useState } from 'react';
-import Image from 'next/image';
 import { Textarea } from '@/components/ui/textarea';
 import { ImageUpload } from '@/components/ui/image-upload';
+import { SafeProductImage } from '@/components/ui/safe-product-image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -271,7 +271,7 @@ export default function ProductsPage() {
                                                 <div className="flex items-center gap-5">
                                                     <div className="h-14 w-14 rounded-2xl bg-white/5 overflow-hidden flex items-center justify-center border border-white/10 shadow-lg group-hover:scale-110 transition-transform">
                                                         {p.images?.[0] ? (
-                                                            <Image src={p.images[0]} alt={p.name} width={56} height={56} className="h-full w-full object-cover" />
+                                                            <SafeProductImage src={p.images[0]} alt={p.name} />
                                                         ) : (
                                                             <Package className="h-6 w-6 text-muted-foreground/30" />
                                                         )}

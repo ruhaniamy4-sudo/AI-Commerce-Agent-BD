@@ -1,0 +1,5 @@
+import mongoose,{Document,Schema} from 'mongoose';
+export interface IPlatformAuditLog extends Document {platformAdminId:mongoose.Types.ObjectId;action:string;targetType:string;targetId:string;businessId?:mongoose.Types.ObjectId;previousValue?:unknown;newValue?:unknown;reason:string;createdAt:Date}
+const PlatformAuditLogSchema=new Schema<IPlatformAuditLog>({platformAdminId:{type:Schema.Types.ObjectId,ref:'PlatformAdmin',required:true,index:true},action:{type:String,required:true,index:true},targetType:{type:String,required:true,index:true},targetId:{type:String,required:true},businessId:{type:Schema.Types.ObjectId,ref:'Business',index:true},previousValue:Schema.Types.Mixed,newValue:Schema.Types.Mixed,reason:{type:String,required:true,maxlength:500}},{timestamps:{createdAt:true,updatedAt:false}});
+PlatformAuditLogSchema.index({createdAt:-1}); PlatformAuditLogSchema.index({businessId:1,createdAt:-1}); PlatformAuditLogSchema.index({action:1,createdAt:-1});
+export const PlatformAuditLog=mongoose.model<IPlatformAuditLog>('PlatformAuditLog',PlatformAuditLogSchema);

@@ -9,6 +9,9 @@ import { AIUsage } from '../models/AIUsage';
 import { Order } from '../models/Order';
 import { Product } from '../models/Product';
 import { CourierIntegration } from '../models/CourierIntegration';
+import { TrainingSource } from '../models/TrainingSource';
+import { TrainingRun } from '../models/TrainingRun';
+import { TrainingCandidate } from '../models/TrainingCandidate';
 import { tenantDocument, withTenantContext } from './context';
 
 const businessA = new mongoose.Types.ObjectId();
@@ -26,7 +29,7 @@ function asBusiness<T>(businessId: mongoose.Types.ObjectId, work: () => T) {
 describe('tenant query isolation', () => {
     afterEach(() => vi.restoreAllMocks());
 
-    const models: mongoose.Model<any>[] = [Product, Category, Customer, Order, Knowledge, Conversation, Message, AIUsage, CourierIntegration];
+    const models: mongoose.Model<any>[] = [Product, Category, Customer, Order, Knowledge, Conversation, Message, AIUsage, CourierIntegration, TrainingSource, TrainingRun, TrainingCandidate];
 
     it.each(models)('$modelName requires businessId and declares tenant-first indexes', (model) => {
         expect(model.schema.path('businessId').options.required).toBe(true);

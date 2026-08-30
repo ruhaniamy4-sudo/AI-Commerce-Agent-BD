@@ -9,10 +9,14 @@ import { PlatformAdmin } from '../models/PlatformAdmin';
 import platformAuthRoutes from '../api/platform-auth.routes';
 import { hashPassword } from './password';
 import { clearAuthRateLimitsForTests } from './rate-limit';
+import { User } from '../models/User';
+import { Business } from '../models/Business';
+import { MerchantActivity } from '../models/MerchantActivity';
+import { PlatformAuditLog } from '../models/PlatformAuditLog';
 
 describe('separate platform administrator authorization', () => {
     const adminId = new mongoose.Types.ObjectId(); const userId = new mongoose.Types.ObjectId(); const businessId = new mongoose.Types.ObjectId(); const membershipId = new mongoose.Types.ObjectId();
-    beforeEach(() => { process.env.AUTH_JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters'; clearAuthRateLimitsForTests(); vi.restoreAllMocks(); });
+    beforeEach(() => { process.env.AUTH_JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters'; clearAuthRateLimitsForTests(); vi.restoreAllMocks(); vi.spyOn(User,'findOne').mockReturnValue({select:()=>({lean:()=>Promise.resolve({_id:userId})})} as never);vi.spyOn(Business,'findOne').mockReturnValue({select:()=>({lean:()=>Promise.resolve({_id:businessId})})} as never);vi.spyOn(MerchantActivity,'updateOne').mockResolvedValue({acknowledged:true} as never);vi.spyOn(User,'updateOne').mockResolvedValue({acknowledged:true} as never);vi.spyOn(PlatformAuditLog,'create').mockResolvedValue({} as never); });
 
     it('issues a platform-only token for correct dedicated credentials', async () => {
         const passwordHash = await hashPassword('platform password');

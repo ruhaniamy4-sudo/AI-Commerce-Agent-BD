@@ -3,6 +3,9 @@ import { BusinessMember } from '../models/BusinessMember';
 import { BUSINESS_ROLES, BusinessRole, TenantPrincipal, withTenantContext } from '../tenancy/context';
 import { verifyAccessToken, verifyAccountToken, verifyPlatformAdminToken } from './token';
 import { PlatformAdmin } from '../models/PlatformAdmin';
+import { User } from '../models/User';
+import { Business } from '../models/Business';
+import { touchMerchantActivity } from '../services/merchant-activity.service';
 
 export interface AuthenticatedRequest extends Request {
     auth?: TenantPrincipal;
@@ -35,6 +38,12 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
             status: 'active',
         }).lean();
         if (!membership) return res.status(401).json({ error: 'Membership is no longer active' });
+        const [user, business] = await Promise.all([
+            User.findOne({ _id: payload.sub, status: 'active' }).select('_id').lean(),
+            Business.findOne({ _id: payload.businessId, status: 'active' }).select('_id').lean(),
+        ]);
+        if (!user) return res.status(401).json({ error: 'User account is suspended' });
+        if (!business) return res.status(403).json({ error: 'Business account is suspended' });
 
         req.auth = {
             userId: payload.sub,
@@ -42,6 +51,7 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
             membershipId: payload.membershipId,
             role: payload.role,
         };
+        await touchMerchantActivity(payload.sub, payload.businessId);
         return withTenantContext(req.auth, () => next());
     } catch {
         return res.status(401).json({ error: 'Invalid or expired access token' });

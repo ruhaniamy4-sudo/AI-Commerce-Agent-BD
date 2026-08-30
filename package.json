@@ -21,6 +21,8 @@
     "migrate:tenancy": "npm run migrate:tenancy -w apps/agent",
     "migrate": "npm run migrate:tenancy",
     "migrate:text-indexes": "npm run migrate:text-indexes -w apps/agent",
+    "migrate:training-indexes": "npm run migrate:training-indexes -w apps/agent",
+    "migrate:intelligence": "npm run migrate:intelligence -w apps/agent",
     "health:check": "node scripts/health-check.mjs",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",

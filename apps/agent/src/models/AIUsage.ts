@@ -8,6 +8,7 @@ export interface IAIUsage {
     conversationId: string;
     eventIdentifier: string;
     model: string;
+    provider?: 'groq'|'openai';
     inputTokens: number | null;
     outputTokens: number | null;
     totalTokens: number | null;
@@ -20,6 +21,7 @@ const AIUsageSchema = new Schema<IAIUsage>({
     conversationId: { type: String, required: true },
     eventIdentifier: { type: String, required: true },
     model: { type: String, required: true },
+    provider: { type: String, enum: ['groq','openai'], index: true },
     inputTokens: { type: Number, default: null, min: 0 },
     outputTokens: { type: Number, default: null, min: 0 },
     totalTokens: { type: Number, default: null, min: 0 },
@@ -33,6 +35,7 @@ const AIUsageSchema = new Schema<IAIUsage>({
 
 AIUsageSchema.plugin(tenantPlugin);
 AIUsageSchema.index({ businessId: 1, createdAt: -1 });
+AIUsageSchema.index({ provider: 1, model: 1, createdAt: -1 });
 AIUsageSchema.index({ businessId: 1, conversationId: 1, createdAt: -1 });
 AIUsageSchema.index({ businessId: 1, eventIdentifier: 1, operationType: 1 }, { unique: true });
 

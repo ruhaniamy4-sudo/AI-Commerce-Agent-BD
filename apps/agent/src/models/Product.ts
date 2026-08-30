@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { tenantPlugin } from '../tenancy/plugin';
+import { buildProductSearchProfile, SearchProfile } from '../services/knowledge-intelligence.service';
 
 export interface IProductVariant {
     variantId: string;
@@ -32,6 +33,7 @@ export interface IProduct extends Document {
 
     // Media
     images: string[];
+    imageImports?: Array<{ sourceUrl: string; managedUrl?: string; status: 'managed' | 'mirrored' | 'external_fallback'; errorCode?: string }>;
 
     // Warranty and policies
     warrantyMonths: number;
@@ -46,6 +48,14 @@ export interface IProduct extends Document {
 
     // Inventory alerts
     lowStockThreshold: number;
+    salePrice?: number;
+    barcode?: string;
+    brand?: string;
+    canonicalUrl?: string;
+    provenance?: Array<{ sourceType: string; sourceUrl?: string; sourceExternalId?: string; fingerprint: string; lastSeenAt: Date; lastSyncedAt: Date }>;
+    merchantConfirmed: boolean;
+    availability?: 'in_stock' | 'out_of_stock' | 'preorder' | 'unknown';
+    intelligence?: SearchProfile;
 
     // RAG - Image Embeddings for Visual Search
     imageEmbedding?: number[]; // Vector embedding of primary product image
@@ -76,6 +86,20 @@ const ProductVariantSchema = new Schema({
     isActive: { type: Boolean, default: true },
 });
 
+const ProductIntelligenceSchema = new Schema({
+    profileVersion: { type: Number, default: 1 },
+    searchableText: String,
+    terms: [{ type: String }],
+    colors: [{ type: String }],
+    sizes: [{ type: String }],
+    materials: [{ type: String }],
+    categories: [{ type: String }],
+    useCases: [{ type: String }],
+    facts: [{ subject: String, predicate: String, value: Schema.Types.Mixed, unit: String, confidence: { type: String, enum: ['confirmed', 'supported'] } }],
+    riskLevel: { type: String, enum: ['normal', 'high'], default: 'normal' },
+    sourceHash: String,
+}, { _id: false });
+
 const ProductSchema = new Schema(
     {
         name: { type: String, required: true, trim: true },
@@ -102,6 +126,10 @@ const ProductSchema = new Schema(
         compatibilityTags: [{ type: String }],
 
         images: [{ type: String }],
+        imageImports: [{
+            sourceUrl: { type: String, required: true }, managedUrl: String,
+            status: { type: String, enum: ['managed', 'mirrored', 'external_fallback'], required: true }, errorCode: String,
+        }],
 
         warrantyMonths: { type: Number, default: 0, min: 0 },
         isReturnable: { type: Boolean, default: true },
@@ -113,6 +141,17 @@ const ProductSchema = new Schema(
         isFeatured: { type: Boolean, default: false, index: true },
 
         lowStockThreshold: { type: Number, default: 10 },
+        salePrice: { type: Number, min: 0 },
+        barcode: { type: String, trim: true },
+        brand: { type: String, trim: true },
+        canonicalUrl: { type: String, trim: true },
+        provenance: [{
+            sourceType: { type: String, required: true }, sourceUrl: String, sourceExternalId: String,
+            fingerprint: { type: String, required: true }, lastSeenAt: { type: Date, default: Date.now }, lastSyncedAt: { type: Date, default: Date.now },
+        }],
+        merchantConfirmed: { type: Boolean, default: true },
+        availability: { type: String, enum: ['in_stock', 'out_of_stock', 'preorder', 'unknown'], default: 'unknown' },
+        intelligence: { type: ProductIntelligenceSchema, select: false },
 
         // RAG - Image Embeddings for Visual Search
         imageEmbedding: [{ type: Number }], // Array of floats for vector embedding
@@ -151,11 +190,23 @@ ProductSchema.index(
 ProductSchema.index({ businessId: 1, categoryId: 1, isActive: 1 });
 ProductSchema.index({ businessId: 1, compatibilityTags: 1 });
 ProductSchema.index({ businessId: 1, basePrice: 1 });
+ProductSchema.index({ businessId: 1, canonicalUrl: 1 }, { sparse: true });
+ProductSchema.index({ businessId: 1, barcode: 1 }, { sparse: true });
 ProductSchema.index({ businessId: 1, isFeatured: 1, isActive: 1 });
+ProductSchema.index({ businessId: 1, 'intelligence.terms': 1, isActive: 1 });
+// MongoDB does not allow a compound multikey index across two array fields.
+ProductSchema.index({ businessId: 1, 'intelligence.colors': 1, isActive: 1 });
+ProductSchema.index({ businessId: 1, 'intelligence.sizes': 1, isActive: 1 });
 
 // Virtual for low stock check
 ProductSchema.virtual('isLowStock').get(function (this: IProduct) {
     return this.stock <= this.lowStockThreshold;
+});
+
+ProductSchema.pre('validate', function (this: IProduct) {
+    if (this.isNew || ['name', 'description', 'brand', 'specs', 'compatibilityTags', 'variants'].some((path) => this.isModified(path))) {
+        this.intelligence = buildProductSearchProfile(this.toObject({ depopulate: true }));
+    }
 });
 
 // Pre-save middleware to generate slug

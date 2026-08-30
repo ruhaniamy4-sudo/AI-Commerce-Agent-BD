@@ -53,6 +53,12 @@ describe('deterministic responses', () => {
         } as never);
 
         await expect(asTenant(() => getDeterministicResponse(businessId, 'price SKU-123')))
-            .resolves.toBe('Safe Product is priced at 1500 and currently has 4 unit(s) in stock.');
+            .resolves.toBe('Safe Product is ৳1500, with 4 currently in stock.');
+    });
+
+    it('answers a direct AI identity question truthfully without claiming to be human', async () => {
+        const response = await asTenant(() => getDeterministicResponse(businessId, 'Are you an AI or human?'));
+        expect(response).toContain('automated SellPilot assistant');
+        expect(response).not.toMatch(/I am human|human employee/i);
     });
 });
