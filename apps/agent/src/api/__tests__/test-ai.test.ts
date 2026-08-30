@@ -12,8 +12,10 @@ import { AIUsage } from '../../models/AIUsage';
 import { Business } from '../../models/Business';
 import testAiRoutes from '../test-ai.routes';
 import { processChatTurn } from '../../services/chat-turn.service';
+import { User } from '../../models/User'; import { MerchantActivity } from '../../models/MerchantActivity';
 
 vi.mock('../../services/chat-turn.service', () => ({ processChatTurn: vi.fn() }));
+vi.mock('../../services/ingestion/url-security', () => ({ validatePublicUrl: vi.fn(async (value: string) => new URL(value)) }));
 
 const app = express().use(express.json()).use(TEST_AI_API.base, authenticate, testAiRoutes);
 const endpoint = (path: string) => `${TEST_AI_API.base}${path}`;
@@ -27,6 +29,7 @@ describe('canonical tenant-safe Test AI routes', () => {
         process.env.AUTH_JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters';
         vi.restoreAllMocks();
         vi.spyOn(BusinessMember, 'findOne').mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: membershipId }) } as any);
+        vi.spyOn(User,'findOne').mockReturnValue({select:()=>({lean:()=>Promise.resolve({_id:userId})})} as any);vi.spyOn(Business,'findOne').mockReturnValue({select:()=>({lean:()=>Promise.resolve({_id:businessId})})} as any);vi.spyOn(MerchantActivity,'updateOne').mockResolvedValue({} as any);vi.spyOn(User,'updateOne').mockResolvedValue({} as any);
         vi.spyOn(Message, 'find').mockReturnValue({ sort: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }) }) } as any);
         vi.spyOn(AIUsage, 'find').mockReturnValue({ lean: vi.fn().mockResolvedValue([]) } as any);
         vi.spyOn(Business, 'findByIdAndUpdate').mockResolvedValue({} as any);
@@ -62,6 +65,18 @@ describe('canonical tenant-safe Test AI routes', () => {
         expect(find).toHaveBeenCalledWith(expect.not.objectContaining({ conversationId: 'obsolete-client-id' }));
         expect(processChatTurn).toHaveBeenCalledWith(expect.objectContaining({ businessId: businessId.toString(), conversationId: conversation.conversationId, message: 'Hi', source: 'test' }));
         expect(response.body.reply).toBe('Hello!');
+    });
+
+    it('passes image-only input into the same authenticated tenant chat pipeline', async () => {
+        vi.spyOn(Conversation, 'findOne').mockReturnValue({ sort: vi.fn().mockResolvedValue(conversation) } as any);
+        vi.mocked(processChatTurn).mockResolvedValue({ status: 200, body: { conversationId: conversation.conversationId, reply: 'No confident match.' } } as any);
+        await authenticated(request(app).post(endpoint(TEST_AI_API.currentMessages)))
+            .send({ imageUrl: 'https://res.cloudinary.com/demo/image/upload/sample.jpg' })
+            .expect(200);
+        expect(processChatTurn).toHaveBeenCalledWith(expect.objectContaining({
+            businessId: businessId.toString(), conversationId: conversation.conversationId,
+            imageUrl: 'https://res.cloudinary.com/demo/image/upload/sample.jpg', message: '', source: 'test',
+        }));
     });
 
     it('starts a new owned conversation and archives only the current owner test conversation', async () => {

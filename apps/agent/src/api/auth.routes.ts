@@ -117,17 +117,18 @@ router.post('/business', authenticateAccount, async (req: AccountAuthenticatedRe
     }
     const name = String(req.body?.name || '').trim();
     const businessType = String(req.body?.businessType || '').trim();
+    const description = String(req.body?.description || '').trim();
     const phone = String(req.body?.phone || '').trim();
     const website = String(req.body?.website || '').trim();
     const preferredLanguage = req.body?.preferredLanguage === 'en' ? 'en' : 'bn';
-    if (name.length < 2 || name.length > 160 || !businessType || phone.length < 7 || phone.length > 30 || website.length > 300) {
-        return res.status(400).json({ error: 'Valid business name, type, and phone are required' });
+    if (name.length < 2 || name.length > 160 || !businessType || (phone.length > 0 && phone.length < 7) || phone.length > 30 || website.length > 300 || description.length > 1000) {
+        return res.status(400).json({ error: 'Valid business name and type are required' });
     }
     const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 50) || 'business';
     const slug = `${baseSlug}-${crypto.randomBytes(3).toString('hex')}`;
     let business: InstanceType<typeof Business> | undefined;
     try {
-        business = await Business.create({ name, slug, businessType, phone, website: website || undefined, preferredLanguage, currency: 'BDT', status: 'active' });
+        business = await Business.create({ name, slug, businessType, description: description || undefined, phone: phone || undefined, website: website || undefined, preferredLanguage, currency: 'BDT', status: 'active' });
         const membership = await BusinessMember.create({ businessId: business._id, userId: user._id, role: 'Owner', status: 'active' });
         return res.status(201).json({
             needsOnboarding: false,
@@ -162,6 +163,32 @@ router.patch('/business', authenticate, authorize('Owner'), async (req: Authenti
         { $set: updates },
         { new: true, runValidators: true }
     );
+    res.json(business);
+});
+
+router.patch('/business/brand-voice', authenticate, authorize('Owner'), async (req: AuthenticatedRequest, res) => {
+    const input = req.body || {};
+    const allowed = {
+        tone: ['friendly', 'professional', 'casual', 'premium', 'custom'],
+        replyLength: ['short', 'balanced', 'detailed'],
+        language: ['auto', 'bn', 'en', 'banglish'],
+        salesBehavior: ['helpful', 'balanced', 'sales_focused'],
+        emoji: ['none', 'light', 'normal'],
+    } as const;
+    const updates: Record<string, unknown> = {};
+    for (const [field, values] of Object.entries(allowed)) {
+        if (input[field] !== undefined) {
+            if (!(values as readonly string[]).includes(String(input[field]))) return res.status(400).json({ error: `Invalid ${field} setting` });
+            updates[`brandVoice.${field}`] = input[field];
+        }
+    }
+    if (input.customTone !== undefined) updates['brandVoice.customTone'] = String(input.customTone).trim().slice(0, 300);
+    if (input.examples !== undefined) {
+        if (!Array.isArray(input.examples)) return res.status(400).json({ error: 'Examples must be a list' });
+        updates['brandVoice.examples'] = input.examples.map((example: unknown) => String(example).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(-10).map((example: string) => example.slice(0, 1000));
+    }
+    const business = await Business.findByIdAndUpdate(req.auth!.businessId, { $set: updates }, { new: true, runValidators: true });
+    if (!business) return res.status(404).json({ error: 'Business not found' });
     res.json(business);
 });
 

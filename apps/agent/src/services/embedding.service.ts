@@ -156,7 +156,9 @@ export async function generateExternalImageEmbedding(imageUrl: string): Promise<
     model: string;
 }> {
     try {
-        const response = await axios.post('http://0.0.0.0:8000/embed_url', {
+        const endpoint = process.env.IMAGE_EMBEDDING_SERVICE_URL;
+        if (!endpoint) throw new Error('IMAGE_EMBEDDING_SERVICE_URL is not configured');
+        const response = await axios.post(endpoint, {
             url: imageUrl
         }, {
             timeout: 15000
@@ -184,10 +186,12 @@ export async function getImageEmbedding(imageUrl: string, usageContext?: UsageCo
     model: string;
 }> {
     // 1. Try External Microservice first (User Preferred)
-    try {
-        return await generateExternalImageEmbedding(imageUrl);
-    } catch (error) {
-        console.log('External microservice failed, falling back...');
+    if (process.env.IMAGE_EMBEDDING_SERVICE_URL) {
+        try {
+            return await generateExternalImageEmbedding(imageUrl);
+        } catch (error) {
+            console.warn('Configured image embedding service failed; trying another configured provider.');
+        }
     }
 
     // 2. Try CLIP if HF key is available
@@ -200,7 +204,8 @@ export async function getImageEmbedding(imageUrl: string, usageContext?: UsageCo
     }
 
     // 3. Fallback to OpenAI Vision + Text Embedding
-    return await generateImageEmbedding(imageUrl, usageContext);
+    if (process.env.OPENAI_API_KEY) return await generateImageEmbedding(imageUrl, usageContext);
+    throw new Error('Image embeddings are not configured');
 }
 
 /**

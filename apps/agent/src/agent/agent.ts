@@ -1,4 +1,4 @@
-import { BaseMessage, SystemMessage, HumanMessage } from '@langchain/core/messages';
+import { BaseMessage, SystemMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import { END, START, StateGraph } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 import * as dotenv from 'dotenv';
@@ -9,6 +9,9 @@ import { assertTenantBusinessId } from '../tenancy/context';
 import { getAIMaxOutputTokens, getAIModel } from '../services/ai-config';
 import { recordAIUsage } from '../services/ai-usage.service';
 import { getAIConfiguration } from '../config/runtime';
+import { Business } from '../models/Business';
+import { Conversation } from '../models/Conversation';
+import { buildConversationInstructions, guardResponseText } from '../services/conversation-intelligence.service';
 
 dotenv.config();
 
@@ -35,7 +38,7 @@ async function callModel(state: AgentState) {
     if (!state.eventIdentifier) throw new Error('AI event identifier is required');
     // 1. Get the last user message to extract query
     const lastMessage = state.messages[state.messages.length - 1];
-    const userQuery = lastMessage.content.toString();
+    const userQuery = typeof lastMessage.content === 'string' ? lastMessage.content : (lastMessage.content as any[]).filter((part) => part?.type === 'text').map((part) => part.text).join(' ');
 
     // 2. Retrieve Context (RAG)
     // We need PSID, but if it's missing in state, we might extract from conversationId 'fb_PSID'
@@ -52,8 +55,14 @@ async function callModel(state: AgentState) {
         }
     }
 
-    // 3. Construct System Prompt with Context
-    const fullSystemPrompt = `${SYSTEM_PROMPT}\n\nCONTEXT PACK:\n${contextStr}`;
+    // 3. Construct the tenant-specific prompt without creating a separate agent.
+    const [business, conversation] = await Promise.all([
+        Business.findById(businessId).select('name businessType preferredLanguage brandVoice').lean(),
+        Conversation.findOne({ conversationId: state.conversationId }).select('platform metadata').lean(),
+    ]);
+    const intelligence = buildConversationInstructions({ business: business || {}, customerText: userQuery, history: state.messages, channel: conversation?.platform });
+    await Conversation.updateOne({ conversationId: state.conversationId }, { $set: { 'metadata.conversationIntelligence': { stage: intelligence.stage, language: intelligence.language, rememberedPreferences: intelligence.memory, updatedAt: new Date() } } });
+    const fullSystemPrompt = `${SYSTEM_PROMPT}${intelligence.prompt}\n\nCONTEXT PACK:\n${contextStr}`;
 
     // 4. Call Model
     // We send the full history, but with the updated system prompt at the start
@@ -72,7 +81,13 @@ async function callModel(state: AgentState) {
         // Usage accounting must not discard a successful provider response and trigger a costly retry.
         console.error('Failed to record AI usage:', error);
     }
-    return { messages: [response] };
+    let guardedResponse: BaseMessage = response;
+    try {
+        const parsed = JSON.parse(String(response.content).replace(/```json/g, '').replace(/```/g, '').trim());
+        parsed.message_text = guardResponseText(String(parsed.message_text || ''), contextStr);
+        guardedResponse = new AIMessage({ content: JSON.stringify(parsed), response_metadata: response.response_metadata, usage_metadata: response.usage_metadata });
+    } catch { /* parseAgentResponse retains its existing safe fallback */ }
+    return { messages: [guardedResponse] };
 }
 
 import { Annotation } from '@langchain/langgraph';

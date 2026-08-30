@@ -8,6 +8,7 @@ import { Message } from '../models/Message';
 import { processChatTurn } from '../services/chat-turn.service';
 import { tenantDocument } from '../tenancy/context';
 import { TEST_AI_API } from '@edutechs/shared';
+import { validatePublicUrl } from '../services/ingestion/url-security';
 
 const router = Router();
 
@@ -36,7 +37,10 @@ async function conversationPayload(req: AuthenticatedRequest, conversation: Inst
     ]);
     return {
         conversation: { id: conversation.conversationId, controlMode: conversation.controlMode, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt },
-        messages: messages.map((message: any) => ({ id: message._id, role: message.role, content: message.content, createdAt: message.createdAt })),
+        messages: messages.map((message: any) => ({
+            id: message._id, role: message.role, content: message.content, createdAt: message.createdAt,
+            imageUrl: message.attachments?.find((attachment: any) => String(attachment.type || '').startsWith('image/'))?.url,
+        })),
         usage: {
             aiReplies: usageRows.length,
             totalTokens: usageRows.reduce((sum, row) => sum + (row.totalTokens || 0), 0),
@@ -61,14 +65,22 @@ router.post(TEST_AI_API.conversations, async (req: AuthenticatedRequest, res) =>
 
 router.post(TEST_AI_API.currentMessages, async (req: AuthenticatedRequest, res) => {
     const message = String(req.body?.message || '').trim();
-    if (!message || message.length > 2000) return res.status(400).json({ error: 'Enter a message up to 2000 characters' });
+    const imageUrl = String(req.body?.imageUrl || '').trim();
+    if ((!message && !imageUrl) || message.length > 2000) return res.status(400).json({ error: 'Enter a message, attach an image, or both' });
+    if (imageUrl) {
+        let parsed: URL;
+        try { parsed = new URL(imageUrl); } catch { return res.status(400).json({ error: 'The image URL is invalid' }); }
+        if (parsed.protocol !== 'https:' || imageUrl.length > 2000) return res.status(400).json({ error: 'The image must use a secure URL' });
+        try { await validatePublicUrl(imageUrl); } catch { return res.status(400).json({ error: 'The image must be hosted at a safe public address' }); }
+    }
     const conversation = await findOwnedConversation(req) || await createOwnedConversation(req);
     const result = await processChatTurn({
-        businessId: req.auth!.businessId, conversationId: conversation.conversationId, message,
+        businessId: req.auth!.businessId, conversationId: conversation.conversationId, message, imageUrl: imageUrl || undefined,
         eventIdentifier: String(req.headers['idempotency-key'] || crypto.randomUUID()), source: 'test',
     });
     await Business.findByIdAndUpdate(req.auth!.businessId, { $set: { 'onboarding.aiTested': true } });
-    res.status(result.status).json({ ...result.body, ...(await conversationPayload(req, conversation)) });
+    const refreshedConversation = await findOwnedConversation(req, conversation.conversationId);
+    res.status(result.status).json({ ...result.body, ...(await conversationPayload(req, refreshedConversation)) });
 });
 
 export default router;

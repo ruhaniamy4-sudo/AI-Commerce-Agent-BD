@@ -3,6 +3,8 @@ import { HumanMessage } from '@langchain/core/messages';
 import mongoose from 'mongoose';
 import { withTenantContext } from '../tenancy/context';
 import { retrieveContext } from '../services/rag.service';
+import { Business } from '../models/Business';
+import { Conversation } from '../models/Conversation';
 
 // Mock RAG Service
 vi.mock('../services/rag.service', () => ({
@@ -37,15 +39,16 @@ import { aiAgent } from './agent';
 describe('AI Agent Logic', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.spyOn(Business, 'findById').mockReturnValue({ select: () => ({ lean: () => Promise.resolve({ name: 'Test Shop', businessType: 'Fashion', brandVoice: { language: 'auto' } }) }) } as never);
+        vi.spyOn(Conversation, 'findOne').mockReturnValue({ select: () => ({ lean: () => Promise.resolve({ platform: 'facebook', metadata: {} }) }) } as never);
+        vi.spyOn(Conversation, 'updateOne').mockResolvedValue({ matchedCount: 1 } as never);
     });
 
     it('should process a human message and return a JSON response', async () => {
         const businessId = new mongoose.Types.ObjectId().toString();
         // Mock LLM response
         const mockJson = JSON.stringify({
-            type: 'reply',
-            content: 'Hello! I am ready to help.',
-            actions: []
+            language: 'en', message_text: 'Hello! I am ready to help.', suggested_products: [], action: 'none', action_payload: {},
         });
 
         mockInvoke.mockResolvedValue({

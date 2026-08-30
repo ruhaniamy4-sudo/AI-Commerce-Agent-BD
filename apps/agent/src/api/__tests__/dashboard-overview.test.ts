@@ -15,6 +15,7 @@ import { Knowledge } from '../../models/Knowledge';
 import { Order } from '../../models/Order';
 import { AIUsage } from '../../models/AIUsage';
 import dashboardRoutes from '../dashboard.routes';
+import { User } from '../../models/User'; import { MerchantActivity } from '../../models/MerchantActivity';
 
 vi.mock('../../services/agentManager', () => ({ getAgentStatus: vi.fn().mockResolvedValue('active') }));
 const app = express().use(express.json()).use('/api', authenticate, dashboardRoutes);
@@ -24,6 +25,7 @@ describe('merchant dashboard overview tenancy', () => {
     beforeEach(() => {
         process.env.AUTH_JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters'; vi.restoreAllMocks();
         vi.spyOn(BusinessMember, 'findOne').mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: membershipId }) } as never);
+        vi.spyOn(User,'findOne').mockReturnValue({select:()=>({lean:()=>Promise.resolve({_id:userId})})} as never);vi.spyOn(Business,'findOne').mockReturnValue({select:()=>({lean:()=>Promise.resolve({_id:businessId})})} as never);vi.spyOn(MerchantActivity,'updateOne').mockResolvedValue({} as never);vi.spyOn(User,'updateOne').mockResolvedValue({} as never);
         vi.spyOn(Business, 'findById').mockReturnValue({ lean: vi.fn().mockResolvedValue({ name: 'Business A', onboarding: {} }) } as never);
         vi.spyOn(Conversation, 'countDocuments').mockResolvedValue(0); vi.spyOn(Customer, 'countDocuments').mockResolvedValue(0);
         vi.spyOn(Product, 'countDocuments').mockResolvedValue(0); vi.spyOn(Knowledge, 'countDocuments').mockResolvedValue(0);

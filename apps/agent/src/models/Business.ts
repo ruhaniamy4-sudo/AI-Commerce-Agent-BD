@@ -5,16 +5,42 @@ export interface IBusiness extends Document {
     slug: string;
     status: 'active' | 'suspended';
     businessType?: string;
+    description?: string;
     phone?: string;
     website?: string;
     preferredLanguage: 'bn' | 'en';
     currency: 'BDT';
+    aiAccess: {
+        status: 'ENABLED' | 'SUSPENDED_BY_PLATFORM' | 'SUSPENDED_BY_SUBSCRIPTION' | 'DISABLED_BY_MERCHANT';
+        reason?: string;
+        changedAt?: Date;
+        changedBy?: string;
+        monthlyRequestLimit?: number;
+        monthlyTokenLimit?: number;
+        warningThresholdPercent?: number;
+    };
+    brandVoice: {
+        tone: 'friendly' | 'professional' | 'casual' | 'premium' | 'custom';
+        replyLength: 'short' | 'balanced' | 'detailed';
+        language: 'auto' | 'bn' | 'en' | 'banglish';
+        salesBehavior: 'helpful' | 'balanced' | 'sales_focused';
+        emoji: 'none' | 'light' | 'normal';
+        customTone?: string;
+        examples: string[];
+    };
     onboarding: {
         productAdded: boolean;
         knowledgeAdded: boolean;
         channelConfigured: boolean;
         aiTested: boolean;
         completedAt?: Date;
+    };
+    training: {
+        status: 'not_started' | 'learning' | 'needs_review' | 'ready' | 'syncing' | 'error';
+        lastSyncedAt?: Date;
+        productsImported: number;
+        knowledgeImported: number;
+        needsReview: number;
     };
     createdAt: Date;
     updatedAt: Date;
@@ -25,10 +51,29 @@ const BusinessSchema = new Schema<IBusiness>({
     slug: { type: String, required: true, lowercase: true, trim: true, unique: true },
     status: { type: String, enum: ['active', 'suspended'], default: 'active', index: true },
     businessType: { type: String, trim: true },
+    description: { type: String, trim: true },
     phone: { type: String, trim: true },
     website: { type: String, trim: true },
     preferredLanguage: { type: String, enum: ['bn', 'en'], default: 'bn' },
     currency: { type: String, enum: ['BDT'], default: 'BDT' },
+    aiAccess: {
+        status: { type: String, enum: ['ENABLED', 'SUSPENDED_BY_PLATFORM', 'SUSPENDED_BY_SUBSCRIPTION', 'DISABLED_BY_MERCHANT'], default: 'ENABLED', index: true },
+        reason: { type: String, maxlength: 500 },
+        changedAt: Date,
+        changedBy: String,
+        monthlyRequestLimit: { type: Number, min: 1 },
+        monthlyTokenLimit: { type: Number, min: 1 },
+        warningThresholdPercent: { type: Number, min: 1, max: 100, default: 80 },
+    },
+    brandVoice: {
+        tone: { type: String, enum: ['friendly', 'professional', 'casual', 'premium', 'custom'], default: 'friendly' },
+        replyLength: { type: String, enum: ['short', 'balanced', 'detailed'], default: 'balanced' },
+        language: { type: String, enum: ['auto', 'bn', 'en', 'banglish'], default: 'auto' },
+        salesBehavior: { type: String, enum: ['helpful', 'balanced', 'sales_focused'], default: 'balanced' },
+        emoji: { type: String, enum: ['none', 'light', 'normal'], default: 'light' },
+        customTone: { type: String, maxlength: 300 },
+        examples: [{ type: String, maxlength: 1000 }],
+    },
     onboarding: {
         productAdded: { type: Boolean, default: false },
         knowledgeAdded: { type: Boolean, default: false },
@@ -36,6 +81,16 @@ const BusinessSchema = new Schema<IBusiness>({
         aiTested: { type: Boolean, default: false },
         completedAt: { type: Date },
     },
+    training: {
+        status: { type: String, enum: ['not_started', 'learning', 'needs_review', 'ready', 'syncing', 'error'], default: 'not_started' },
+        lastSyncedAt: Date,
+        productsImported: { type: Number, default: 0 },
+        knowledgeImported: { type: Number, default: 0 },
+        needsReview: { type: Number, default: 0 },
+    },
 }, { timestamps: true });
+
+BusinessSchema.index({ status: 1, createdAt: -1 });
+BusinessSchema.index({ 'aiAccess.status': 1, createdAt: -1 });
 
 export const Business = mongoose.model<IBusiness>('Business', BusinessSchema);

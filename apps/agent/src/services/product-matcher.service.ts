@@ -53,7 +53,10 @@ export async function matchProductsWithRAG(params: ProductMatchParams) {
         // Step 2: Fetch products with embeddings (active products only)
         const query: any = {
             isActive: true,
-            imageEmbedding: { $exists: true, $ne: [] }, // Must have embedding
+            $or: [
+                { imageEmbedding: { $exists: true, $ne: [] } },
+                { imageEmbeddings: { $elemMatch: { embedding: { $exists: true, $ne: [] } } } },
+            ],
         };
 
         // Optional category filter
@@ -126,17 +129,14 @@ export async function matchProductsWithRAG(params: ProductMatchParams) {
             topMatches.map(m => ({ name: m.product.name, sim: m.similarity.toFixed(3) }))
         );
 
-        return topMatches.map(m => m.product);
+        return topMatches.map(m => ({ ...m.product, matchConfidence: m.similarity }));
 
     } catch (error) {
         console.error('Error in RAG product matching:', error);
 
-        // Fallback: Return recent products if RAG fails
-        return await Product.find({ isActive: true })
-            .sort({ createdAt: -1 })
-            .limit(limit)
-            .select('_id name basePrice images')
-            .lean();
+        // Failing closed prevents an unrelated recent product from being presented
+        // as an image match when the embedding provider is unavailable.
+        return [];
     }
 }
 

@@ -272,10 +272,14 @@ router.post('/knowledge', requireAdministrator, async (req: AuthenticatedRequest
 router.patch('/knowledge/:id', requireAdministrator, async (req: AuthenticatedRequest, res) => {
     try {
         const { id } = req.params;
-        const { businessId: _ignoredBusinessId, ...updates } = req.body;
+        const { businessId: _ignoredBusinessId, intelligence: _ignoredIntelligence, ...updates } = req.body;
         updates.updatedBy = req.auth!.userId;
-        const knowledge = await Knowledge.findByIdAndUpdate(id, updates, { new: true });
+        // Use document save so version history and the deterministic retrieval
+        // profile remain synchronized with every merchant edit.
+        const knowledge = await Knowledge.findById(id);
         if (!knowledge) return res.status(404).json({ error: 'Not found' });
+        Object.assign(knowledge, updates);
+        await knowledge.save();
         res.json(knowledge);
     } catch (error) {
         res.status(500).json({ error: 'Failed to update' });

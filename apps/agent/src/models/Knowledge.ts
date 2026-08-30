@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { tenantPlugin } from '../tenancy/plugin';
+import { buildKnowledgeSearchProfile, SearchProfile } from '../services/knowledge-intelligence.service';
 
 export type KnowledgeType = 'FAQ' | 'POLICY' | 'GUIDE' | 'TROUBLESHOOT' | 'COMPATIBILITY';
 
@@ -29,6 +30,11 @@ export interface IKnowledge extends Document {
     createdBy: string;
     updatedBy: string;
     isPinned: boolean; // Critical policy flag
+    normalizedFact?: string;
+    fingerprint?: string;
+    provenance?: Array<{ sourceType: string; sourceUrl?: string; sourceExternalId?: string; fingerprint: string; lastSeenAt: Date; lastSyncedAt: Date }>;
+    merchantConfirmed: boolean;
+    intelligence?: SearchProfile;
 
     createdAt: Date;
     updatedAt: Date;
@@ -39,6 +45,20 @@ const KnowledgeVersionSchema = new Schema({
     updatedBy: { type: String, required: true },
     updatedAt: { type: Date, default: Date.now },
 });
+
+const KnowledgeIntelligenceSchema = new Schema({
+    profileVersion: { type: Number, default: 1 },
+    searchableText: String,
+    terms: [{ type: String }],
+    colors: [{ type: String }],
+    sizes: [{ type: String }],
+    materials: [{ type: String }],
+    categories: [{ type: String }],
+    useCases: [{ type: String }],
+    facts: [{ subject: String, predicate: String, value: Schema.Types.Mixed, unit: String, confidence: { type: String, enum: ['confirmed', 'supported'] } }],
+    riskLevel: { type: String, enum: ['normal', 'high'], default: 'normal' },
+    sourceHash: String,
+}, { _id: false });
 
 const KnowledgeSchema = new Schema(
     {
@@ -77,6 +97,14 @@ const KnowledgeSchema = new Schema(
         createdBy: { type: String, required: true },
         updatedBy: { type: String, required: true },
         isPinned: { type: Boolean, default: false, index: true },
+        normalizedFact: { type: String },
+        fingerprint: { type: String },
+        provenance: [{
+            sourceType: { type: String, required: true }, sourceUrl: String, sourceExternalId: String,
+            fingerprint: { type: String, required: true }, lastSeenAt: { type: Date, default: Date.now }, lastSyncedAt: { type: Date, default: Date.now },
+        }],
+        merchantConfirmed: { type: Boolean, default: true },
+        intelligence: { type: KnowledgeIntelligenceSchema, select: false },
     },
     { timestamps: true }
 );
@@ -96,6 +124,14 @@ KnowledgeSchema.index(
 KnowledgeSchema.index({ businessId: 1, type: 1, language: 1, status: 1 });
 KnowledgeSchema.index({ businessId: 1, tags: 1, status: 1 });
 KnowledgeSchema.index({ businessId: 1, isPinned: 1, sourcePriority: 1 });
+KnowledgeSchema.index({ businessId: 1, fingerprint: 1 }, { sparse: true });
+KnowledgeSchema.index({ businessId: 1, 'intelligence.terms': 1, status: 1 });
+
+KnowledgeSchema.pre('validate', function (this: IKnowledge) {
+    if (this.isNew || ['title', 'content', 'tags', 'type'].some((path) => this.isModified(path))) {
+        this.intelligence = buildKnowledgeSearchProfile(this.toObject({ depopulate: true }));
+    }
+});
 
 // Pre-save middleware to add to version history
 KnowledgeSchema.pre('save', async function (this: IKnowledge) {

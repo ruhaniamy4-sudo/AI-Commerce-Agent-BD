@@ -9,6 +9,8 @@ import { executeAgentAction, parseAgentResponse } from './agent-action.service';
 import { checkpointInboundEvent, claimInboundEvent, completeInboundEvent, registerInboundEvent, releaseInboundEvent } from './inbound-idempotency.service';
 import { invokeIfAIActive, isAIActive } from './conversation-control.service';
 import { getDeterministicResponse } from './deterministic-response.service';
+import { detectConversationLanguage, shouldHandoffToHuman } from './conversation-intelligence.service';
+import { evaluateBusinessAIAccess } from './business-ai-access.service';
 
 export interface ChatTurnInput {
     businessId: string;
@@ -33,6 +35,12 @@ export async function processChatTurn(input: ChatTurnInput) {
     try {
     const conversation = await ensureConversation(input.businessId, convId);
     await saveMessage(input.businessId, convId, 'user', input.message || '', input.imageUrl, { messageId: eventIdentifier, platform: source });
+    const entitlement = await evaluateBusinessAIAccess(input.businessId);
+    if (!entitlement.allowed) {
+        const body = { conversationId: convId, messageId: eventIdentifier, reply: null, aiAccess: entitlement.reason };
+        await completeInboundEvent(eventIdentifier, processingToken, body);
+        return { status: 202, body };
+    }
     if (!isAIActive(conversation)) {
         const body = { conversationId: convId, messageId: eventIdentifier, reply: null, controller: 'HUMAN_ACTIVE' };
         await completeInboundEvent(eventIdentifier, processingToken, body);
@@ -44,6 +52,18 @@ export async function processChatTurn(input: ChatTurnInput) {
         const body = { conversationId: convId, messageId: eventIdentifier, reply: null, agentStatus };
         await completeInboundEvent(eventIdentifier, processingToken, body);
         return { status: 202, body };
+    }
+    const handoff = input.message ? shouldHandoffToHuman(input.message) : { required: false };
+    if (handoff.required) {
+        const language = detectConversationLanguage(input.message || '');
+        const message_text = language === 'bn' ? 'একজন মানব প্রতিনিধি এই কথোপকথনটি চালিয়ে যাবেন।' : language === 'banglish' || language === 'mixed' ? 'একজন human agent এই conversationটা continue করবেন।' : 'A human agent will continue this conversation.';
+        const response = { message_text, action: 'handoff' as const, action_payload: { reason: handoff.reason } };
+        await executeAgentAction({ businessId: input.businessId, conversationId: convId, psid: conversation?.psid, response, eventIdentifier });
+        response.message_text = message_text;
+        await saveMessage(input.businessId, convId, 'assistant', response.message_text, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source });
+        const body = { conversationId: convId, messageId: eventIdentifier, reply: response.message_text, controller: 'HUMAN_ACTIVE' };
+        await completeInboundEvent(eventIdentifier, processingToken, body);
+        return { status: 200, body };
     }
     const deterministicReply = input.message ? await getDeterministicResponse(input.businessId, input.message, { psid: conversation?.psid }) : null;
     if (deterministicReply) {

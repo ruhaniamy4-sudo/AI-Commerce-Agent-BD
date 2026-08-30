@@ -16,6 +16,7 @@ import {
     BarChart3,
     UserRoundCog,
     Settings,
+    Sparkles,
 } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { useSession } from 'next-auth/react';
@@ -29,7 +30,8 @@ const navigation = [
     { name: 'Customers', href: '/customers', icon: Users },
     { name: 'Orders', href: '/orders', icon: Package },
     { name: 'Products & Inventory', href: '/products', icon: ShoppingCart },
-    { name: 'Knowledge / AI Training', href: '/knowledge', icon: BookOpen },
+    { name: 'AI Training', href: '/training', icon: Sparkles },
+    { name: 'Business Knowledge', href: '/knowledge', icon: BookOpen },
     { name: 'Test AI', href: '/test-ai', icon: TestTube },
     { name: 'AI Usage', href: '/ai-usage', icon: BarChart3 },
     { name: 'Integrations', href: '/settings/integrations', icon: PlugZap },

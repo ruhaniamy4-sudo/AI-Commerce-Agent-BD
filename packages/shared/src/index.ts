@@ -67,6 +67,18 @@ export interface ProductVariant {
   isActive: boolean;
 }
 
+export type ProductImageSource = 'local' | 'managed' | 'external' | 'invalid' | 'missing';
+export function classifyProductImageSource(value?: string | null): ProductImageSource {
+  const source = String(value || '').trim();
+  if (!source) return 'missing';
+  if (source.startsWith('/') && !source.startsWith('//')) return 'local';
+  try {
+    const url = new URL(source);
+    if (!['http:', 'https:'].includes(url.protocol)) return 'invalid';
+    return url.protocol === 'https:' && url.hostname === 'res.cloudinary.com' ? 'managed' : 'external';
+  } catch { return 'invalid'; }
+}
+
 export interface Product extends TenantEntity {
   _id: ID;
   name: string;
@@ -79,6 +91,7 @@ export interface Product extends TenantEntity {
   specs: Record<string, unknown>;
   compatibilityTags: string[];
   images: string[];
+  imageImports?: Array<{ sourceUrl: string; managedUrl?: string; status: 'managed' | 'mirrored' | 'external_fallback'; errorCode?: string }>;
   warrantyMonths: number;
   isReturnable: boolean;
   returnDays?: number;
@@ -194,6 +207,31 @@ export interface Knowledge extends TenantEntity {
   isPinned: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export type TrainingStatus = 'not_started' | 'learning' | 'needs_review' | 'ready' | 'syncing' | 'error';
+export interface TrainingSource extends TenantEntity {
+  _id: ID; type: 'website' | 'facebook' | 'file' | 'manual'; name: string; url?: string; externalId?: string;
+  status: 'connected' | 'learning' | 'ready' | 'needs_attention' | 'error'; lastSyncedAt?: string;
+  errorCode?: string; errorMessage?: string;
+  stats: { pages: number; discovered: number; productUrls: number; remaining: number; failed: number; fetches: number; aiCalls: number; pagesWithoutAI: number; unchanged: number; changed: number; newPages: number; durationMs: number; products: number; knowledge: number; duplicates: number; conflicts: number; needsAttention: number };
+}
+export interface TrainingRun extends TenantEntity {
+  _id: ID; sourceId: ID; status: 'queued' | 'learning' | 'needs_review' | 'ready' | 'partial' | 'error';
+  stage: string; progress: number; errorMessage?: string;
+  stats: { pages: number; discovered: number; productUrls: number; remaining: number; failed: number; fetches: number; aiCalls: number; pagesWithoutAI: number; unchanged: number; changed: number; newPages: number; durationMs: number; products: number; knowledge: number; duplicates: number; conflicts: number; needsAttention: number };
+}
+export interface TrainingCandidate extends TenantEntity {
+  _id: ID; kind: 'product' | 'knowledge' | 'business';
+  status: 'ready' | 'possible_duplicate' | 'conflict' | 'needs_attention' | 'approved' | 'rejected' | 'imported';
+  title: string; confidence: number; payload: Record<string, any>; duplicateKind?: 'exact' | 'probable';
+  conflictFields: Array<{ field: string; currentValue: unknown; importedValue: unknown }>;
+  source: { type: string; url?: string; externalId?: string; lastSeenAt: string };
+}
+export interface TrainingOverview {
+  training: { status: TrainingStatus; lastSyncedAt?: string; productsImported?: number; knowledgeImported?: number; needsReview?: number };
+  sources: TrainingSource[]; latestRun: TrainingRun | null; candidateCounts: Record<string, number>;
+  suggestedQuestions: string[]; missing: string[];
 }
 
 export interface OrderItem {

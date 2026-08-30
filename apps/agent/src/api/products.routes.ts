@@ -141,7 +141,7 @@ router.post('/products', requireAdministrator, async (req, res) => {
 router.patch('/products/:id', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
-        const { businessId: _ignoredBusinessId, ...updates } = req.body;
+        const { businessId: _ignoredBusinessId, intelligence: _ignoredIntelligence, ...updates } = req.body;
         if (updates.categoryId && !(await Category.exists({ _id: updates.categoryId, isActive: true }))) {
             return res.status(400).json({ error: 'Category does not belong to this business' });
         }

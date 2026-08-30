@@ -17,6 +17,7 @@ import type {
     AnalyticsResponse,
     ErrorLog
 } from '@/types';
+import type { TrainingCandidate, TrainingOverview, TrainingRun, TrainingSource } from '@/types';
 import { apiClient } from './api-client';
 import { TEST_AI_API } from '@edutechs/shared';
 
@@ -94,6 +95,7 @@ export const chatApi = {
             signature: string;
             apiKey: string;
             cloudName: string;
+            folder: string;
         }>('/api/upload/signature', { params: { folder } }),
 };
 
@@ -240,7 +242,7 @@ export const onboardingApi = {
     complete: () => apiClient.post<SetupStatus>('/onboarding/complete'),
 };
 
-export interface TestAiMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: string; }
+export interface TestAiMessage { id: string; role: 'user' | 'assistant'; content: string; imageUrl?: string; createdAt: string; }
 export interface TestAiState {
     conversation: { id: string; controlMode: string; createdAt: string; updatedAt: string } | null;
     messages: TestAiMessage[];
@@ -251,7 +253,7 @@ export const testAiApi = {
     current: () => apiClient.get<TestAiState>(`${TEST_AI_API.base}${TEST_AI_API.currentConversation}`),
     history: () => apiClient.get<TestAiState>(`${TEST_AI_API.base}${TEST_AI_API.currentMessages}`),
     newConversation: () => apiClient.post<TestAiState>(`${TEST_AI_API.base}${TEST_AI_API.conversations}`),
-    send: (message: string) => apiClient.post<TestAiState>(`${TEST_AI_API.base}${TEST_AI_API.currentMessages}`, { message }),
+    send: (message: string, imageUrl?: string) => apiClient.post<TestAiState>(`${TEST_AI_API.base}${TEST_AI_API.currentMessages}`, { message, imageUrl }),
 };
 
 export interface MerchantOverview {
@@ -264,10 +266,30 @@ export interface MerchantOverview {
 }
 export const dashboardApi = { overview: () => apiClient.get<MerchantOverview>('/api/dashboard/overview') };
 
+export const trainingApi = {
+    status: () => apiClient.get<TrainingOverview>('/api/training/status'),
+    candidates: (params?: { status?: string; kind?: string }) => apiClient.get<TrainingCandidate[]>('/api/training/candidates', { params }),
+    connectWebsite: (url: string) => apiClient.post<{ source: TrainingSource; run: TrainingRun }>('/api/training/sources/website', { url }),
+    connectFacebook: (pageId: string) => apiClient.post<{ source: TrainingSource; run: TrainingRun }>('/api/training/sources/facebook', { pageId }),
+    uploadFile: (file: File) => { const body = new FormData(); body.append('file', file); return apiClient.post<{ source: TrainingSource; run: TrainingRun; summary: { products: number; knowledge: number; warnings: string[] } }>('/api/training/sources/file', body); },
+    addManual: (kind: 'faq'|'information', title: string, content: string) => apiClient.post('/api/training/sources/manual', { kind, title, content }),
+    rescan: (id: string) => apiClient.post(`/api/training/sources/${id}/rescan`),
+    retryFailed: (id: string) => apiClient.post(`/api/training/sources/${id}/retry-failed`),
+    approveSafe: () => apiClient.post<{ approved: number; errors: Array<{ id: string; error: string }> }>('/api/training/approve-safe'),
+    approve: (id: string) => apiClient.post<TrainingCandidate>(`/api/training/candidates/${id}/approve`),
+    reject: (id: string) => apiClient.post<TrainingCandidate>(`/api/training/candidates/${id}/reject`),
+    keepSeparate: (id: string) => apiClient.post<TrainingCandidate>(`/api/training/candidates/${id}/keep-separate`),
+    merge: (id: string) => apiClient.post<TrainingCandidate>(`/api/training/candidates/${id}/merge`),
+    resolve: (id: string, decisions: Record<string, { choice: 'current'|'imported'|'custom'; value?: unknown }>) => apiClient.post<TrainingCandidate>(`/api/training/candidates/${id}/resolve`, { decisions }),
+    edit: (id: string, payload: Record<string, unknown>, title?: string) => apiClient.patch<TrainingCandidate>(`/api/training/candidates/${id}`, { payload, title }),
+};
+
 export interface TeamMember { _id: string; role: 'Owner'|'Admin'|'Staff'; status: string; userId: { _id: string; name: string; email: string; status: string } }
-export interface BusinessProfile { _id: string; name: string; businessType?: string; phone?: string; website?: string; preferredLanguage: 'bn'|'en'; currency: 'BDT' }
+export interface BrandVoiceProfile { tone: 'friendly'|'professional'|'casual'|'premium'|'custom'; replyLength: 'short'|'balanced'|'detailed'; language: 'auto'|'bn'|'en'|'banglish'; salesBehavior: 'helpful'|'balanced'|'sales_focused'; emoji: 'none'|'light'|'normal'; customTone?: string; examples: string[] }
+export interface BusinessProfile { _id: string; name: string; businessType?: string; phone?: string; website?: string; preferredLanguage: 'bn'|'en'; currency: 'BDT'; brandVoice?: BrandVoiceProfile }
 export const businessApi = {
     get: () => apiClient.get<BusinessProfile>('/auth/business'), update: (data: Partial<BusinessProfile>) => apiClient.patch<BusinessProfile>('/auth/business', data),
+    updateBrandVoice: (data: Partial<BrandVoiceProfile>) => apiClient.patch<BusinessProfile>('/auth/business/brand-voice', data),
     members: () => apiClient.get<TeamMember[]>('/auth/members'), addMember: (data: {name:string;email:string;password:string;role:string}) => apiClient.post<TeamMember>('/auth/members', data),
     updateMember: (id:string,data:{role?:string;status?:string}) => apiClient.patch<TeamMember>(`/auth/members/${id}`,data),
     channels: () => apiClient.get<Array<{_id:string;platform:string;name:string;status:string}>>('/auth/channels'),

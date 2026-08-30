@@ -8,7 +8,8 @@ import { hashPassword } from '../../auth/password';
 import { User } from '../../models/User';
 import { Business } from '../../models/Business';
 import { BusinessMember } from '../../models/BusinessMember';
-import { signAccountToken } from '../../auth/token';
+import { signAccessToken, signAccountToken } from '../../auth/token';
+import { MerchantActivity } from '../../models/MerchantActivity';
 
 const app = express().use(express.json()).use('/auth', authRoutes);
 const userId = new mongoose.Types.ObjectId();
@@ -61,5 +62,15 @@ describe('merchant account and business onboarding', () => {
         expect(createBusiness).toHaveBeenCalledWith(expect.objectContaining({ name: 'My Shop', currency: 'BDT' }));
         expect(createMembership).toHaveBeenCalledWith(expect.objectContaining({ businessId, userId, role: 'Owner' }));
         expect(response.body.accessToken).toBeTruthy(); expect(response.body.role).toBe('Owner');
+    });
+
+    it('updates only the authenticated tenant brand voice with validated controls', async () => {
+        vi.spyOn(BusinessMember, 'findOne').mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: membershipId, status: 'active' }) } as any);
+        vi.spyOn(User,'findOne').mockReturnValue({select:()=>({lean:()=>Promise.resolve({_id:userId})})} as any);vi.spyOn(Business,'findOne').mockReturnValue({select:()=>({lean:()=>Promise.resolve({_id:businessId})})} as any);vi.spyOn(MerchantActivity,'updateOne').mockResolvedValue({} as any);vi.spyOn(User,'updateOne').mockResolvedValue({} as any);
+        const update = vi.spyOn(Business, 'findByIdAndUpdate').mockResolvedValue({ _id: businessId, brandVoice: { tone: 'casual' } } as any);
+        const token = signAccessToken({ sub: userId.toString(), businessId: businessId.toString(), membershipId: membershipId.toString(), role: 'Owner' });
+        await request(app).patch('/auth/business/brand-voice').set('authorization', `Bearer ${token}`).send({ tone: 'casual', language: 'banglish', examples: ['Ji, kon size lagbe?'] }).expect(200);
+        expect(update).toHaveBeenCalledWith(businessId.toString(), { $set: expect.objectContaining({ 'brandVoice.tone': 'casual', 'brandVoice.language': 'banglish', 'brandVoice.examples': ['Ji, kon size lagbe?'] }) }, expect.objectContaining({ new: true }));
+        await request(app).patch('/auth/business/brand-voice').set('authorization', `Bearer ${token}`).send({ tone: 'unsafe' }).expect(400);
     });
 });
