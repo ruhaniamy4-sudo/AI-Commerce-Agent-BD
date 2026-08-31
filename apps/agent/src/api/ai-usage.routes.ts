@@ -12,9 +12,12 @@ router.get('/ai-usage/summary', async (req, res) => {
             $group: {
                 _id: null,
                 requests: { $sum: 1 },
+                llmCalls: { $sum: { $cond: [{ $in: ['$operationType', ['chat', 'rag-assisted-chat']] }, 1, 0] } },
+                nonGenerationAiCalls: { $sum: { $cond: [{ $in: ['$operationType', ['vision', 'embedding']] }, 1, 0] } },
                 inputTokens: { $sum: { $ifNull: ['$inputTokens', 0] } },
                 outputTokens: { $sum: { $ifNull: ['$outputTokens', 0] } },
                 totalTokens: { $sum: { $ifNull: ['$totalTokens', 0] } },
+                cachedTokens: { $sum: { $ifNull: ['$cachedTokens', 0] } },
                 estimatedCost: { $sum: { $ifNull: ['$estimatedCost', 0] } },
                 unknownCostRequests: {
                     $sum: { $cond: [{ $eq: ['$estimatedCost', null] }, 1, 0] },
@@ -28,6 +31,9 @@ router.get('/ai-usage/summary', async (req, res) => {
         inputTokens: summary?.inputTokens || 0,
         outputTokens: summary?.outputTokens || 0,
         totalTokens: summary?.totalTokens || 0,
+        cachedTokens: summary?.cachedTokens || 0,
+        llmCalls: summary?.llmCalls || 0,
+        nonGenerationAiCalls: summary?.nonGenerationAiCalls || 0,
         estimatedCost: summary?.unknownCostRequests ? null : summary?.estimatedCost || 0,
     });
 });

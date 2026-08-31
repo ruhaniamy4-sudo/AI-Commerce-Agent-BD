@@ -80,16 +80,6 @@ async function main() {
         { upsert: true }
     );
 
-    if (process.env.FB_PAGE_ID) {
-        await BusinessChannel.updateOne(
-            { platform: 'facebook', externalId: process.env.FB_PAGE_ID },
-            {
-                $set: { businessId: business._id, name: 'Facebook Page', status: 'active' },
-            },
-            { upsert: true }
-        );
-    }
-
     await BusinessChannel.updateOne(
         { platform: 'web', externalId: process.env.DEFAULT_WEB_CHANNEL_ID || 'storefront' },
         { $set: { businessId: business._id, name: 'Storefront', status: 'active' } },

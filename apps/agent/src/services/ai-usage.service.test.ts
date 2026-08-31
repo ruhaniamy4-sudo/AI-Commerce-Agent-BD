@@ -11,7 +11,7 @@ describe('AI usage accounting', () => {
     it('uses actual provider token metadata', () => {
         expect(extractUsage({ usage_metadata: {
             input_tokens: 100, output_tokens: 25, total_tokens: 125,
-        } })).toEqual({ inputTokens: 100, outputTokens: 25, totalTokens: 125 });
+        } })).toEqual({ inputTokens: 100, outputTokens: 25, cachedTokens: null, totalTokens: 125 });
     });
 
     it('records usage for the supplied conversation and event without guessing price', async () => {

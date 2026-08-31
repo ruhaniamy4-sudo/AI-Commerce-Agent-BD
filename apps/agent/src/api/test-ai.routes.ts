@@ -30,7 +30,7 @@ async function createOwnedConversation(req: AuthenticatedRequest) {
 }
 
 async function conversationPayload(req: AuthenticatedRequest, conversation: InstanceType<typeof Conversation> | null) {
-    if (!conversation) return { conversation: null, messages: [], usage: { aiReplies: 0, totalTokens: 0, estimatedCost: 0 } };
+    if (!conversation) return { conversation: null, messages: [], usage: { aiReplies: 0, llmCalls: 0, nonGenerationAiCalls: 0, zeroLlmResponses: 0, llmAssistedResponses: 0, providers: [], inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, averageTokensPerReply: 0, estimatedCost: null } };
     const [messages, usageRows] = await Promise.all([
         Message.find({ conversationId: conversation.conversationId }).sort({ createdAt: 1 }).limit(200).lean(),
         AIUsage.find({ conversationId: conversation.conversationId }).lean(),
@@ -40,11 +40,21 @@ async function conversationPayload(req: AuthenticatedRequest, conversation: Inst
         messages: messages.map((message: any) => ({
             id: message._id, role: message.role, content: message.content, createdAt: message.createdAt,
             imageUrl: message.attachments?.find((attachment: any) => String(attachment.type || '').startsWith('image/'))?.url,
+            products: message.metadata?.products || [],
         })),
         usage: {
-            aiReplies: usageRows.length,
+            aiReplies: messages.filter((message: any) => message.role === 'assistant').length,
+            llmCalls: usageRows.filter((row) => ['chat','rag-assisted-chat'].includes(row.operationType)).length,
+            nonGenerationAiCalls: usageRows.filter((row) => ['vision','embedding'].includes(row.operationType)).length,
+            providers: [...new Set(usageRows.map((row) => `${row.provider || 'unknown'}:${row.model}`))],
+            zeroLlmResponses: conversation.metadata?.turnMetrics?.zeroLlmResponses || 0,
+            llmAssistedResponses: conversation.metadata?.turnMetrics?.llmAssistedResponses || 0,
+            inputTokens: usageRows.reduce((sum, row) => sum + (row.inputTokens || 0), 0),
+            outputTokens: usageRows.reduce((sum, row) => sum + (row.outputTokens || 0), 0),
+            cachedTokens: usageRows.reduce((sum, row) => sum + (row.cachedTokens || 0), 0),
             totalTokens: usageRows.reduce((sum, row) => sum + (row.totalTokens || 0), 0),
-            estimatedCost: usageRows.reduce((sum, row) => sum + (row.estimatedCost || 0), 0),
+            averageTokensPerReply: messages.filter((message: any) => message.role === 'assistant').length ? Math.round(usageRows.reduce((sum, row) => sum + (row.totalTokens || 0), 0) / messages.filter((message: any) => message.role === 'assistant').length) : 0,
+            estimatedCost: usageRows.some((row) => row.estimatedCost === null) ? null : usageRows.reduce((sum, row) => sum + (row.estimatedCost || 0), 0),
         },
     };
 }

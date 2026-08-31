@@ -7,6 +7,7 @@ import adminRoutes from './api/admin.routes';
 import agentRoutes from './api/agent.routes';
 import chatRoutes from './api/chat.routes';
 import facebookRoutes from './api/facebook.routes';
+import metaConnectionRoutes, { metaPublicRouter } from './api/meta-connection.routes';
 import googleRoutes from './api/google.routes';
 import productsRoutes from './api/products.routes';
 import ordersRoutes from './api/orders.routes';
@@ -37,7 +38,8 @@ import { TEST_AI_API } from '@edutechs/shared';
 dotenv.config();
 const app = express();
 
-app.use(morgan('tiny'));
+morgan.token('safe-path', (req) => new URL(req.url || '/', 'http://local').pathname);
+app.use(morgan(':method :safe-path :status :res[content-length] - :response-time ms'));
 const configuredOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((origin) => origin.trim())
@@ -76,11 +78,13 @@ app.use('/platform-auth', platformAuthRoutes);
 app.use('/platform-admin', authenticatePlatformAdmin, platformAdminRoutes);
 app.use('/chat', authenticate, chatRoutes);
 app.use('/agent', authenticate, requireAdministrator, agentRoutes);
+app.use('/facebook', metaPublicRouter);
 app.use('/facebook', facebookRoutes);
 app.use('/public/:channelId', resolvePublicChannel, publicRoutes);
 app.use('/google', authenticate, requireAdministrator, googleRoutes);
 app.use('/admin', authenticate, adminRoutes);
 app.use('/api', authenticate, productsRoutes, ordersRoutes, customersRoutes, aiUsageRoutes, courierRoutes);
+app.use('/api', authenticate, metaConnectionRoutes);
 app.use('/api', authenticate, dashboardRoutes);
 app.use('/api/training', authenticate, trainingRoutes);
 app.use('/onboarding', authenticate, onboardingRoutes);

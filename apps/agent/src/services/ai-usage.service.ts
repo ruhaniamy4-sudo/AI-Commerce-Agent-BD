@@ -4,12 +4,13 @@ import { getAIConfiguration } from '../config/runtime';
 
 export function extractUsage(response: any) {
     const usage = response?.usage_metadata || response?.usage || response?.response_metadata?.usage || response?.response_metadata?.tokenUsage;
-    if (!usage) return { inputTokens: null, outputTokens: null, totalTokens: null };
+    if (!usage) return { inputTokens: null, outputTokens: null, cachedTokens: null, totalTokens: null };
     const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? usage.promptTokens ?? null;
     const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? usage.completionTokens ?? null;
     const totalTokens = usage.total_tokens ?? usage.totalTokens ??
         (typeof inputTokens === 'number' && typeof outputTokens === 'number' ? inputTokens + outputTokens : null);
-    return { inputTokens, outputTokens, totalTokens };
+    const cachedTokens = usage.input_token_details?.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens ?? usage.cached_tokens ?? null;
+    return { inputTokens, outputTokens, cachedTokens, totalTokens };
 }
 
 export async function recordAIUsage(params: {

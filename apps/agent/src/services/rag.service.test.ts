@@ -3,9 +3,12 @@ import { HumanMessage } from '@langchain/core/messages';
 import { Customer } from '../models/Customer';
 import { Knowledge } from '../models/Knowledge';
 import { Product } from '../models/Product';
+import { Offering } from '../models/Offering';
 import { withTenantContext } from '../tenancy/context';
 import { formatContextPack, retrieveContext } from './rag.service';
 import { buildKnowledgeSearchProfile, buildProductSearchProfile } from './knowledge-intelligence.service';
+
+vi.mock('./business-awareness.service', () => ({ retrieveRelevantAwareness: vi.fn(async () => []) }));
 
 function knowledgeResult(records: any[]) {
     return { select: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(records) }) }) };
@@ -21,7 +24,12 @@ describe('targeted RAG limits', () => {
         delete process.env.RAG_TOP_K;
     });
 
+    function noOfferings() {
+        vi.spyOn(Offering, 'find').mockReturnValue({ limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }) } as never);
+    }
+
     it('applies the configured low top-k to knowledge and product candidates', async () => {
+        noOfferings();
         process.env.RAG_TOP_K = '2';
         vi.spyOn(Customer, 'findOne').mockReturnValue({ lean: vi.fn().mockResolvedValue(null) } as never);
         const knowledgeLimit = vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) });
@@ -34,11 +42,12 @@ describe('targeted RAG limits', () => {
         await withTenantContext({ businessId, userId: 'u', membershipId: 'm', role: 'Staff' }, () =>
             retrieveContext(businessId, 'customer', 'blue laptop availability', [])
         );
-        expect(knowledgeLimit).toHaveBeenCalledWith(12);
-        expect(productLimit).toHaveBeenCalledWith(30);
+        expect(knowledgeLimit).toHaveBeenCalledWith(6);
+        expect(productLimit).toHaveBeenCalledWith(12);
     });
 
     it('combines conversation memory with Banglish color, size, category, and budget constraints', async () => {
+        noOfferings();
         vi.spyOn(Customer, 'findOne').mockReturnValue({ lean: vi.fn().mockResolvedValue(null) } as never);
         vi.spyOn(Knowledge, 'find').mockReturnValue(knowledgeResult([]) as never);
         const matching: any = { name: 'Black Oxford Shirt', description: 'Cotton shirt', basePrice: 1800, stock: 3, availability: 'in_stock', specs: { color: 'Black' }, variants: [{ name: 'Black XL', stock: 3, isActive: true, specs: { size: 'XL', color: 'Black' } }], intelligence: undefined };
@@ -55,6 +64,7 @@ describe('targeted RAG limits', () => {
     });
 
     it('combines multiple approved knowledge records and labels their authority', async () => {
+        noOfferings();
         vi.spyOn(Customer, 'findOne').mockReturnValue({ lean: vi.fn().mockResolvedValue(null) } as never);
         const charge: any = { title: 'Dhaka delivery charge', content: 'Inside Dhaka delivery is 70 tk.', type: 'POLICY', status: 'active', merchantConfirmed: true, isPinned: true, sourcePriority: 'high' };
         const time: any = { title: 'Delivery time and COD', content: 'Delivery takes 1-2 business days. COD is available.', type: 'FAQ', status: 'active', merchantConfirmed: true };
@@ -73,6 +83,7 @@ describe('targeted RAG limits', () => {
     });
 
     it('puts canonical current product price and stock ahead of approved knowledge', async () => {
+        noOfferings();
         vi.spyOn(Customer, 'findOne').mockReturnValue({ lean: vi.fn().mockResolvedValue(null) } as never);
         vi.spyOn(Knowledge, 'find').mockReturnValue(knowledgeResult([{ title: 'Old catalog note', content: 'Black shirt was 1200', type: 'GUIDE', merchantConfirmed: true }]) as never);
         const product = { name: 'Black Shirt', description: 'Black cotton shirt', basePrice: 1490, stock: 2, availability: 'in_stock', specs: {}, variants: [], merchantConfirmed: true };
@@ -87,6 +98,7 @@ describe('targeted RAG limits', () => {
     });
 
     it('retrieves budget-only discovery and labels a factual alternative when an exact attribute is unavailable', async () => {
+        noOfferings();
         vi.spyOn(Customer, 'findOne').mockReturnValue({ lean: vi.fn().mockResolvedValue(null) } as never);
         vi.spyOn(Knowledge, 'find').mockReturnValue(knowledgeResult([]) as never);
         const navy: any = { name: 'Navy Casual Shirt', description: 'Navy casual shirt', basePrice: 1900, stock: 5, availability: 'in_stock', specs: { color: 'Navy' }, variants: [], merchantConfirmed: true };

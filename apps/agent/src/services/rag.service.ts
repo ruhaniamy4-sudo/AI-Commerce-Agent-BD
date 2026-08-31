@@ -1,10 +1,12 @@
 import { BaseMessage } from '@langchain/core/messages';
 import { Product } from '../models/Product';
+import { Offering } from '../models/Offering';
 import { Knowledge } from '../models/Knowledge';
 import { Customer } from '../models/Customer';
 import { Order } from '../models/Order';
 import { assertTenantBusinessId } from '../tenancy/context';
 import { getRagTopK } from './ai-config';
+import { retrieveRelevantAwareness } from './business-awareness.service';
 import {
     buildKnowledgeSearchProfile,
     buildProductSearchProfile,
@@ -21,7 +23,9 @@ interface RAGContext {
     businessId: string;
     query: QueryIntelligence;
     catalogHits: any[];
+    offeringHits: any[];
     knowledgeEntries: any[];
+    awarenessEntries: any[];
     customerProfile: any;
     lastOrders: any[];
 }
@@ -102,14 +106,18 @@ export const retrieveContext = async (
     // Conversation memory makes a short follow-up such as "black ache?" retain
     // a previously supplied category, size, or budget without another AI call.
     const query = understandQuery(`${recentHumanText(history)} ${messageText}`);
-    if (!query.terms.length) return { businessId, query, catalogHits: [], knowledgeEntries: [], customerProfile: customer || { psid, status: 'guest' }, lastOrders };
+    if (!query.terms.length) return { businessId, query, catalogHits: [], offeringHits: [], knowledgeEntries: [], awarenessEntries: [], customerProfile: customer || { psid, status: 'guest' }, lastOrders };
 
-    const [rawKnowledge, rawProducts] = await Promise.all([
-        Knowledge.find(knowledgeCandidateQuery(query)).select('+intelligence').limit(Math.max(topK * 4, 12)).lean(),
+    const offeringTerms = query.terms.filter((term) => term.length > 2).slice(-30).map(escapedRegex);
+    const [rawKnowledge, rawProducts, rawOfferings, awarenessEntries] = await Promise.all([
+        Knowledge.find(knowledgeCandidateQuery(query)).select('title content type knowledgeDomain sourcePriority isPinned merchantConfirmed +intelligence').limit(Math.max(topK * 3, 6)).lean(),
         Product.find(productCandidateQuery(query))
-            .limit(Math.max(topK * 8, 30))
+            .limit(Math.max(topK * 6, 12))
             .select('name description basePrice salePrice stock availability brand specs variants compatibilityTags isFeatured +intelligence merchantConfirmed updatedAt')
             .lean(),
+        Offering.find({ status: 'active', merchantConfirmed: { $ne: false }, ...(offeringTerms.length ? { $or: [{ name: { $in: offeringTerms } }, { description: { $in: offeringTerms } }, { category: { $in: offeringTerms } }] } : {}) })
+            .limit(Math.max(topK * 3, 6)).lean(),
+        retrieveRelevantAwareness(businessId, messageText, Math.max(2, Math.min(4, topK))),
     ]);
 
     const knowledgeEntries = rawKnowledge
@@ -128,13 +136,15 @@ export const retrieveContext = async (
         .slice(0, query.comparison ? Math.max(2, topK) : topK)
         .map((product: any) => ({ ...product, _matchKind: exact.length ? 'constraint_match' : 'closest_supported_alternative' }));
 
-    return { businessId, query, catalogHits, knowledgeEntries, customerProfile: customer || { psid, status: 'guest' }, lastOrders };
+    const offeringHits = rawOfferings.slice(0, topK);
+    return { businessId, query, catalogHits, offeringHits, knowledgeEntries, awarenessEntries, customerProfile: customer || { psid, status: 'guest' }, lastOrders };
 };
 
 export const formatContextPack = (context: RAGContext): string => JSON.stringify({
     trust_order: [
         'canonical_product_service_inventory',
         'merchant_confirmed_structured_business_information',
+        'verified_active_business_awareness',
         'approved_knowledge',
         'safe_conversational_inference',
     ],
@@ -158,24 +168,33 @@ export const formatContextPack = (context: RAGContext): string => JSON.stringify
         authority: 'CANONICAL_CURRENT_PRODUCT',
         match_kind: product._matchKind,
         name: refineDisplayText(product.name),
-        description: refineDisplayText(product.description).slice(0, 600),
+        description: refineDisplayText(product.description).slice(0, 240),
         price: product.basePrice,
         sale_price: product.salePrice,
         stock: product.stock,
         availability: product.availability,
         brand: product.brand,
-        variants: (product.variants || []).filter((variant: any) => variant.isActive !== false).map((variant: any) => ({ name: variant.name, sku: variant.sku, price: variant.price, stock: variant.stock, specs: variant.specs })).slice(0, 20),
-        specs: product.specs || {},
-        confirmed_attributes: product.intelligence?.facts || [],
-        tags: (product.compatibilityTags || []).slice(0, 20),
+        variants: (product.variants || []).filter((variant: any) => variant.isActive !== false).map((variant: any) => ({ name: variant.name, sku: variant.sku, price: variant.price, stock: variant.stock })).slice(0, 4),
+        key_facts: (product.intelligence?.facts || []).slice(0, 5),
+    })),
+    canonical_offering_matches: context.offeringHits.map((offering) => ({
+        authority: 'CANONICAL_CURRENT_OFFERING', type: offering.offeringType, name: refineDisplayText(offering.name),
+        description: refineDisplayText(offering.description || '').slice(0, 320), category: offering.category,
+        price: offering.price, sale_price: offering.salePrice, currency: offering.currency, availability: offering.availability,
+        attributes: offering.attributes || {}, canonical_url: offering.canonicalUrl,
     })),
     comparison_facts: context.query.comparison ? compareCanonicalProducts(context.catalogHits) : [],
+    current_business_awareness: (context.awarenessEntries || []).map((entry) => ({
+        authority: 'VERIFIED_ACTIVE_AWARENESS', type: entry.type, title: entry.title, summary: entry.summary,
+        target_type: entry.targetType, target: entry.targetReference, claim_type: entry.claimType, claim_value: entry.claimValue,
+        validation: entry.validation, ends_at: entry.endsAt,
+    })),
     approved_knowledge: context.knowledgeEntries.map((entry) => ({
         authority: 'APPROVED_KNOWLEDGE',
         type: entry.type,
         title: refineDisplayText(entry.title),
-        content: refineDisplayText(entry.content).slice(0, 1200),
-        structured_facts: entry.intelligence?.facts || [],
+        content: refineDisplayText(entry.content).slice(0, 500),
+        structured_facts: (entry.intelligence?.facts || []).slice(0, 5),
         risk_level: entry.intelligence?.riskLevel || 'normal',
     })),
     response_constraints: {
@@ -184,4 +203,18 @@ export const formatContextPack = (context: RAGContext): string => JSON.stringify
         supported_interpretations_must_not_be_presented_as_guarantees: true,
         high_stakes_outcomes_must_never_be_guaranteed: true,
     },
-}, null, 2);
+});
+
+export function enforceContextBudget(serialized: string, maximumEstimatedTokens = 1200): string {
+    if (Math.ceil(serialized.length / 4) <= maximumEstimatedTokens) return serialized;
+    try {
+        const value = JSON.parse(serialized);
+        value.current_business_awareness = (value.current_business_awareness || []).slice(0, 1);
+        value.approved_knowledge = (value.approved_knowledge || []).slice(0, 1).map((entry: any) => ({ ...entry, content: String(entry.content || '').slice(0, 280), structured_facts: (entry.structured_facts || []).slice(0, 3) }));
+        value.canonical_catalog_matches = (value.canonical_catalog_matches || []).slice(0, 3).map((entry: any) => ({ ...entry, description: String(entry.description || '').slice(0, 120), variants: (entry.variants || []).slice(0, 2), key_facts: (entry.key_facts || []).slice(0, 3) }));
+        value.canonical_offering_matches = (value.canonical_offering_matches || []).slice(0, 3).map((entry: any) => ({ ...entry, description: String(entry.description || '').slice(0, 180) }));
+        const compact = JSON.stringify(value);
+        if (Math.ceil(compact.length / 4) <= maximumEstimatedTokens) return compact;
+        return JSON.stringify({ query_understanding: value.query_understanding, canonical_catalog_matches: value.canonical_catalog_matches.map((entry: any) => ({ authority: entry.authority, name: entry.name, price: entry.price, sale_price: entry.sale_price, stock: entry.stock, availability: entry.availability, key_facts: entry.key_facts })), canonical_offering_matches: value.canonical_offering_matches, approved_knowledge: value.approved_knowledge, response_constraints: value.response_constraints });
+    } catch { return '{}'; }
+}

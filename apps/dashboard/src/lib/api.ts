@@ -186,6 +186,23 @@ export const courierIntegrationsApi = {
     disconnectSteadfast: () => apiClient.delete<CourierIntegrationStatus>('/api/courier-integrations/steadfast'),
 };
 
+export interface FacebookConnection {
+    id: string; pageName: string; pagePicture?: string; pageCategory?: string;
+    connectionStatus: 'CONNECTED' | 'NEEDS_ATTENTION' | 'REAUTHORIZATION_REQUIRED' | 'DISCONNECTED' | 'ERROR' | 'CONNECTING' | 'NOT_CONNECTED';
+    capabilities: Record<string, boolean>; connectedAt?: string; lastVerifiedAt?: string; lastEventAt?: string;
+    lastInboundAt?: string; lastOutboundAt?: string; reauthorizationRequired: boolean; aiEnabled: boolean; lastErrorCode?: string;
+}
+export interface FacebookPageChoice { choiceId: string; name: string; picture?: string; category?: string }
+export const facebookIntegrationsApi = {
+    list: () => apiClient.get<FacebookConnection[]>('/api/facebook/connections'),
+    start: (includeContent = false) => apiClient.post<{ authorizationUrl: string; expiresAt: string }>('/api/facebook/connect/start', { includeContent }),
+    session: (id: string) => apiClient.get<{ id: string; pages: FacebookPageChoice[] }>(`/api/facebook/connect/session/${id}`),
+    confirm: (sessionId: string, choiceId: string) => apiClient.post<FacebookConnection>('/api/facebook/connect/confirm', { sessionId, choiceId, termsAccepted: true }),
+    verify: (id: string) => apiClient.post<FacebookConnection>(`/api/facebook/connections/${id}/verify`),
+    setAI: (id: string, enabled: boolean) => apiClient.patch<FacebookConnection>(`/api/facebook/connections/${id}/ai`, { enabled }),
+    disconnect: (id: string) => apiClient.delete<FacebookConnection>(`/api/facebook/connections/${id}`),
+};
+
 
 
 export const meetingsApi = {
@@ -226,7 +243,7 @@ export const errorsApi = {
 };
 
 export const aiUsageApi = {
-    summary: (days = 30) => apiClient.get<{ period: { from: string; to: string; days: number }; requests: number; inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number | null }>('/api/ai-usage/summary', { params: { days } }),
+    summary: (days = 30) => apiClient.get<{ period: { from: string; to: string; days: number }; requests: number; llmCalls: number; nonGenerationAiCalls: number; inputTokens: number; outputTokens: number; cachedTokens: number; totalTokens: number; estimatedCost: number | null }>('/api/ai-usage/summary', { params: { days } }),
 };
 
 export interface SetupStatus {
@@ -242,11 +259,11 @@ export const onboardingApi = {
     complete: () => apiClient.post<SetupStatus>('/onboarding/complete'),
 };
 
-export interface TestAiMessage { id: string; role: 'user' | 'assistant'; content: string; imageUrl?: string; createdAt: string; }
+export interface TestAiMessage { id: string; role: 'user' | 'assistant'; content: string; imageUrl?: string; products?: Array<{ id?: string; name: string; price?: number; stock?: number; availability?: string; image?: string }>; createdAt: string; }
 export interface TestAiState {
     conversation: { id: string; controlMode: string; createdAt: string; updatedAt: string } | null;
     messages: TestAiMessage[];
-    usage: { aiReplies: number; totalTokens: number; estimatedCost: number };
+    usage: { aiReplies: number; llmCalls: number; nonGenerationAiCalls: number; zeroLlmResponses: number; llmAssistedResponses: number; providers: string[]; inputTokens: number; outputTokens: number; cachedTokens: number; totalTokens: number; averageTokensPerReply: number; estimatedCost: number | null };
     reply?: string;
 }
 export const testAiApi = {
@@ -268,14 +285,21 @@ export const dashboardApi = { overview: () => apiClient.get<MerchantOverview>('/
 
 export const trainingApi = {
     status: () => apiClient.get<TrainingOverview>('/api/training/status'),
-    candidates: (params?: { status?: string; kind?: string }) => apiClient.get<TrainingCandidate[]>('/api/training/candidates', { params }),
+    candidates: (params?: { status?: string; kind?: string; availability?: string; category?: string; search?: string; sourceId?: string; page?: number; limit?: number }) => apiClient.get<{ data: TrainingCandidate[]; pagination: { page: number; limit: number; total: number; totalPages: number }; availabilityCounts: Record<string, number>; categories: string[] }>('/api/training/candidates', { params }),
     connectWebsite: (url: string) => apiClient.post<{ source: TrainingSource; run: TrainingRun }>('/api/training/sources/website', { url }),
-    connectFacebook: (pageId: string) => apiClient.post<{ source: TrainingSource; run: TrainingRun }>('/api/training/sources/facebook', { pageId }),
+    connectFacebook: (connectionId: string) => apiClient.post<{ source: TrainingSource; run: TrainingRun }>('/api/training/sources/facebook', { connectionId }),
+    addReference: (url: string, label?: string) => apiClient.post<TrainingSource>('/api/training/sources/reference', { url, label }),
+    updateBusinessProfile: (data: { businessType: string; businessSubType?: string; customBusinessType?: string; secondaryBusinessTypes?: string[] }) => apiClient.patch('/api/training/business-profile', data),
+    confirmBusinessType: (businessType?: string) => apiClient.post('/api/training/business-profile/confirm', { businessType }),
     uploadFile: (file: File) => { const body = new FormData(); body.append('file', file); return apiClient.post<{ source: TrainingSource; run: TrainingRun; summary: { products: number; knowledge: number; warnings: string[] } }>('/api/training/sources/file', body); },
     addManual: (kind: 'faq'|'information', title: string, content: string) => apiClient.post('/api/training/sources/manual', { kind, title, content }),
     rescan: (id: string) => apiClient.post(`/api/training/sources/${id}/rescan`),
     retryFailed: (id: string) => apiClient.post(`/api/training/sources/${id}/retry-failed`),
-    approveSafe: () => apiClient.post<{ approved: number; errors: Array<{ id: string; error: string }> }>('/api/training/approve-safe'),
+    setImportPreference: (id: string, importPreference: 'in_stock_only'|'all'|'ask_during_review') => apiClient.patch<TrainingSource>(`/api/training/sources/${id}/import-preference`, { importPreference }),
+    clearSourceStaged: (id: string) => apiClient.post<{ cleared: number }>(`/api/training/sources/${id}/clear-staged`, { confirm: 'CLEAR_STAGED_CANDIDATES' }),
+    startFresh: (id: string) => apiClient.post(`/api/training/sources/${id}/start-fresh`, { confirm: 'START_FRESH_SCAN' }),
+    approveSafe: (data?: { ids?: string[]; filter?: Record<string, string>; retryFailed?: boolean }) => apiClient.post<{ processed: number; approved: number; failed: number; remaining: number; batchSize: number; errors: Array<{ id: string; error: string }> }>('/api/training/approve-safe', data || {}),
+    clearCandidates: (data: { ids?: string[]; filter?: Record<string, string>; confirm: 'CLEAR_STAGED_CANDIDATES' }) => apiClient.post<{ cleared: number }>('/api/training/candidates/clear', data),
     approve: (id: string) => apiClient.post<TrainingCandidate>(`/api/training/candidates/${id}/approve`),
     reject: (id: string) => apiClient.post<TrainingCandidate>(`/api/training/candidates/${id}/reject`),
     keepSeparate: (id: string) => apiClient.post<TrainingCandidate>(`/api/training/candidates/${id}/keep-separate`),

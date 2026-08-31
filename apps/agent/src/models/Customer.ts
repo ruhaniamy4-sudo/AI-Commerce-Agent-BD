@@ -4,6 +4,7 @@ import { tenantPlugin } from '../tenancy/plugin';
 export interface ICustomer extends Document {
     businessId: mongoose.Types.ObjectId;
     psid: string; // Page Scoped ID from Facebook
+    channelPageId?: string;
     name?: string;
     phone?: string;
     email?: string;
@@ -58,6 +59,7 @@ const AddressSubSchema = new Schema({
 const CustomerSchema = new Schema(
     {
         psid: { type: String, required: true },
+        channelPageId: { type: String, index: true },
         name: { type: String, trim: true },
         phone: { type: String, trim: true },
         email: {
@@ -97,6 +99,7 @@ CustomerSchema.plugin(tenantPlugin);
 
 // Indexes
 CustomerSchema.index({ businessId: 1, psid: 1 }, { unique: true });
+CustomerSchema.index({ businessId: 1, channelPageId: 1, psid: 1 });
 CustomerSchema.index(
     { businessId: 1, phone: 1 },
     { partialFilterExpression: { phone: { $type: 'string' } } }

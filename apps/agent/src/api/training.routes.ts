@@ -6,6 +6,7 @@ import { Business } from '../models/Business';
 import { BusinessChannel } from '../models/BusinessChannel';
 import { Knowledge } from '../models/Knowledge';
 import { Product } from '../models/Product';
+import { Offering } from '../models/Offering';
 import { TrainingCandidate } from '../models/TrainingCandidate';
 import { TrainingRun } from '../models/TrainingRun';
 import { TrainingSource } from '../models/TrainingSource';
@@ -13,13 +14,34 @@ import { tenantDocument, withTenantContext } from '../tenancy/context';
 import { approveCandidate, runWebsiteIngestion, stageCandidates } from '../services/ingestion/business-ingestion.service';
 import { DEFAULT_MAX_TRAINING_FILE_BYTES, extractFile, FileIngestionError, validateTrainingFile } from '../services/ingestion/file-ingestion.service';
 import { FacebookPermissionError, importAuthorizedFacebookPage } from '../services/ingestion/facebook-ingestion.service';
+import { syncAuthorizedFacebookAwareness } from '../services/ingestion/facebook-awareness.service';
 import { canonicalUrl, stableFingerprint } from '../services/ingestion/normalization';
 import { validatePublicUrl } from '../services/ingestion/url-security';
+import { BusinessAwareness } from '../models/BusinessAwareness';
+import { upsertBusinessAwareness } from '../services/business-awareness.service';
+import { ingestWebsite } from '../services/ingestion/website-ingestion.service';
+import { BUSINESS_TYPE_OPTIONS, getFaqTemplates, getLeadFields, getTrainingPlan, normalizeBusinessType, safeReferenceInsights, testPrompts } from '../services/adaptive-training.service';
 
 const router = Router();
 router.use(requireAdministrator);
 const maxTrainingFileBytes = DEFAULT_MAX_TRAINING_FILE_BYTES;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxTrainingFileBytes, files: 1 } });
+const APPROVAL_BATCH_SIZE = 25;
+
+export function candidateFilter(input: Record<string, any>, options: { approvable?: boolean } = {}) {
+    const query: Record<string, any> = {};
+    if (input.kind) query.kind = input.kind;
+    if (input.sourceId) query.sourceId = input.sourceId;
+    if (input.availability && input.availability !== 'all') query['payload.availability'] = input.availability;
+    if (input.category && input.category !== 'all') query['payload.category'] = String(input.category).slice(0, 120);
+    if (input.search) {
+        const escaped = String(input.search).trim().slice(0, 120).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (escaped) query.$or = [{ title: { $regex: escaped, $options: 'i' } }, { 'payload.sku': { $regex: escaped, $options: 'i' } }];
+    }
+    if (options.approvable) query.status = 'ready';
+    else if (input.status && input.status !== 'all') query.status = input.status === 'approved' ? 'imported' : input.status;
+    return query;
+}
 
 async function createRun(source: InstanceType<typeof TrainingSource>) {
     return TrainingRun.create(tenantDocument({ sourceId: source._id, status: 'queued', stage: 'Preparing your SellPilot...', progress: 0 }));
@@ -34,22 +56,74 @@ async function markSourceFailure(businessId: string, sourceId: string) {
 }
 
 router.get('/status', async (req: AuthenticatedRequest, res) => {
-    const [business, sources, latestRun, groups, productSamples, knowledgeSamples] = await Promise.all([
+    const [business, sources, latestRun, groups, productSamples, knowledgeSamples, offeringSamples] = await Promise.all([
         Business.findById(req.auth!.businessId).lean(), TrainingSource.find().sort({ updatedAt: -1 }).lean(),
         TrainingRun.findOne().sort({ createdAt: -1 }).lean(),
         TrainingCandidate.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
-        Product.find({ isActive: true }).limit(3).select('name variants').lean(), Knowledge.find({ status: 'active' }).limit(5).select('title type').lean(),
+        Product.find({ isActive: true }).limit(3).select('name variants').lean(), Knowledge.find({ status: 'active' }).limit(100).select('title type content knowledgeDomain').lean(),
+        Offering.find({ status: 'active' }).limit(20).select('name offeringType description').lean(),
     ]);
     const candidateCounts = Object.fromEntries(groups.map((group: any) => [group._id, group.count]));
-    const suggestedQuestions = [
-        ...productSamples.map((product: any) => `${product.name} stock e ache?`),
-        ...knowledgeSamples.map((entry: any) => entry.type === 'POLICY' ? `${entry.title} ki?` : entry.title),
-    ].slice(0, 4);
-    const missing: string[] = [];
-    if (!business?.phone) missing.push('What number should customers contact for support?');
-    if (!knowledgeSamples.some((entry: any) => /delivery/i.test(entry.title))) missing.push('Inside and outside Dhaka delivery charge?');
-    if (!knowledgeSamples.some((entry: any) => /return|exchange/i.test(entry.title))) missing.push('How many days can customers request a return or exchange?');
-    res.json({ training: business?.training || { status: 'not_started' }, sources, latestRun, candidateCounts, suggestedQuestions, missing });
+    const plan = getTrainingPlan(business || {}, {
+        facts: knowledgeSamples.map((entry: any) => `${entry.title} ${entry.content} ${entry.knowledgeDomain || ''}`).join(' '),
+        productCount: productSamples.length, offeringCount: offeringSamples.length,
+    });
+    const suggestedQuestions = testPrompts(business?.businessType);
+    res.json({
+        training: business?.training || { status: 'not_started' }, sources, latestRun, candidateCounts,
+        businessProfile: { businessType: business?.businessType, businessSubType: business?.businessSubType, customBusinessType: business?.customBusinessType, secondaryBusinessTypes: business?.secondaryBusinessTypes || [], status: business?.businessTypeStatus || 'unconfirmed', inference: business?.businessTypeInference },
+        businessTypeOptions: BUSINESS_TYPE_OPTIONS, gaps: plan.gaps, missing: plan.gaps.map((gap) => gap.question),
+        readiness: { ready: plan.ready, critical: plan.gaps.filter((gap) => gap.priority === 'CRITICAL').length, important: plan.gaps.filter((gap) => gap.priority === 'IMPORTANT').length, optional: plan.gaps.filter((gap) => gap.priority === 'OPTIONAL').length },
+        faqTemplates: getFaqTemplates(business?.businessType), leadFields: getLeadFields(business?.businessType), suggestedQuestions,
+    });
+});
+
+router.patch('/business-profile', async (req: AuthenticatedRequest, res) => {
+    const businessType = normalizeBusinessType(req.body?.businessType);
+    if (!businessType) return res.status(400).json({ error: 'Choose a supported business type' });
+    const secondaryBusinessTypes = Array.isArray(req.body?.secondaryBusinessTypes)
+        ? [...new Set(req.body.secondaryBusinessTypes.map(normalizeBusinessType).filter(Boolean))].filter((value) => value !== businessType).slice(0, 4)
+        : [];
+    const business = await Business.findByIdAndUpdate(req.auth!.businessId, { $set: {
+        businessType, businessSubType: String(req.body?.businessSubType || '').trim().slice(0, 120),
+        customBusinessType: String(req.body?.customBusinessType || '').trim().slice(0, 160), secondaryBusinessTypes,
+        businessTypeStatus: 'confirmed',
+    } }, { new: true, runValidators: true });
+    res.json(business);
+});
+
+router.post('/business-profile/confirm', async (req: AuthenticatedRequest, res) => {
+    const current = await Business.findById(req.auth!.businessId).lean();
+    const businessType = normalizeBusinessType(req.body?.businessType || current?.businessTypeInference?.value || current?.businessType);
+    if (!businessType) return res.status(400).json({ error: 'There is no inferred business type to confirm' });
+    const business = await Business.findByIdAndUpdate(req.auth!.businessId, { $set: { businessType, businessTypeStatus: 'confirmed' } }, { new: true, runValidators: true });
+    res.json(business);
+});
+
+router.post('/sources/reference', async (req: AuthenticatedRequest, res) => {
+    const safe = await validatePublicUrl(String(req.body?.url || ''));
+    const url = canonicalUrl(safe.toString())!;
+    const fingerprint = stableFingerprint(`reference:${safe.origin}${safe.pathname}`);
+    const source = await TrainingSource.findOneAndUpdate(
+        { type: 'reference', fingerprint },
+        { $set: { name: String(req.body?.label || safe.hostname).slice(0, 160), url, status: 'learning', errorCode: null, errorMessage: null }, $setOnInsert: tenantDocument({ type: 'reference', fingerprint }) },
+        { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+    await Business.findByIdAndUpdate(req.auth!.businessId, { $addToSet: { businessReferences: { url, label: String(req.body?.label || safe.hostname).slice(0, 160), sourceId: source._id } } });
+    runDetached(req, async () => {
+        try {
+            const extracted = await ingestWebsite(url);
+            const structureText = [
+                ...extracted.products.flatMap((item) => [item.name, item.category, item.description]),
+                ...extracted.knowledge.flatMap((item) => [item.title, item.topic, item.content]),
+            ].filter(Boolean).join(' ');
+            const business = await Business.findById(req.auth!.businessId).lean();
+            await TrainingSource.findByIdAndUpdate(source._id, { $set: { status: 'ready', lastSyncedAt: new Date(), referenceInsights: safeReferenceInsights(structureText, business?.businessType) } });
+        } catch (error) {
+            await TrainingSource.findByIdAndUpdate(source._id, { $set: { status: 'error', errorCode: 'REFERENCE_SCAN_FAILED', errorMessage: 'This reference could not be analyzed safely.' } });
+        }
+    });
+    res.status(202).json(source);
 });
 
 router.post('/sources/website', async (req: AuthenticatedRequest, res) => {
@@ -73,6 +147,34 @@ router.post('/sources/:id/rescan', async (req: AuthenticatedRequest, res) => {
     if (source.type === 'website') runDetached(req, () => runWebsiteIngestion(req.auth!.businessId, source._id.toString(), run._id.toString()));
     else return res.status(409).json({ error: 'Use the relevant Facebook or file action to refresh this source' });
     res.status(202).json({ source, run });
+});
+
+router.patch('/sources/:id/import-preference', async (req: AuthenticatedRequest, res) => {
+    const preference = String(req.body?.importPreference || '');
+    if (!['in_stock_only', 'all', 'ask_during_review'].includes(preference)) return res.status(400).json({ error: 'Choose a valid product import preference' });
+    const source = await TrainingSource.findByIdAndUpdate(req.params.id, { $set: { importPreference: preference } }, { new: true });
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+    await Business.findByIdAndUpdate(req.auth!.businessId, { $set: { 'training.importPreference': preference } });
+    res.json(source);
+});
+
+router.post('/sources/:id/clear-staged', async (req: AuthenticatedRequest, res) => {
+    if (req.body?.confirm !== 'CLEAR_STAGED_CANDIDATES') return res.status(400).json({ error: 'Confirmation is required' });
+    const source = await TrainingSource.findById(req.params.id).select('_id').lean();
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+    const result = await TrainingCandidate.deleteMany({ sourceId: source._id, status: { $nin: ['imported','approved','approving'] } });
+    res.json({ cleared: result.deletedCount });
+});
+
+router.post('/sources/:id/start-fresh', async (req: AuthenticatedRequest, res) => {
+    if (req.body?.confirm !== 'START_FRESH_SCAN') return res.status(400).json({ error: 'Confirmation is required' });
+    const source = await TrainingSource.findById(req.params.id);
+    if (!source || source.type !== 'website') return res.status(404).json({ error: 'Website source not found' });
+    const cleared = await TrainingCandidate.deleteMany({ sourceId: source._id, status: { $nin: ['imported','approved','approving'] } });
+    source.crawlPages = []; await source.save();
+    const run = await createRun(source);
+    runDetached(req, () => runWebsiteIngestion(req.auth!.businessId, source._id.toString(), run._id.toString()));
+    res.status(202).json({ source, run, cleared: cleared.deletedCount });
 });
 
 router.post('/sources/:id/retry-failed', async (req: AuthenticatedRequest, res) => {
@@ -112,10 +214,11 @@ router.post('/sources/file', upload.single('file'), async (req: AuthenticatedReq
 });
 
 router.post('/sources/facebook', async (req: AuthenticatedRequest, res) => {
-    const pageId = String(req.body?.pageId || '').trim();
-    if (!pageId) return res.status(400).json({ error: 'Choose an authorized Facebook Page' });
-    const channel = await BusinessChannel.findOne({ businessId: req.auth!.businessId, platform: 'facebook', externalId: pageId, status: 'active' }).lean();
+    const connectionId = String(req.body?.connectionId || '').trim();
+    if (!connectionId) return res.status(400).json({ error: 'Choose an authorized Facebook Page' });
+    const channel = await BusinessChannel.findOne({ _id: connectionId, businessId: req.auth!.businessId, platform: 'facebook', status: 'active', connectionStatus: 'CONNECTED' }).lean();
     if (!channel) return res.status(409).json({ error: 'Facebook import requires an authorized Page connection' });
+    const pageId = channel.externalId;
     const fingerprint = stableFingerprint(`facebook:${pageId}`);
     const source = await TrainingSource.findOneAndUpdate(
         { type: 'facebook', fingerprint },
@@ -126,7 +229,16 @@ router.post('/sources/facebook', async (req: AuthenticatedRequest, res) => {
     runDetached(req, async () => {
         await Business.findByIdAndUpdate(req.auth!.businessId, { $set: { 'training.status': 'learning' } });
         await TrainingRun.findByIdAndUpdate(run._id, { $set: { status: 'learning', stage: 'Reading your Facebook Page...', progress: 30, startedAt: new Date() } });
-        try { await stageCandidates(req.auth!.businessId, source._id.toString(), run._id.toString(), await importAuthorizedFacebookPage(pageId)); }
+        try {
+            await stageCandidates(req.auth!.businessId, source._id.toString(), run._id.toString(), await importAuthorizedFacebookPage(pageId));
+            try {
+                const sync = await syncAuthorizedFacebookAwareness(req.auth!.businessId, pageId, source.syncCheckpoint?.lastProcessedPostAt);
+                await TrainingSource.findByIdAndUpdate(source._id, { $set: { syncCheckpoint: sync.checkpoint } });
+            } catch (awarenessError: any) {
+                const permissionDenied = awarenessError?.response?.status === 403 || awarenessError?.response?.data?.error?.code === 100 || awarenessError?.message === 'META_PERMISSION_REQUIRED';
+                await TrainingSource.findByIdAndUpdate(source._id, { $set: { status: 'needs_attention', errorCode: permissionDenied ? 'META_POSTS_PERMISSION_REQUIRED' : 'FACEBOOK_AWARENESS_SYNC_FAILED', errorMessage: permissionDenied ? 'Meta Page posts permission is required for automatic awareness.' : 'Facebook business information imported, but recent post awareness could not sync.' } });
+            }
+        }
         catch (error) {
             const permission = error instanceof FacebookPermissionError;
             const message = error instanceof Error ? error.message : 'Facebook import is unavailable';
@@ -155,11 +267,40 @@ router.post('/sources/manual', async (req: AuthenticatedRequest, res) => {
     res.status(201).json({ source, run, stats });
 });
 
-router.get('/candidates', async (req, res) => {
-    const query: Record<string, unknown> = {};
+router.get('/awareness', async (req, res) => {
+    const query: Record<string, any> = {};
     if (req.query.status) query.status = req.query.status;
-    if (req.query.kind) query.kind = req.query.kind;
-    res.json(await TrainingCandidate.find(query).sort({ status: 1, createdAt: -1 }).limit(500).lean());
+    res.json(await BusinessAwareness.find(query).sort({ publishedAt: -1, createdAt: -1 }).limit(100).lean());
+});
+
+router.post('/awareness', async (req: AuthenticatedRequest, res) => {
+    const input = req.body || {};
+    if (!input.title || !input.summary || !input.type || !input.targetType) return res.status(400).json({ error: 'Awareness title, summary, type, and target are required' });
+    const awareness = await upsertBusinessAwareness(req.auth!.businessId, { ...input, sourceType: 'merchant', sourceId: input.sourceId || `merchant:${crypto.randomUUID()}`, startsAt: input.startsAt ? new Date(input.startsAt) : undefined, endsAt: input.endsAt ? new Date(input.endsAt) : undefined });
+    res.status(201).json(awareness);
+});
+
+router.post('/awareness/:id/activate', async (req: AuthenticatedRequest, res) => {
+    const awareness = await BusinessAwareness.findById(req.params.id);
+    if (!awareness) return res.status(404).json({ error: 'Awareness item not found' });
+    if (awareness.endsAt && awareness.endsAt <= new Date()) return res.status(409).json({ error: 'Expired awareness cannot be activated' });
+    if (awareness.validation === 'MISMATCH' && req.body?.confirmCatalogMismatch !== true) return res.status(409).json({ error: awareness.validationNote || 'Catalog mismatch requires explicit merchant confirmation' });
+    awareness.status = 'ACTIVE';
+    if (req.body?.confirmCatalogMismatch === true) { awareness.validation = 'VERIFIED'; awareness.validationNote = 'Explicitly confirmed by merchant after catalog mismatch review'; }
+    await awareness.save(); res.json(awareness);
+});
+
+router.get('/candidates', async (req, res) => {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+    const query = candidateFilter(req.query as Record<string, any>);
+    const [data, total, availability, categories] = await Promise.all([
+        TrainingCandidate.find(query).sort({ status: 1, createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+        TrainingCandidate.countDocuments(query),
+        TrainingCandidate.aggregate([{ $match: { kind: 'product' } }, { $group: { _id: '$payload.availability', count: { $sum: 1 } } }]),
+        TrainingCandidate.distinct('payload.category', { kind: 'product' }),
+    ]);
+    res.json({ data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }, availabilityCounts: Object.fromEntries(availability.map((item: any) => [item._id || 'unknown', item.count])), categories: categories.filter(Boolean).sort() });
 });
 
 router.patch('/candidates/:id', async (req, res) => {
@@ -207,13 +348,31 @@ router.post('/candidates/:id/approve', async (req: AuthenticatedRequest, res) =>
     catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Could not approve item' }); }
 });
 router.post('/approve-safe', async (req: AuthenticatedRequest, res) => {
-    const candidates = await TrainingCandidate.find({ status: 'ready' }).sort({ createdAt: 1 });
+    const body = req.body || {};
+    const selectedIds = Array.isArray(body.ids) ? [...new Set(body.ids.map(String))].slice(0, APPROVAL_BATCH_SIZE) : [];
+    const filter = candidateFilter({ ...(body.filter || {}), kind: body.filter?.kind || 'product' }, { approvable: true });
+    if (body.retryFailed) filter.status = 'failed';
+    if (selectedIds.length) filter._id = { $in: selectedIds };
+    const candidates = await TrainingCandidate.find(filter).sort({ createdAt: 1 }).limit(APPROVAL_BATCH_SIZE).select('_id').lean();
     let approved = 0; const errors: Array<{ id: string; error: string }> = [];
     for (const candidate of candidates) {
         try { await approveCandidate(req.auth!.businessId, candidate._id.toString(), req.auth!.userId); approved += 1; }
         catch (error) { errors.push({ id: candidate._id.toString(), error: error instanceof Error ? error.message : 'Approval failed' }); }
     }
-    res.json({ approved, errors });
+    const remaining = selectedIds.length
+        ? Math.max(0, selectedIds.length - candidates.length)
+        : await TrainingCandidate.countDocuments(filter);
+    res.json({ processed: candidates.length, approved, failed: errors.length, errors, remaining, batchSize: APPROVAL_BATCH_SIZE });
+});
+
+router.post('/candidates/clear', async (req: AuthenticatedRequest, res) => {
+    if (req.body?.confirm !== 'CLEAR_STAGED_CANDIDATES') return res.status(400).json({ error: 'Confirmation is required' });
+    const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map(String))].slice(0, 5_000) : [];
+    const query = candidateFilter(req.body?.filter || {});
+    query.status = { $nin: ['imported', 'approved', 'approving'] };
+    if (ids.length) query._id = { $in: ids };
+    const result = await TrainingCandidate.deleteMany(query);
+    res.json({ cleared: result.deletedCount });
 });
 
 router.use((error: any, _req: any, res: any, _next: any) => {

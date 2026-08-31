@@ -11,6 +11,7 @@ import { invokeIfAIActive, isAIActive } from './conversation-control.service';
 import { getDeterministicResponse } from './deterministic-response.service';
 import { detectConversationLanguage, shouldHandoffToHuman } from './conversation-intelligence.service';
 import { evaluateBusinessAIAccess } from './business-ai-access.service';
+import { recordConversationTurn } from './turn-metrics.service';
 
 export interface ChatTurnInput {
     businessId: string;
@@ -65,10 +66,15 @@ export async function processChatTurn(input: ChatTurnInput) {
         await completeInboundEvent(eventIdentifier, processingToken, body);
         return { status: 200, body };
     }
-    const deterministicReply = input.message ? await getDeterministicResponse(input.businessId, input.message, { psid: conversation?.psid }) : null;
-    if (deterministicReply) {
-        await saveMessage(input.businessId, convId, 'assistant', deterministicReply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source });
-        const body = { conversationId: convId, messageId: eventIdentifier, reply: deterministicReply, deterministic: true };
+    const deterministicResult = input.message ? await getDeterministicResponse(input.businessId, input.message, { psid: conversation?.psid, conversationId: convId }) : null;
+    if (deterministicResult) {
+        const deterministicReply = typeof deterministicResult === 'string' ? deterministicResult : deterministicResult.message_text;
+        const products = typeof deterministicResult === 'string' ? [] : deterministicResult.suggested_products || [];
+        await Promise.all([
+            saveMessage(input.businessId, convId, 'assistant', deterministicReply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source, products }),
+            recordConversationTurn(input.businessId, convId, 'zero_llm', typeof deterministicResult === 'string' ? undefined : deterministicResult.memory),
+        ]);
+        const body = { conversationId: convId, messageId: eventIdentifier, reply: deterministicReply, products, deterministic: true, llmCalls: 0 };
         await completeInboundEvent(eventIdentifier, processingToken, body);
         return { status: 200, body };
     }
@@ -80,6 +86,15 @@ export async function processChatTurn(input: ChatTurnInput) {
                 await completeInboundEvent(eventIdentifier, processingToken, body);
                 return { status: 202, body };
             }
+            const products = imageResult.matchedProducts.slice(0, 3).map((product: any) => ({ id: String(product._id), name: product.name, price: product.salePrice ?? product.basePrice, availability: product.availability, stock: product.stock, image: product.images?.[0] }));
+            const reply = products.length ? `I found ${products.length} visually similar product${products.length === 1 ? '' : 's'}.` : 'I could not confirm a catalog match from this image.';
+            await Promise.all([
+                saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source }),
+                recordConversationTurn(input.businessId, convId, 'zero_llm', products.length ? { activeProductId: products[0].id, recentProductIds: products.map((product: any) => product.id) } : undefined),
+            ]);
+            const body = { conversationId: convId, messageId: eventIdentifier, reply, products, deterministic: true, llmCalls: 0, nonGenerationAiCalls: 2 };
+            await completeInboundEvent(eventIdentifier, processingToken, body);
+            return { status: 200, body };
         } catch (error) {
             console.error('Error processing image in chat pipeline:', error);
         }
@@ -101,8 +116,9 @@ export async function processChatTurn(input: ChatTurnInput) {
     }
     await executeAgentAction({ businessId: input.businessId, conversationId: convId, psid: conversation?.psid, response: agentResponse, eventIdentifier });
     const reply = agentResponse.message_text;
-    if (reply) await saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source });
-    const body = { conversationId: convId, messageId: eventIdentifier, reply };
+    if (reply) await saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source, products: agentResponse.suggested_products || [] });
+    await recordConversationTurn(input.businessId, convId, 'llm_assisted');
+    const body = { conversationId: convId, messageId: eventIdentifier, reply, products: agentResponse.suggested_products || [], deterministic: false, llmCalls: 1 };
     await completeInboundEvent(eventIdentifier, processingToken, body);
     return { status: 200, body };
     } catch (error) {

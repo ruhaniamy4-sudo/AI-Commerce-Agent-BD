@@ -10,8 +10,8 @@ describe('tenant conversation intelligence', () => {
     it('uses business-specific controls without leaking another tenant voice', () => {
         const first = buildConversationInstructions({ business: { name: 'A', brandVoice: { tone: 'premium', emoji: 'none' } }, customerText: 'price koto?', history: [], channel: 'facebook' });
         const second = buildConversationInstructions({ business: { name: 'B', brandVoice: { tone: 'casual', emoji: 'normal' } }, customerText: 'price koto?', history: [], channel: 'facebook' });
-        expect(first.prompt).toContain('Tone: premium'); expect(first.prompt).not.toContain('Tone: casual');
-        expect(second.prompt).toContain('Tone: casual'); expect(second.prompt).not.toContain('Business: A');
+        expect(first.prompt).toContain('banglish, premium'); expect(first.prompt).not.toContain('banglish, casual');
+        expect(second.prompt).toContain('banglish, casual'); expect(second.prompt).not.toContain('Business: A');
     });
 
     it('adapts gradually only after enough approved examples', () => {
@@ -46,13 +46,13 @@ describe('tenant conversation intelligence', () => {
 
     it('switches service businesses away from ecommerce interrogation', () => {
         const result = buildConversationInstructions({ business: { businessType: 'Visa consultancy' }, customerText: 'Canada student visa niye jante chai', history: [], channel: 'web-widget' });
-        expect(result.serviceBusiness).toBe(true); expect(result.prompt).toContain('not cart or stock questions');
+        expect(result.serviceBusiness).toBe(true); expect(result.prompt).toContain('do not ask cart or stock questions');
     });
 
     it('keeps the same core behavior across channels while adapting presentation', () => {
         const base = { business: { name: 'Shop' }, customerText: 'black ta available?', history: [] as HumanMessage[] };
         const web = buildConversationInstructions({ ...base, channel: 'web-widget' }); const messenger = buildConversationInstructions({ ...base, channel: 'facebook' });
-        expect(web.stage).toBe(messenger.stage); expect(web.language).toBe(messenger.language); expect(web.prompt).toContain('Channel: web-widget'); expect(messenger.prompt).toContain('Channel: facebook');
+        expect(web.stage).toBe(messenger.stage); expect(web.language).toBe(messenger.language); expect(web.prompt).toContain('channel: web-widget'); expect(messenger.prompt).toContain('channel: facebook');
     });
 
     it('removes generic AI phrasing and unsupported commercial claims', () => {

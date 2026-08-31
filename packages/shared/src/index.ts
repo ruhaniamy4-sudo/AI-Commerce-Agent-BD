@@ -1,6 +1,7 @@
 export type ID = string;
 export type BusinessRole = 'Owner' | 'Admin' | 'Staff';
 export const PASSWORD_MIN_LENGTH = 8;
+export const MERCHANT_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
 export const TEST_AI_API = {
   base: '/api/test-ai',
@@ -211,9 +212,11 @@ export interface Knowledge extends TenantEntity {
 
 export type TrainingStatus = 'not_started' | 'learning' | 'needs_review' | 'ready' | 'syncing' | 'error';
 export interface TrainingSource extends TenantEntity {
-  _id: ID; type: 'website' | 'facebook' | 'file' | 'manual'; name: string; url?: string; externalId?: string;
+  _id: ID; type: 'website' | 'facebook' | 'file' | 'manual' | 'reference'; name: string; url?: string; externalId?: string;
   status: 'connected' | 'learning' | 'ready' | 'needs_attention' | 'error'; lastSyncedAt?: string;
   errorCode?: string; errorMessage?: string;
+  referenceInsights?: { businessTypeHint?: string; sectionIdeas: string[]; questionIdeas: string[]; safety: string };
+  importPreference?: 'in_stock_only' | 'all' | 'ask_during_review';
   stats: { pages: number; discovered: number; productUrls: number; remaining: number; failed: number; fetches: number; aiCalls: number; pagesWithoutAI: number; unchanged: number; changed: number; newPages: number; durationMs: number; products: number; knowledge: number; duplicates: number; conflicts: number; needsAttention: number };
 }
 export interface TrainingRun extends TenantEntity {
@@ -222,16 +225,23 @@ export interface TrainingRun extends TenantEntity {
   stats: { pages: number; discovered: number; productUrls: number; remaining: number; failed: number; fetches: number; aiCalls: number; pagesWithoutAI: number; unchanged: number; changed: number; newPages: number; durationMs: number; products: number; knowledge: number; duplicates: number; conflicts: number; needsAttention: number };
 }
 export interface TrainingCandidate extends TenantEntity {
-  _id: ID; kind: 'product' | 'knowledge' | 'business';
-  status: 'ready' | 'possible_duplicate' | 'conflict' | 'needs_attention' | 'approved' | 'rejected' | 'imported';
+  _id: ID; kind: 'product' | 'offering' | 'knowledge' | 'business';
+  status: 'ready' | 'possible_duplicate' | 'conflict' | 'needs_attention' | 'approving' | 'failed' | 'approved' | 'rejected' | 'imported';
   title: string; confidence: number; payload: Record<string, any>; duplicateKind?: 'exact' | 'probable';
   conflictFields: Array<{ field: string; currentValue: unknown; importedValue: unknown }>;
   source: { type: string; url?: string; externalId?: string; lastSeenAt: string };
+  lastError?: string; approvalAttempts?: number;
 }
 export interface TrainingOverview {
   training: { status: TrainingStatus; lastSyncedAt?: string; productsImported?: number; knowledgeImported?: number; needsReview?: number };
   sources: TrainingSource[]; latestRun: TrainingRun | null; candidateCounts: Record<string, number>;
   suggestedQuestions: string[]; missing: string[];
+  businessProfile: { businessType?: string; businessSubType?: string; customBusinessType?: string; secondaryBusinessTypes: string[]; status: 'unconfirmed'|'inferred'|'confirmed'; inference?: { value: string; confidence: number; evidence: string[] } };
+  businessTypeOptions: Array<{ value: string; label: string }>;
+  gaps: Array<{ id: string; question: string; priority: 'CRITICAL'|'IMPORTANT'|'OPTIONAL'; domain: string }>;
+  readiness: { ready: boolean; critical: number; important: number; optional: number };
+  faqTemplates: Array<{ id: string; question: string }>;
+  leadFields: string[];
 }
 
 export interface OrderItem {

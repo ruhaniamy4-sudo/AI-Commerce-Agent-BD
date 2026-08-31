@@ -20,6 +20,7 @@ export interface IConversation extends Document {
     // Platform Tracking
     platform: 'facebook' | 'whatsapp' | 'web-widget' | 'telegram' | 'instagram' | 'manual';
     platformConversationId?: string; // Platform-specific ID
+    platformPageId?: string;
 
     // AI Agent Control
     aiEnabled: boolean; // AI on/off toggle per conversation
@@ -70,6 +71,7 @@ const ConversationSchema = new Schema(
             enum: ['facebook', 'whatsapp', 'web-widget', 'telegram', 'instagram', 'manual'],
         },
         platformConversationId: { type: String },
+        platformPageId: { type: String, index: true },
 
         aiEnabled: { type: Boolean, default: true, index: true },
         needsHumanHandoff: { type: Boolean, default: false, index: true },
@@ -139,5 +141,6 @@ ConversationSchema.index({ businessId: 1, assignedTo: 1, status: 1 });
 ConversationSchema.index({ businessId: 1, needsHumanHandoff: 1, status: 1 });
 ConversationSchema.index({ businessId: 1, controlMode: 1, lastMessageAt: -1 });
 ConversationSchema.index({ businessId: 1, psid: 1 });
+ConversationSchema.index({ businessId: 1, platformPageId: 1, psid: 1 });
 
 export const Conversation = mongoose.model<IConversation>('Conversation', ConversationSchema);

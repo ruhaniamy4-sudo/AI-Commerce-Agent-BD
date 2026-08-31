@@ -8,7 +8,7 @@ import { maybeUpdateConversationSummary } from './conversation-summary.service';
 export async function ensureConversation(
     businessId: string,
     conversationId: string,
-    clientInfo?: { name?: string; email?: string; phone?: string; senderId?: string }
+    clientInfo?: { name?: string; email?: string; phone?: string; senderId?: string; pageId?: string }
 ) {
     assertTenantBusinessId(businessId, 'memory.ensureConversation');
     let conversation = await Conversation.findOne({ conversationId });
@@ -19,28 +19,23 @@ export async function ensureConversation(
         let senderId = clientInfo?.senderId;
 
         // Extract senderId from conversationId if it's facebook and not provided
-        if (!senderId && conversationId.startsWith('fb_')) {
-            senderId = conversationId.replace('fb_', '');
-        }
+        // Facebook callers must provide senderId because conversation IDs also contain the Page ID.
 
         if (clientInfo?.email) {
             client = await Customer.findOne({ email: clientInfo.email });
         } else if (clientInfo?.phone) {
             client = await Customer.findOne({ phone: clientInfo.phone });
         } else if (senderId) {
-            client = await Customer.findOne({ psid: senderId });
+            client = await Customer.findOne({ psid: senderId, ...(clientInfo?.pageId ? { channelPageId: clientInfo.pageId } : {}) });
         }
 
         if (!client) {
             let name = clientInfo?.name;
-            let facebookLink = undefined;
-
             // Fetch profile data from Facebook if it's a new FB user
-            if (senderId && conversationId.startsWith('fb_')) {
-                const profile = await getSenderProfile(senderId);
+            if (senderId && clientInfo?.pageId && conversationId.startsWith('fb_')) {
+                const profile = await getSenderProfile(senderId, clientInfo.pageId);
                 if (profile) {
                     name = `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
-                    facebookLink = `https://www.facebook.com/${senderId}`;
                 }
             }
 
@@ -53,7 +48,8 @@ export async function ensureConversation(
                 email: clientInfo?.email,
                 phone: clientInfo?.phone,
                 psid: senderId || `web-${Date.now()}`,
-                notes: facebookLink ? `Facebook Profile: ${facebookLink}` : '',
+                channelPageId: clientInfo?.pageId,
+                notes: '',
             });
         }
 
@@ -62,6 +58,8 @@ export async function ensureConversation(
             customerId: client._id,
             psid: client.psid,
             platform: conversationId.startsWith('fb_') ? 'facebook' : 'web-widget',
+            platformConversationId: conversationId.startsWith('fb_') ? senderId : conversationId,
+            platformPageId: clientInfo?.pageId,
         });
     } else if (!conversation.customerId && clientInfo) {
         // Link client to existing conversation if not already linked
@@ -71,7 +69,7 @@ export async function ensureConversation(
         } else if (clientInfo.phone) {
             client = await Customer.findOne({ phone: clientInfo.phone });
         } else if (clientInfo.senderId) {
-            client = await Customer.findOne({ psid: clientInfo.senderId });
+            client = await Customer.findOne({ psid: clientInfo.senderId, ...(clientInfo.pageId ? { channelPageId: clientInfo.pageId } : {}) });
         }
 
         if (!client) {
@@ -84,6 +82,7 @@ export async function ensureConversation(
                 email: clientInfo.email,
                 phone: clientInfo.phone,
                 psid: clientInfo.senderId || `web-${Date.now()}`,
+                channelPageId: clientInfo.pageId,
             });
         }
 
@@ -103,7 +102,7 @@ export async function saveMessage(
     role: 'user' | 'assistant',
     content: string,
     imageUrl?: string,
-    options?: { messageId?: string; platform?: string }
+    options?: { messageId?: string; platform?: string; products?: unknown[] }
 ) {
     assertTenantBusinessId(businessId, 'memory.saveMessage');
     const messageData: any = {
@@ -113,6 +112,7 @@ export async function saveMessage(
         metadata: options?.messageId ? {
             messageId: options.messageId,
             platform: options.platform,
+            ...(options.products?.length ? { products: options.products } : {}),
         } : undefined,
     };
 

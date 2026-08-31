@@ -1,10 +1,17 @@
 import mongoose, { Document, Schema } from 'mongoose';
+import { BUSINESS_TYPES, BusinessType } from '../services/adaptive-training.service';
 
 export interface IBusiness extends Document {
     name: string;
     slug: string;
     status: 'active' | 'suspended';
-    businessType?: string;
+    businessType?: BusinessType;
+    businessSubType?: string;
+    customBusinessType?: string;
+    secondaryBusinessTypes: BusinessType[];
+    businessTypeStatus: 'unconfirmed' | 'inferred' | 'confirmed';
+    businessTypeInference?: { value: BusinessType; confidence: number; evidence: string[]; sourceId?: mongoose.Types.ObjectId; inferredAt: Date };
+    businessReferences: Array<{ url: string; label?: string; sourceId?: mongoose.Types.ObjectId; createdAt: Date }>;
     description?: string;
     phone?: string;
     website?: string;
@@ -41,6 +48,7 @@ export interface IBusiness extends Document {
         productsImported: number;
         knowledgeImported: number;
         needsReview: number;
+        importPreference: 'in_stock_only' | 'all' | 'ask_during_review';
     };
     createdAt: Date;
     updatedAt: Date;
@@ -50,7 +58,16 @@ const BusinessSchema = new Schema<IBusiness>({
     name: { type: String, required: true, trim: true },
     slug: { type: String, required: true, lowercase: true, trim: true, unique: true },
     status: { type: String, enum: ['active', 'suspended'], default: 'active', index: true },
-    businessType: { type: String, trim: true },
+    businessType: { type: String, enum: BUSINESS_TYPES, trim: true, index: true },
+    businessSubType: { type: String, trim: true, maxlength: 120 },
+    customBusinessType: { type: String, trim: true, maxlength: 160 },
+    secondaryBusinessTypes: [{ type: String, enum: BUSINESS_TYPES }],
+    businessTypeStatus: { type: String, enum: ['unconfirmed', 'inferred', 'confirmed'], default: 'unconfirmed', index: true },
+    businessTypeInference: {
+        value: { type: String, enum: BUSINESS_TYPES }, confidence: { type: Number, min: 0, max: 1 },
+        evidence: [{ type: String }], sourceId: Schema.Types.ObjectId, inferredAt: Date,
+    },
+    businessReferences: [{ url: { type: String, required: true }, label: String, sourceId: Schema.Types.ObjectId, createdAt: { type: Date, default: Date.now } }],
     description: { type: String, trim: true },
     phone: { type: String, trim: true },
     website: { type: String, trim: true },
@@ -87,6 +104,7 @@ const BusinessSchema = new Schema<IBusiness>({
         productsImported: { type: Number, default: 0 },
         knowledgeImported: { type: Number, default: 0 },
         needsReview: { type: Number, default: 0 },
+        importPreference: { type: String, enum: ['in_stock_only', 'all', 'ask_during_review'], default: 'ask_during_review' },
     },
 }, { timestamps: true });
 

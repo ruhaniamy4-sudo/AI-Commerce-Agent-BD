@@ -59,7 +59,7 @@ export function validateConfiguration(env: Environment = process.env): ConfigChe
         { name: 'AUTH_JWT_SECRET', category: 'core', configured: Boolean(env.AUTH_JWT_SECRET) },
         { name: ai.provider === 'groq' ? 'GROQ_API_KEY' : 'OPENAI_API_KEY', category: 'core', configured: ai.configured },
         { name: 'REDIS_URL', category: 'feature', feature: 'queues', configured: Boolean(getRedisConfig(env)) },
-        { name: 'FB_APP_SECRET', category: 'feature', feature: 'facebook', configured: Boolean(env.FB_APP_SECRET && env.FB_VERIFY_TOKEN && env.FB_PAGE_ACCESS_TOKEN) },
+        { name: 'FB_APP_SECRET', category: 'feature', feature: 'facebook', configured: Boolean((env.FB_APP_ID || env.FACEBOOK_APP_ID) && env.FB_APP_SECRET && env.FB_VERIFY_TOKEN && env.FACEBOOK_CREDENTIALS_ENCRYPTION_KEY && env.PUBLIC_AGENT_URL && env.DASHBOARD_URL) },
         { name: 'COURIER_CREDENTIALS_ENCRYPTION_KEY', category: 'feature', feature: 'steadfast', configured: Boolean(env.COURIER_CREDENTIALS_ENCRYPTION_KEY) },
         { name: 'CLOUDINARY', category: 'optional', feature: 'uploads', configured: Boolean(env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET) },
         { name: 'GOOGLE_OAUTH', category: 'optional', feature: 'google', configured: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) },
@@ -74,7 +74,7 @@ export function getRuntimeStatus(env: Environment = process.env) {
         aiProvider: ai.provider,
         aiConfigured: ai.configured,
         redisConfigured: Boolean(getRedisConfig(env)),
-        facebookConfigured: Boolean(env.FB_APP_SECRET && env.FB_VERIFY_TOKEN && env.FB_PAGE_ACCESS_TOKEN),
+        facebookConfigured: Boolean((env.FB_APP_ID || env.FACEBOOK_APP_ID) && env.FB_APP_SECRET && env.FB_VERIFY_TOKEN && env.FACEBOOK_CREDENTIALS_ENCRYPTION_KEY && env.PUBLIC_AGENT_URL && env.DASHBOARD_URL),
         steadfastEncryptionConfigured: Boolean(env.COURIER_CREDENTIALS_ENCRYPTION_KEY),
     };
 }

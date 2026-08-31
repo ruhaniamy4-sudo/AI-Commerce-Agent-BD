@@ -2,6 +2,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { canonicalUrl, normalizeMoney, stableFingerprint } from './normalization';
 import { Resolver, validatePublicUrl } from './url-security';
+import { normalizeProductAvailability } from './product-availability';
 
 export interface ExtractedProduct {
     name: string; description: string; category?: string; basePrice?: number; salePrice?: number;
@@ -42,11 +43,8 @@ function availabilityStock(value: unknown): number | undefined {
     return undefined;
 }
 function normalizedAvailability(value: unknown): ExtractedProduct['availability'] {
-    const text = String(value || '').toLowerCase();
-    if (text.includes('outofstock') || text.includes('soldout')) return 'out_of_stock';
-    if (text.includes('preorder') || text.includes('pre-order')) return 'preorder';
-    if (text.includes('instock')) return 'in_stock';
-    return 'unknown';
+    if (String(value || '').toLowerCase().includes('preorder')) return 'preorder';
+    return normalizeProductAvailability(value);
 }
 
 export function classifyPageUrl(input: string): PageType {
@@ -237,23 +235,35 @@ export function discoveryPriority(url: string): number {
     return 5;
 }
 
-export function selectDiscoveryLinks(urls: string[], limit: number): string[] {
+const businessUrlHints: Record<string, string[]> = {
+    VISA_CONSULTANCY: ['visa', 'country', 'document', 'eligibility', 'consultation', 'appointment'],
+    EDUCATION_CONSULTANCY: ['country', 'university', 'program', 'intake', 'admission', 'scholarship'],
+    EDTECH: ['course', 'batch', 'class', 'subject', 'teacher', 'schedule', 'enroll'],
+    AGENCY: ['service', 'package', 'portfolio', 'pricing', 'quote'], REAL_ESTATE: ['property', 'listing', 'apartment', 'flat', 'rent', 'sale'],
+    CLINIC_SERVICE: ['service', 'doctor', 'specialist', 'appointment', 'clinic'], RESTAURANT: ['menu', 'food', 'delivery', 'reservation'],
+    SAAS: ['plan', 'pricing', 'feature', 'integration', 'trial', 'support'], OTHER: ['service', 'offering', 'about', 'faq'],
+};
+
+export function selectDiscoveryLinks(urls: string[], limit: number, businessType?: string): string[] {
     const unique = [...new Set(urls.map((url) => canonicalUrl(url)).filter(Boolean) as string[])];
     const usable = unique.filter((url) => discoveryPriority(url) < 9);
     const products = usable.filter((url) => discoveryPriority(url) === 1);
     const knowledge = usable.filter((url) => discoveryPriority(url) === 2);
     const categories = usable.filter((url) => [3, 4].includes(discoveryPriority(url))).sort((a, b) => discoveryPriority(a) - discoveryPriority(b));
     const other = usable.filter((url) => discoveryPriority(url) === 5);
+    const hints = businessUrlHints[String(businessType || '').toUpperCase()] || [];
+    const businessRelevant = hints.length ? usable.filter((url) => hints.some((hint) => decodeURIComponent(url).toLowerCase().includes(hint))) : [];
     const selected = [
+        ...businessRelevant.slice(0, Math.max(1, Math.ceil(limit * 0.6))),
         ...products.slice(0, Math.max(1, Math.ceil(limit * 0.55))),
         ...knowledge.slice(0, Math.max(1, Math.ceil(limit * 0.25))),
         ...categories.slice(0, Math.max(1, Math.ceil(limit * 0.2))),
     ];
     const remainder = [...products, ...knowledge, ...categories, ...other].filter((url) => !selected.includes(url));
-    return [...selected, ...remainder].slice(0, limit);
+    return [...new Set([...selected, ...remainder])].slice(0, limit);
 }
 
-export async function ingestWebsite(input: string, onProgress?: (stage: string, progress: number, stats?: { discovered: number; pages: number; productUrls: number; remaining: number; failed: number; fetches: number }) => Promise<void>, options?: { previousPages?: Array<{ url: string; fingerprint?: string; status?: string }>; retryUrls?: string[] }): Promise<WebsiteExtraction> {
+export async function ingestWebsite(input: string, onProgress?: (stage: string, progress: number, stats?: { discovered: number; pages: number; productUrls: number; remaining: number; failed: number; fetches: number }) => Promise<void>, options?: { previousPages?: Array<{ url: string; fingerprint?: string; status?: string }>; retryUrls?: string[]; businessType?: string }): Promise<WebsiteExtraction> {
     const startedAt = Date.now();
     const start = await validatePublicUrl(input);
     const origin = start.origin;
@@ -331,9 +341,9 @@ export async function ingestWebsite(input: string, onProgress?: (stage: string, 
     }
     if (discovered.size === 1) result.warnings.push('Sitemap was unavailable; discovered pages from website links instead.');
     if (!retryUrls.length) {
-        const ordered = selectDiscoveryLinks([...discovered].filter((url) => url !== start.toString()), MAX_DISCOVERED);
+        const ordered = selectDiscoveryLinks([...discovered].filter((url) => url !== start.toString()), MAX_DISCOVERED, options?.businessType);
         const unprocessed = ordered.filter((url) => !previous.has(canonicalUrl(url)) || ['pending','failed'].includes(previousStatus.get(canonicalUrl(url)) || ''));
-        const firstBatch = selectDiscoveryLinks(unprocessed.length ? unprocessed : ordered, MAX_PAGES);
+        const firstBatch = selectDiscoveryLinks(unprocessed.length ? unprocessed : ordered, MAX_PAGES, options?.businessType);
         queue.push(...firstBatch, ...ordered.filter((url) => !firstBatch.includes(url)));
     }
     while (queue.length && seen.size < MAX_PAGES) {
@@ -362,7 +372,7 @@ export async function ingestWebsite(input: string, onProgress?: (stage: string, 
             result.knowledge.push(...extracted.knowledge);
             Object.assign(result.business, Object.fromEntries(Object.entries(extracted.business).filter(([, value]) => value)));
             const links = extracted.links.filter((url) => { try { return new URL(url).origin === origin; } catch { return false; } });
-            for (const link of selectDiscoveryLinks(links, MAX_DISCOVERED)) {
+            for (const link of selectDiscoveryLinks(links, MAX_DISCOVERED, options?.businessType)) {
                 if (discovered.size >= MAX_DISCOVERED) break;
                 if (!discovered.has(link)) { discovered.add(link); queue.push(link); }
             }

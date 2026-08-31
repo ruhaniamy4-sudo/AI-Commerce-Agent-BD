@@ -12,6 +12,7 @@ export interface IAIUsage {
     inputTokens: number | null;
     outputTokens: number | null;
     totalTokens: number | null;
+    cachedTokens: number | null;
     estimatedCost: number | null;
     operationType: AIOperationType;
     createdAt: Date;
@@ -25,6 +26,7 @@ const AIUsageSchema = new Schema<IAIUsage>({
     inputTokens: { type: Number, default: null, min: 0 },
     outputTokens: { type: Number, default: null, min: 0 },
     totalTokens: { type: Number, default: null, min: 0 },
+    cachedTokens: { type: Number, default: null, min: 0 },
     estimatedCost: { type: Number, default: null, min: 0 },
     operationType: {
         type: String,

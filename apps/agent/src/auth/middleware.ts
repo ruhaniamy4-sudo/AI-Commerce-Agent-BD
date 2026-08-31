@@ -28,8 +28,14 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     const token = bearerToken(req);
     if (!token) return res.status(401).json({ error: 'Authentication required' });
 
+    let payload: ReturnType<typeof verifyAccessToken>;
     try {
-        const payload = verifyAccessToken(token);
+        payload = verifyAccessToken(token);
+    } catch {
+        return res.status(401).json({ error: 'Invalid or expired access token' });
+    }
+
+    try {
         const membership = await BusinessMember.findOne({
             _id: payload.membershipId,
             userId: payload.sub,
@@ -51,10 +57,14 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
             membershipId: payload.membershipId,
             role: payload.role,
         };
-        await touchMerchantActivity(payload.sub, payload.businessId);
+        try {
+            await touchMerchantActivity(payload.sub, payload.businessId);
+        } catch (error) {
+            console.warn('Merchant activity tracking failed; authentication remains valid', error instanceof Error ? error.message : 'Unknown error');
+        }
         return withTenantContext(req.auth, () => next());
-    } catch {
-        return res.status(401).json({ error: 'Invalid or expired access token' });
+    } catch (error) {
+        return next(error);
     }
 }
 

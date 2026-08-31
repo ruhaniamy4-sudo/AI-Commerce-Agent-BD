@@ -144,6 +144,7 @@ export interface PlatformIntegrations {
   businesses: number;
   aiProviderConfigured: boolean;
   storageConfigured: boolean;
+  facebookConnections: Array<{ _id: string; businessName?: string; pageName: string; pageCategory?: string; connectionStatus: string; lastEventAt?: string; lastVerifiedAt?: string; reauthorizationRequired?: boolean; lastErrorCode?: string }>;
 }
 export interface PlatformHealth {
   status: string;

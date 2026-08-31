@@ -14,6 +14,7 @@ vi.mock('./agentManager',()=>({getAgentStatus:vi.fn().mockResolvedValue('active'
 vi.mock('./history.service',()=>({loadConversationHistory:vi.fn().mockResolvedValue([])}));
 vi.mock('./image-processor.service',()=>({handleImageInput:vi.fn()}));
 vi.mock('./agent-action.service',()=>({executeAgentAction:vi.fn(),parseAgentResponse:vi.fn()}));
+vi.mock('./turn-metrics.service',()=>({recordConversationTurn:vi.fn()}));
 vi.mock('../agent/graph',()=>({agentGraph:{invoke:vi.fn()}}));
 
 describe('chat pipeline business AI kill switch',()=>{beforeEach(()=>{vi.clearAllMocks()});

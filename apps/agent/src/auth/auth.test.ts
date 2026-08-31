@@ -9,6 +9,7 @@ import { MerchantActivity } from '../models/MerchantActivity';
 import { authenticate, authenticateAccount, authorize, AuthenticatedRequest } from './middleware';
 import { hashPassword, verifyPassword } from './password';
 import { signAccessToken, signAccountToken } from './token';
+import { MERCHANT_SESSION_MAX_AGE_SECONDS } from '@edutechs/shared';
 
 describe('authentication and role authorization', () => {
     const businessId = new mongoose.Types.ObjectId().toString();
@@ -49,6 +50,17 @@ describe('authentication and role authorization', () => {
         await request(app).get('/protected').expect(401);
     });
 
+    it('issues merchant tokens for the full dashboard session lifetime and rejects expired ones', async () => {
+        const activeToken = token('Owner');
+        const payload = JSON.parse(Buffer.from(activeToken.split('.')[1], 'base64url').toString('utf8'));
+        expect(payload.purpose).toBe('merchant');
+        expect(payload.exp - payload.iat).toBe(MERCHANT_SESSION_MAX_AGE_SECONDS);
+
+        const expiredToken = signAccessToken({ sub: userId, businessId, membershipId, role: 'Owner' }, -1);
+        const app = express().get('/protected', authenticate, (_req, res) => res.sendStatus(204));
+        await request(app).get('/protected').set('authorization', `Bearer ${expiredToken}`).expect(401);
+    });
+
     it('keeps user suspension separate from business suspension', async () => {
         const app = express().get('/protected', authenticate, (_req, res) => res.sendStatus(204));
         vi.mocked(User.findOne).mockReturnValueOnce({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }) } as never);
@@ -82,5 +94,31 @@ describe('authentication and role authorization', () => {
             .set('x-business-id', new mongoose.Types.ObjectId().toString())
             .expect(200);
         expect(response.body.businessId).toBe(businessId);
+    });
+
+    it('does not turn activity tracking failures into authentication failures', async () => {
+        vi.mocked(MerchantActivity.updateOne).mockRejectedValueOnce(new Error('activity store unavailable'));
+        const app = express().get('/protected', authenticate, (_req, res) => res.sendStatus(204));
+
+        await request(app)
+            .get('/protected')
+            .set('authorization', `Bearer ${token('Owner')}`)
+            .expect(204);
+    });
+
+    it('passes infrastructure failures to the error handler instead of reporting an invalid token', async () => {
+        vi.mocked(BusinessMember.findOne).mockImplementationOnce(() => {
+            throw new Error('membership store unavailable');
+        });
+        const app = express()
+            .get('/protected', authenticate, (_req, res) => res.sendStatus(204))
+            .use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+                res.status(503).json({ error: error.message });
+            });
+
+        await request(app)
+            .get('/protected')
+            .set('authorization', `Bearer ${token('Owner')}`)
+            .expect(503, { error: 'membership store unavailable' });
     });
 });

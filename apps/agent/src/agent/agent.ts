@@ -4,14 +4,15 @@ import { ChatOpenAI } from '@langchain/openai';
 import * as dotenv from 'dotenv';
 // Tools import removed
 import { SYSTEM_PROMPT } from './prompts';
-import { retrieveContext, formatContextPack } from '../services/rag.service';
+import { retrieveContext, formatContextPack, enforceContextBudget } from '../services/rag.service';
 import { assertTenantBusinessId } from '../tenancy/context';
-import { getAIMaxOutputTokens, getAIModel } from '../services/ai-config';
+import { getAIMaxOutputTokens, getAIModel, getTurnOutputTokenLimit, ResponseComplexity } from '../services/ai-config';
 import { recordAIUsage } from '../services/ai-usage.service';
 import { getAIConfiguration } from '../config/runtime';
 import { Business } from '../models/Business';
 import { Conversation } from '../models/Conversation';
 import { buildConversationInstructions, guardResponseText } from '../services/conversation-intelligence.service';
+import { classifyLightweightIntent, extractLightweightMemory } from '../services/turn-routing.service';
 
 dotenv.config();
 
@@ -20,9 +21,9 @@ const llm = new ChatOpenAI({
     model: getAIModel(),
     maxTokens: getAIMaxOutputTokens(),
     temperature: 0,
+    maxRetries: 0,
     apiKey: aiConfig.apiKey,
     configuration: aiConfig.baseURL ? { baseURL: aiConfig.baseURL } : undefined,
-    modelKwargs: { response_format: { type: 'json_object' } } // Enforce JSON
 });
 
 export { llm };
@@ -47,29 +48,44 @@ async function callModel(state: AgentState) {
     // Only perform RAG if it's a Human Message or we need context
     let contextStr = '{}';
     let operationType: 'chat' | 'rag-assisted-chat' = 'chat';
-    if (lastMessage instanceof HumanMessage) {
+    const routedIntent = classifyLightweightIntent(userQuery);
+    const needsRetrieval = ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_VARIANT','PRODUCT_SEARCH','PRODUCT_COMPARE','KNOWLEDGE','BUSINESS_FACT'].includes(routedIntent);
+    if (lastMessage instanceof HumanMessage && needsRetrieval) {
         const context = await retrieveContext(businessId, psid, userQuery, state.messages);
-        contextStr = formatContextPack(context);
-        if (context.catalogHits.length || context.knowledgeEntries.length || context.lastOrders.length) {
+        contextStr = enforceContextBudget(formatContextPack(context), routedIntent === 'KNOWLEDGE' ? 800 : 550);
+        if (context.catalogHits.length || context.offeringHits?.length || context.knowledgeEntries.length || context.awarenessEntries?.length || context.lastOrders.length) {
             operationType = 'rag-assisted-chat';
         }
     }
 
     // 3. Construct the tenant-specific prompt without creating a separate agent.
     const [business, conversation] = await Promise.all([
-        Business.findById(businessId).select('name businessType preferredLanguage brandVoice').lean(),
-        Conversation.findOne({ conversationId: state.conversationId }).select('platform metadata').lean(),
+        Business.findById(businessId).select('name businessType businessSubType customBusinessType preferredLanguage brandVoice').lean(),
+        Conversation.findOne({ businessId, conversationId: state.conversationId }).select('platform metadata').lean(),
     ]);
     const intelligence = buildConversationInstructions({ business: business || {}, customerText: userQuery, history: state.messages, channel: conversation?.platform });
-    await Conversation.updateOne({ conversationId: state.conversationId }, { $set: { 'metadata.conversationIntelligence': { stage: intelligence.stage, language: intelligence.language, rememberedPreferences: intelligence.memory, updatedAt: new Date() } } });
-    const fullSystemPrompt = `${SYSTEM_PROMPT}${intelligence.prompt}\n\nCONTEXT PACK:\n${contextStr}`;
+    const entityMemory = extractLightweightMemory(userQuery);
+    await Conversation.updateOne({ businessId, conversationId: state.conversationId }, { $set: { 'metadata.conversationIntelligence': { stage: intelligence.stage, language: intelligence.language, rememberedPreferences: intelligence.memory, leadFields: intelligence.leadFields, updatedAt: new Date() }, ...Object.fromEntries(Object.entries(entityMemory).map(([key, value]) => [`metadata.entityState.${key}`, value])) } });
+    const fullSystemPrompt = `${SYSTEM_PROMPT}${intelligence.prompt}${contextStr !== '{}' ? `\nCONTEXT:\n${contextStr}` : ''}`;
 
     // 4. Call Model
     // We send the full history, but with the updated system prompt at the start
     // Note: LangGraph state messages usually don't include SystemPrompt, we prepend it here
-    const messages = [new SystemMessage(fullSystemPrompt), ...state.messages];
+    const candidates = state.messages.filter((message) => message.getType() !== 'system').slice(-4);
+    const recentMessages: BaseMessage[] = [];
+    let recentCharacters = 0;
+    for (const message of [...candidates].reverse()) {
+        const size = typeof message.content === 'string' ? message.content.length : JSON.stringify(message.content).length;
+        if (recentMessages.length && recentCharacters + size > 2400) continue;
+        recentMessages.unshift(message);
+        recentCharacters += size;
+    }
+    const summary = state.messages.find((message) => message.getType() === 'system');
+    const messages = [new SystemMessage(fullSystemPrompt), ...(summary ? [summary] : []), ...recentMessages];
 
-    const response = await llm.invoke(messages);
+    const complexity: ResponseComplexity = routedIntent === 'PRODUCT_COMPARE' || routedIntent === 'PRODUCT_SEARCH' ? 'recommendation' : routedIntent === 'KNOWLEDGE' && /eligibility|medical|legal|visa|refund dispute/i.test(userQuery) ? 'complex' : routedIntent === 'GENERAL_CONVERSATION' ? 'simple' : 'normal';
+    const turnLlm = new ChatOpenAI({ model: getAIModel(), maxTokens: getTurnOutputTokenLimit(complexity), temperature: 0, maxRetries: 0, apiKey: aiConfig.apiKey, configuration: aiConfig.baseURL ? { baseURL: aiConfig.baseURL } : undefined });
+    const response = await turnLlm.invoke(messages);
     try {
         await recordAIUsage({
             conversationId: state.conversationId,

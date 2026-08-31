@@ -1,0 +1,19 @@
+{
+  "measuredAt": "2026-08-31T07:27:23.179Z",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "scope": "Reproducible provider-backed prompt benchmark using canonical-data fixtures; not a live Mongo end-to-end run.",
+  "baseline": { "replies": 9, "totalTokens": 29497, "averageTokensPerReply": 3277 },
+  "optimized": { "replies": 9, "llmCalls": 3, "zeroLlmReplies": 6, "inputTokens": 1268, "outputTokens": 607, "totalTokens": 1875, "averageTokensPerReply": 208 },
+  "rows": [
+    { "message": "Zeblaze Vibe 7 Pro er price koto?", "mode": "zero_llm", "totalTokens": 0 },
+    { "message": "picture deo", "mode": "zero_llm", "totalTokens": 0 },
+    { "message": "stock ache?", "mode": "zero_llm", "totalTokens": 0 },
+    { "message": "5000 er moddhe smartwatch dekhaw", "mode": "zero_llm", "totalTokens": 0 },
+    { "message": "egular moddhe konta better?", "mode": "llm", "inputTokens": 445, "outputTokens": 224, "totalTokens": 669 },
+    { "message": "delivery charge koto?", "mode": "zero_llm", "totalTokens": 0 },
+    { "message": "Return policy exception ta explain koren", "mode": "llm", "inputTokens": 410, "outputTokens": 160, "totalTokens": 570 },
+    { "message": "SSC 27 science batch fee?", "mode": "zero_llm", "totalTokens": 0 },
+    { "message": "Canada student visa eligibility/process ki?", "mode": "llm", "inputTokens": 413, "outputTokens": 223, "totalTokens": 636 }
+  ]
+}

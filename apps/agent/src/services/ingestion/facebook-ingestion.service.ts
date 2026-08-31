@@ -1,18 +1,18 @@
-import axios from 'axios';
+import { BusinessChannel } from '../../models/BusinessChannel';
+import { requireTenantContext } from '../../tenancy/context';
+import { decryptMetaAccessToken } from '../meta-credentials.service';
+import { MetaGraphError, metaGraph } from '../meta-graph.service';
 
 export class FacebookPermissionError extends Error {
-    constructor(message = 'Facebook import requires additional permission') { super(message); this.name = 'FacebookPermissionError'; }
+    constructor(message = 'Facebook import requires pages_read_engagement permission') { super(message); this.name = 'FacebookPermissionError'; }
 }
 
 export async function importAuthorizedFacebookPage(pageId: string) {
-    const token = process.env.FB_PAGE_ACCESS_TOKEN;
-    if (!token) throw new FacebookPermissionError();
+    const principal = requireTenantContext();
+    const channel = await BusinessChannel.findOne({ businessId: principal.businessId, platform: 'facebook', externalId: pageId, connectionStatus: 'CONNECTED' }).select('+encryptedAccessToken');
+    if (!channel?.encryptedAccessToken || !channel.permissions.includes('pages_read_engagement')) throw new FacebookPermissionError();
     try {
-        const response = await axios.get(`https://graph.facebook.com/v24.0/${encodeURIComponent(pageId)}`, {
-            params: { fields: 'id,name,about,category,emails,phone,website,location,hours', access_token: token },
-            timeout: 10_000,
-        });
-        const page = response.data || {};
+        const page = await metaGraph.pageBusiness(pageId, decryptMetaAccessToken(channel.encryptedAccessToken));
         return {
             business: {
                 name: page.name, description: page.about, phone: page.phone,
@@ -21,13 +21,11 @@ export async function importAuthorizedFacebookPage(pageId: string) {
                 openingHours: page.hours ? Object.entries(page.hours).map(([key, value]) => `${key}: ${value}`).join(', ') : undefined,
             },
             knowledge: page.about ? [{ title: `${page.name || 'Business'} — About`, content: page.about, type: 'GUIDE' as const, sourceUrl: `https://facebook.com/${pageId}` }] : [],
-            products: [],
-            pages: 1,
-            warnings: ['Facebook catalog products are imported only when the connected Meta app has an authorized commerce/catalog integration.'],
+            products: [], pages: 1,
+            warnings: ['Facebook catalog products require a separately reviewed commerce/catalog integration and are not inferred from customer messages.'],
         };
-    } catch (error: any) {
-        const code = error?.response?.data?.error?.code;
-        if (code === 190 || error?.response?.status === 403) throw new FacebookPermissionError('Facebook connection expired or lacks business import permission');
+    } catch (error) {
+        if (error instanceof MetaGraphError && ['AUTH_EXPIRED', 'PERMISSION_MISSING'].includes(error.category)) throw new FacebookPermissionError('Facebook connection expired or lacks pages_read_engagement permission');
         throw new Error('Facebook business information is currently unavailable');
     }
 }

@@ -1,8 +1,8 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import { tenantPlugin } from '../tenancy/plugin';
 
-export type CandidateKind = 'product' | 'knowledge' | 'business';
-export type CandidateStatus = 'ready' | 'possible_duplicate' | 'conflict' | 'needs_attention' | 'approved' | 'rejected' | 'imported';
+export type CandidateKind = 'product' | 'offering' | 'knowledge' | 'business';
+export type CandidateStatus = 'ready' | 'possible_duplicate' | 'conflict' | 'needs_attention' | 'approving' | 'failed' | 'approved' | 'rejected' | 'imported';
 
 export interface ITrainingCandidate extends Document {
     businessId: mongoose.Types.ObjectId;
@@ -22,13 +22,15 @@ export interface ITrainingCandidate extends Document {
     reviewNote?: string;
     approvedBy?: string;
     approvedAt?: Date;
+    lastError?: string;
+    approvalAttempts: number;
 }
 
 const TrainingCandidateSchema = new Schema<ITrainingCandidate>({
     runId: { type: Schema.Types.ObjectId, ref: 'TrainingRun', required: true, index: true },
     sourceId: { type: Schema.Types.ObjectId, ref: 'TrainingSource', required: true, index: true },
-    kind: { type: String, enum: ['product', 'knowledge', 'business'], required: true, index: true },
-    status: { type: String, enum: ['ready', 'possible_duplicate', 'conflict', 'needs_attention', 'approved', 'rejected', 'imported'], required: true, index: true },
+    kind: { type: String, enum: ['product', 'offering', 'knowledge', 'business'], required: true, index: true },
+    status: { type: String, enum: ['ready', 'possible_duplicate', 'conflict', 'needs_attention', 'approving', 'failed', 'approved', 'rejected', 'imported'], required: true, index: true },
     title: { type: String, required: true, trim: true },
     normalizedKey: { type: String, required: true },
     fingerprint: { type: String, required: true },
@@ -44,6 +46,8 @@ const TrainingCandidateSchema = new Schema<ITrainingCandidate>({
     reviewNote: String,
     approvedBy: String,
     approvedAt: Date,
+    lastError: String,
+    approvalAttempts: { type: Number, default: 0, min: 0 },
 }, { timestamps: true });
 
 TrainingCandidateSchema.plugin(tenantPlugin);

@@ -7,26 +7,19 @@ import { logError } from '../services/error.service';
 import { BusinessChannel } from '../models/BusinessChannel';
 import { withTenantContext } from '../tenancy/context';
 import { registerInboundEvent } from '../services/inbound-idempotency.service';
+import { getMetaConfig } from '../services/meta-config.service';
 
 dotenv.config();
 
 const router = Router();
-const VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN;
-const APP_SECRET = process.env.FB_APP_SECRET;
-
 type RawBodyRequest = express.Request & { rawBody?: Buffer };
 
 // Middleware to verify signature
-const verifySignature = (req: RawBodyRequest, res: express.Response, next: express.NextFunction) => {
+export const verifySignature = (req: RawBodyRequest, res: express.Response, next: express.NextFunction) => {
+    const APP_SECRET = getMetaConfig().appSecret;
     const signature = req.headers['x-hub-signature-256'];
     if (!signature || !APP_SECRET) {
-        console.warn('Missing signature or app secret');
-        // For development/testing, we might skip if secret isn't set,
-        // but for production this is critical.
-        if (process.env.NODE_ENV === 'production') {
-            return res.sendStatus(403);
-        }
-        return next();
+        return res.sendStatus(403);
     }
 
     if (typeof signature !== 'string') return res.sendStatus(403);
@@ -54,14 +47,15 @@ router.get('/', (req, res) => {
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
-    if (mode && token) {
+    const VERIFY_TOKEN = getMetaConfig().verifyToken;
+    if (mode && token && challenge && VERIFY_TOKEN) {
         if (mode === 'subscribe' && token === VERIFY_TOKEN) {
             console.log('WEBHOOK_VERIFIED');
             res.status(200).send(challenge);
         } else {
             res.sendStatus(403);
         }
-    }
+    } else res.sendStatus(403);
 });
 
 // Handling messages (POST)
@@ -76,24 +70,26 @@ router.post('/', verifySignature, async (req, res) => {
                 const channel = await BusinessChannel.findOne({
                     platform: 'facebook',
                     externalId: pageId,
-                    status: 'active',
+                    connectionStatus: 'CONNECTED',
                 }).lean();
                 if (!channel) {
-                    console.warn(`No active business channel for Facebook page ${pageId}`);
                     continue;
                 }
+                await BusinessChannel.updateOne({ _id: channel._id }, { $set: { lastEventAt: new Date() } });
 
                 // Process messaging events
                 if (entry.messaging) {
                     for (const event of entry.messaging) {
+                        if (event.message?.is_echo || event.delivery || event.read || (!event.message && !event.postback)) continue;
                         await withTenantContext({
                             businessId: channel.businessId.toString(),
                             userId: 'facebook-system',
                             membershipId: 'facebook-system',
                             role: 'Staff',
                         }, async () => {
-                            const senderPsid = event.sender.id;
-                            const eventId = event.message?.mid || `evt_${Date.now()}_${Math.random()}`;
+                            const senderPsid = String(event.sender?.id || '');
+                            if (!senderPsid) return;
+                            const eventId = event.message?.mid || event.postback?.mid || `fb_${crypto.createHash('sha256').update(`${pageId}:${JSON.stringify(event)}`).digest('hex')}`;
 
                             const isNew = await registerInboundEvent({
                                 eventId,
@@ -114,14 +110,14 @@ router.post('/', verifySignature, async (req, res) => {
                                 businessId: channel.businessId.toString(),
                                 eventId,
                                 psid: senderPsid,
-                                message: event.message?.text,
+                                message: event.message?.text || event.postback?.title || event.postback?.payload,
                                 attachments: event.message?.attachments || [],
                                 payload: event,
                                 source: 'facebook',
                                 pageId,
+                                channelAIEnabled: channel.status === 'active',
                             });
 
-                            console.log(`Event ${eventId} queued for PSID ${senderPsid}`);
                         });
                     }
                 }
@@ -131,7 +127,7 @@ router.post('/', verifySignature, async (req, res) => {
             res.sendStatus(404);
         }
     } catch (error) {
-        await logError('FACEBOOK_WEBHOOK_ERROR', error, { body: req.body });
+        await logError('FACEBOOK_WEBHOOK_ERROR', error, { object: req.body?.object, entryCount: Array.isArray(req.body?.entry) ? req.body.entry.length : 0 });
         console.error('Error in Facebook webhook:', error);
         const unavailable = error instanceof Error && error.message.startsWith('Redis is not configured');
         res.status(unavailable ? 503 : 500).json({ error: unavailable ? 'Facebook queue is unavailable because Redis is not configured' : 'Facebook webhook processing failed' });

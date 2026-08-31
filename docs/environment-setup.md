@@ -25,15 +25,15 @@ Local defaults use agent `http://localhost:4000`, dashboard `http://localhost:30
 Add only the integrations needed in the environment being run:
 
 - Test AI and embeddings: `OPENAI_API_KEY`, plus optional `OPENAI_MODEL`, `OPENAI_VISION_MODEL`, `AI_RECENT_MESSAGE_LIMIT`, `AI_SUMMARY_THRESHOLD`, `AI_MAX_OUTPUT_TOKENS`, `AI_MODEL_PRICING_JSON`, and `RAG_TOP_K`.
-- Facebook Messenger: `FB_VERIFY_TOKEN`, `FB_APP_SECRET`, `FB_PAGE_ACCESS_TOKEN`, and `FB_PAGE_ID` in the agent. Configure the webhook and Page permissions in Meta separately.
+- Facebook Messenger: `FB_APP_ID`, `FB_APP_SECRET`, `FB_VERIFY_TOKEN`, `FB_GRAPH_API_VERSION`, `FB_OAUTH_REDIRECT_URI`, `FACEBOOK_CREDENTIALS_ENCRYPTION_KEY`, `PUBLIC_AGENT_URL`, and `DASHBOARD_URL` in the agent. Merchant Page tokens are obtained through OAuth and encrypted in MongoDB; there is no shared `FB_PAGE_ACCESS_TOKEN` or `FB_PAGE_ID`.
 - Google account login: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the dashboard. Register the callback derived from `NEXTAUTH_URL`.
 - Google Calendar integration: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in the agent.
-- Facebook account login: `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` in the dashboard. This is separate from Facebook Messenger Page credentials.
+- Facebook account login: `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` in the dashboard. Use the same Meta app as the agent's `FB_APP_ID`/`FB_APP_SECRET`; Page credentials remain tenant-scoped and are never dashboard environment variables.
 - Cloudinary uploads: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in the agent.
 - Steadfast: configure merchant API credentials through the dashboard. They are encrypted in MongoDB using `COURIER_CREDENTIALS_ENCRYPTION_KEY`; do not place merchant Steadfast keys in frontend variables.
 - Optional email/calendar support: `EMAIL_USER`, `EMAIL_PASS`, and the Google Calendar variables.
 
-`OPENAI_API_KEY`, all variables ending in `_SECRET`, tokens, passwords, `AUTH_JWT_SECRET`, `NEXTAUTH_SECRET`, `OAUTH_INTERNAL_SECRET`, `COURIER_CREDENTIALS_ENCRYPTION_KEY`, database credential-bearing URIs, and provider API keys are secrets. Keep them server-side.
+`OPENAI_API_KEY`, all variables ending in `_SECRET`, tokens, passwords, `AUTH_JWT_SECRET`, `NEXTAUTH_SECRET`, `OAUTH_INTERNAL_SECRET`, `COURIER_CREDENTIALS_ENCRYPTION_KEY`, `FACEBOOK_CREDENTIALS_ENCRYPTION_KEY`, database credential-bearing URIs, and provider API keys are secrets. Keep them server-side.
 
 ## Deployment URLs
 

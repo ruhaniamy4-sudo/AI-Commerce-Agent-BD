@@ -19,9 +19,12 @@ import { executeAgentAction, parseAgentResponse } from './agent-action.service';
 import { checkpointInboundEvent, claimInboundEvent, completeInboundEvent, releaseInboundEvent } from './inbound-idempotency.service';
 import { invokeIfAIActive, isAIActive } from './conversation-control.service';
 import { getDeterministicResponse } from './deterministic-response.service';
+import { recordConversationTurn } from './turn-metrics.service';
+import { containsPaymentCredential, facebookConversationId, isOptOutMessage, recordMetaInbound } from './meta-policy.service';
+import { validatePublicUrl } from './ingestion/url-security';
 
 export const processWebhookEvent = async (data: any) => {
-    const { businessId, eventId, psid, message, attachments = [], pageId } = data;
+    const { businessId, eventId, psid, message, attachments = [], pageId, channelAIEnabled = true } = data;
     assertTenantBusinessId(businessId, 'facebook.webhookWorker');
 
     const claim = await claimInboundEvent(eventId);
@@ -31,14 +34,45 @@ export const processWebhookEvent = async (data: any) => {
     try {
         console.log(`Processing event for PSID: ${psid}`);
 
-        const convId = `fb_${psid}`;
-        const conversation = await ensureConversation(businessId, convId);
+        const convId = facebookConversationId(pageId, psid);
+        const conversation = await ensureConversation(businessId, convId, { senderId: psid, pageId });
 
-        const messageText = message || (attachments.length ? '[Attachment]' : '');
+        const paymentSensitive = containsPaymentCredential(message || '');
+        const messageText = paymentSensitive ? '[Sensitive payment credential removed]' : message || (attachments.length ? '[Attachment]' : '');
         await saveMessage(businessId, convId, 'user', messageText, undefined, {
             messageId: eventId, platform: 'facebook',
         });
+        await recordMetaInbound(businessId, pageId, psid, convId, message || '');
         await updateLastHumanActivity();
+
+        if (isOptOutMessage(message || '')) {
+            await completeInboundEvent(eventId, processingToken, { policy: 'OPTED_OUT' });
+            return;
+        }
+
+        if (!channelAIEnabled) {
+            await completeInboundEvent(eventId, processingToken, { controller: 'CHANNEL_AI_PAUSED' });
+            return;
+        }
+
+        const deliveries = (claim.event.response as any)?.deliveries || {};
+        const sendOnce = async (key: string, work: () => Promise<any>) => {
+            if (deliveries[key]?.status === 'SENDING' || deliveries[key]?.status === 'SENT') return deliveries[key]?.result;
+            deliveries[key] = { status: 'SENDING', at: new Date().toISOString() };
+            await checkpointInboundEvent(eventId, processingToken, { deliveries });
+            const result = await work();
+            deliveries[key] = { status: 'SENT', at: new Date().toISOString(), result: { messageId: result?.message_id } };
+            await checkpointInboundEvent(eventId, processingToken, { deliveries });
+            return result;
+        };
+
+        if (paymentSensitive) {
+            const safeReply = 'For your security, please do not send card numbers, PINs, CVVs, OTPs, or bank credentials here. Use the merchant’s approved payment link or contact support.';
+            await sendOnce('payment-safety', () => sendMessage(psid, safeReply, pageId));
+            await saveMessage(businessId, convId, 'assistant', safeReply, undefined, { messageId: `${eventId}:assistant`, platform: 'facebook' });
+            await completeInboundEvent(eventId, processingToken, { policy: 'PAYMENT_CREDENTIAL_BLOCKED', reply: safeReply, deliveries });
+            return;
+        }
 
         if (!isAIActive(conversation)) {
             await completeInboundEvent(eventId, processingToken, { controller: 'HUMAN_ACTIVE' });
@@ -51,15 +85,22 @@ export const processWebhookEvent = async (data: any) => {
             return;
         }
 
-        const deterministicReply = message
-            ? await getDeterministicResponse(businessId, String(message), { psid })
+        const deterministicResult = message
+            ? await getDeterministicResponse(businessId, String(message), { psid, conversationId: convId })
             : null;
-        if (deterministicReply) {
-            await sendMessage(psid, deterministicReply, pageId);
+        if (deterministicResult) {
+            const deterministicReply = typeof deterministicResult === 'string' ? deterministicResult : deterministicResult.message_text;
+            const products = typeof deterministicResult === 'string' ? [] : deterministicResult.suggested_products || [];
+            if (products.length) await sendOnce('deterministic-products', () => sendGenericTemplate(psid, products.map((product: any) => ({
+                title: product.name, subtitle: `Price: ৳${product.price}${product.stock !== undefined ? ` · Stock: ${product.stock}` : ''}`,
+                ...(product.image ? { image_url: product.image } : {}), buttons: product.sku ? [{ type: 'postback', title: 'Buy Now', payload: `BUY_${product.sku}` }] : [],
+            })), pageId));
+            if (deterministicReply) await sendOnce('deterministic-text', () => sendMessage(psid, deterministicReply, pageId));
             await saveMessage(businessId, convId, 'assistant', deterministicReply, undefined, {
                 messageId: `${eventId}:assistant`, platform: 'facebook',
             });
-            await completeInboundEvent(eventId, processingToken, { reply: deterministicReply });
+            await recordConversationTurn(businessId, convId, 'zero_llm', typeof deterministicResult === 'string' ? undefined : deterministicResult.memory);
+            await completeInboundEvent(eventId, processingToken, { reply: deterministicReply, products, deterministic: true, llmCalls: 0 });
             return;
         }
 
@@ -67,8 +108,9 @@ export const processWebhookEvent = async (data: any) => {
         const imageAttachment = attachments.find((att: any) => att.type === 'image');
         if (imageAttachment && imageAttachment.payload?.url) {
             try {
+                const safeImageUrl = (await validatePublicUrl(imageAttachment.payload.url)).toString();
                 const imageResult = await invokeIfAIActive(convId, () => handleImageInput(
-                    businessId, convId, imageAttachment.payload.url, eventId
+                    businessId, convId, safeImageUrl, eventId
                 ));
                 if (!imageResult) {
                     await completeInboundEvent(eventId, processingToken, { controller: 'HUMAN_ACTIVE' });
@@ -79,10 +121,11 @@ export const processWebhookEvent = async (data: any) => {
                     ? `I can see this is a ${visionResult.category || 'product'}! I found these visually similar matches:\n\n${formatProductsForResponse(matchedProducts)}\n\nWould you like to know more about any of these?`
                     : `I can see the ${visionResult.category || 'product'} you shared! We don't have exact matches right now, but I can help you find similar items. What are you looking for?`;
 
-                await sendMessage(psid, responseText, pageId);
+                await sendOnce('vision-text', () => sendMessage(psid, responseText, pageId));
                 await saveMessage(businessId, convId, 'assistant', responseText, undefined, {
                     messageId: `${eventId}:assistant`, platform: 'facebook',
                 });
+                await recordConversationTurn(businessId, convId, 'zero_llm', matchedProducts.length ? { activeProductId: String(matchedProducts[0]._id), recentProductIds: matchedProducts.slice(0, 3).map((product: any) => String(product._id)) } : undefined);
                 await completeInboundEvent(eventId, processingToken, { reply: responseText });
                 return;
             } catch (visionError) {
@@ -120,16 +163,16 @@ export const processWebhookEvent = async (data: any) => {
             const elements = aiResponse.suggested_products.map((p: any) => ({
                 title: p.name,
                 subtitle: p.price ? `Price: ${p.price}` : '',
-                image_url: p.image_url || 'https://via.placeholder.com/150',
+                ...(p.image_url ? { image_url: p.image_url } : {}),
                 buttons: [
                     { type: 'postback', title: 'Buy Now', payload: `BUY_${p.sku}` }
                 ]
             }));
-            await sendGenericTemplate(psid, elements, pageId);
+            await sendOnce('ai-products', () => sendGenericTemplate(psid, elements, pageId));
 
             // Send text separately if needed
             if (aiResponse.message_text) {
-                await sendMessage(psid, aiResponse.message_text, pageId);
+                await sendOnce('ai-text', () => sendMessage(psid, aiResponse.message_text, pageId));
             }
 
         } else if (aiResponse.quick_replies && aiResponse.quick_replies.length > 0) {
@@ -138,12 +181,12 @@ export const processWebhookEvent = async (data: any) => {
                 title: r,
                 payload: r.toUpperCase().replace(/\s/g, '_')
             }));
-            await sendQuickReplies(psid, aiResponse.message_text, replies, pageId);
+            await sendOnce('ai-quick-replies', () => sendQuickReplies(psid, aiResponse.message_text, replies, pageId));
 
         } else {
             // Send Simple Text
             if (aiResponse.message_text) {
-                await sendMessage(psid, aiResponse.message_text, pageId);
+                await sendOnce('ai-text', () => sendMessage(psid, aiResponse.message_text, pageId));
             }
         }
 
@@ -152,6 +195,7 @@ export const processWebhookEvent = async (data: any) => {
         await saveMessage(businessId, convId, 'assistant', aiResponse.message_text, undefined, {
             messageId: `${eventId}:assistant`, platform: 'facebook',
         });
+        await recordConversationTurn(businessId, convId, 'llm_assisted');
 
         await completeInboundEvent(eventId, processingToken, { reply: aiResponse.message_text });
 

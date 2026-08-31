@@ -2,6 +2,7 @@ import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import FacebookProvider from 'next-auth/providers/facebook';
+import { MERCHANT_SESSION_MAX_AGE_SECONDS } from '@edutechs/shared';
 
 type BusinessRole = 'Owner' | 'Admin' | 'Staff';
 interface AgentSession {
@@ -33,7 +34,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) providers.
 if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) providers.push(FacebookProvider({ clientId: process.env.FACEBOOK_APP_ID, clientSecret: process.env.FACEBOOK_APP_SECRET }));
 
 export const authOptions: NextAuthOptions = {
-    providers, pages: { signIn: '/login' }, session: { strategy: 'jwt', maxAge: 60 * 60 * 24 * 7 },
+    providers, pages: { signIn: '/login' }, session: { strategy: 'jwt', maxAge: MERCHANT_SESSION_MAX_AGE_SECONDS },
     callbacks: {
         async signIn({ user, account }) {
             if (account?.provider === 'credentials') return true;

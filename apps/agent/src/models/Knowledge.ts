@@ -35,6 +35,8 @@ export interface IKnowledge extends Document {
     provenance?: Array<{ sourceType: string; sourceUrl?: string; sourceExternalId?: string; fingerprint: string; lastSeenAt: Date; lastSyncedAt: Date }>;
     merchantConfirmed: boolean;
     intelligence?: SearchProfile;
+    businessType?: string;
+    knowledgeDomain?: string;
 
     createdAt: Date;
     updatedAt: Date;
@@ -104,6 +106,8 @@ const KnowledgeSchema = new Schema(
             fingerprint: { type: String, required: true }, lastSeenAt: { type: Date, default: Date.now }, lastSyncedAt: { type: Date, default: Date.now },
         }],
         merchantConfirmed: { type: Boolean, default: true },
+        businessType: { type: String, index: true },
+        knowledgeDomain: { type: String, trim: true, uppercase: true, index: true },
         intelligence: { type: KnowledgeIntelligenceSchema, select: false },
     },
     { timestamps: true }

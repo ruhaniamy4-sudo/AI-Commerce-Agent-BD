@@ -1,8 +1,10 @@
 import crypto from 'node:crypto';
+import { MERCHANT_SESSION_MAX_AGE_SECONDS } from '@edutechs/shared';
 import { BusinessRole } from '../tenancy/context';
 
 export interface AccessTokenPayload {
     sub: string;
+    purpose: 'merchant';
     businessId: string;
     membershipId: string;
     role: BusinessRole;
@@ -55,13 +57,13 @@ function verifyPayload(token: string): Record<string, unknown> {
     return payload;
 }
 
-export function signAccessToken(payload: Omit<AccessTokenPayload, 'iat' | 'exp'>, ttlSeconds = 3600) {
-    return signPayload(payload, ttlSeconds);
+export function signAccessToken(payload: Omit<AccessTokenPayload, 'iat' | 'exp' | 'purpose'>, ttlSeconds = MERCHANT_SESSION_MAX_AGE_SECONDS) {
+    return signPayload({ ...payload, purpose: 'merchant' }, ttlSeconds);
 }
 
 export function verifyAccessToken(token: string): AccessTokenPayload {
     const payload = verifyPayload(token) as unknown as AccessTokenPayload;
-    if (!payload.sub || !payload.businessId || !payload.membershipId || !payload.role) throw new Error('Invalid token claims');
+    if (!payload.sub || payload.purpose !== 'merchant' || !payload.businessId || !payload.membershipId || !payload.role) throw new Error('Invalid merchant token claims');
     return payload;
 }
 

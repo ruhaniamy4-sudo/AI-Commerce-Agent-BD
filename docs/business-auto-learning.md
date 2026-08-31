@@ -30,6 +30,6 @@ INGESTION_MAX_RESPONSE_BYTES=2000000
 INGESTION_MAX_FILE_BYTES=10000000
 ```
 
-Facebook Page import uses the existing `FB_PAGE_ACCESS_TOKEN` and an active tenant Page connection. Additional Meta permissions and review may be required for Page fields or commerce/catalog data.
+Facebook Page import uses the encrypted Page token on the selected tenant connection. It is capability-gated by `pages_read_engagement`; commerce/catalog data needs a separate reviewed integration and is never inferred from customer messages.
 
 For an existing database, run `npm run migrate:training-indexes` once. The command is idempotent: it creates missing declared indexes and does not drop merchant data.

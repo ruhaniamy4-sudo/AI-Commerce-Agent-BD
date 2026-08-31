@@ -7,7 +7,7 @@ const { mockQueueAdd, mockWebHookEvent, mockBusinessChannel, mockLogError } = vi
     return {
         mockQueueAdd: vi.fn(),
         mockWebHookEvent: { findOne: vi.fn(), create: vi.fn() },
-        mockBusinessChannel: { findOne: vi.fn() },
+        mockBusinessChannel: { findOne: vi.fn(), updateOne: vi.fn() },
         mockLogError: vi.fn()
     };
 });
@@ -90,6 +90,21 @@ describe('Facebook Webhook API', () => {
             .send({});
 
         expect(response.status).toBe(403);
+    });
+
+    it('POST /webhook rejects a missing signature even outside production', async () => {
+        process.env.NODE_ENV = 'test';
+        const response = await request(app).post('/webhook').send({ object: 'page', entry: [] });
+        expect(response.status).toBe(403);
+    });
+
+    it('fails closed for an unrecognized Page', async () => {
+        mockBusinessChannel.findOne.mockReturnValueOnce({ lean: vi.fn().mockResolvedValue(null) });
+        const payload = { object: 'page', entry: [{ id: 'unknown', messaging: [{ sender: { id: 'user_1' }, message: { text: 'Hello', mid: 'mid_unknown' } }] }] };
+        const signature = crypto.createHmac('sha256', 'test_secret').update(JSON.stringify(payload)).digest('hex');
+        const response = await request(app).post('/webhook').set('x-hub-signature-256', `sha256=${signature}`).send(payload);
+        expect(response.status).toBe(200);
+        expect(mockQueueAdd).not.toHaveBeenCalled();
     });
 
     it('POST /webhook accepts requests with valid signature and queues job', async () => {

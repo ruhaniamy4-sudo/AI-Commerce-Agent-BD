@@ -78,12 +78,7 @@ describe('AI Agent Logic', () => {
 
         // Assertions
         expect(mockInvoke).toHaveBeenCalledTimes(1);
-        expect(retrieveContext).toHaveBeenCalledWith(
-            businessId,
-            '12345',
-            'Hi there',
-            initialState.messages
-        );
+        expect(retrieveContext).not.toHaveBeenCalled();
 
         // Result messages should contain the response
         const messages = result.messages;

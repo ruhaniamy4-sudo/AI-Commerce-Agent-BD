@@ -11,6 +11,7 @@ import { BUSINESS_ROLES } from '../tenancy/context';
 import { authRateLimit } from '../auth/rate-limit';
 import crypto from 'node:crypto';
 import { PASSWORD_MIN_LENGTH } from '@edutechs/shared';
+import { normalizeBusinessType } from '../services/adaptive-training.service';
 
 const router = Router();
 
@@ -116,7 +117,7 @@ router.post('/business', authenticateAccount, async (req: AccountAuthenticatedRe
         return res.json(result);
     }
     const name = String(req.body?.name || '').trim();
-    const businessType = String(req.body?.businessType || '').trim();
+    const businessType = normalizeBusinessType(req.body?.businessType);
     const description = String(req.body?.description || '').trim();
     const phone = String(req.body?.phone || '').trim();
     const website = String(req.body?.website || '').trim();
@@ -128,7 +129,7 @@ router.post('/business', authenticateAccount, async (req: AccountAuthenticatedRe
     const slug = `${baseSlug}-${crypto.randomBytes(3).toString('hex')}`;
     let business: InstanceType<typeof Business> | undefined;
     try {
-        business = await Business.create({ name, slug, businessType, description: description || undefined, phone: phone || undefined, website: website || undefined, preferredLanguage, currency: 'BDT', status: 'active' });
+        business = await Business.create({ name, slug, businessType, businessTypeStatus: 'confirmed', description: description || undefined, phone: phone || undefined, website: website || undefined, preferredLanguage, currency: 'BDT', status: 'active' });
         const membership = await BusinessMember.create({ businessId: business._id, userId: user._id, role: 'Owner', status: 'active' });
         return res.status(201).json({
             needsOnboarding: false,
@@ -158,9 +159,14 @@ router.patch('/business', authenticate, authorize('Owner'), async (req: Authenti
     if (!updates.name || updates.name.length < 2 || updates.name.length > 160) return res.status(400).json({ error: 'A valid business name is required' });
     if (updates.businessType && updates.businessType.length > 120 || updates.phone && updates.phone.length > 30 || updates.website && updates.website.length > 300) return res.status(400).json({ error: 'Business profile fields are too long' });
     if (updates.preferredLanguage && !['bn', 'en'].includes(updates.preferredLanguage)) return res.status(400).json({ error: 'Preferred language must be bn or en' });
+    if (updates.businessType) {
+        const normalized = normalizeBusinessType(updates.businessType);
+        if (!normalized) return res.status(400).json({ error: 'Choose a supported business type' });
+        updates.businessType = normalized;
+    }
     const business = await Business.findByIdAndUpdate(
         req.auth!.businessId,
-        { $set: updates },
+        { $set: { ...updates, ...(updates.businessType ? { businessTypeStatus: 'confirmed' } : {}) } },
         { new: true, runValidators: true }
     );
     res.json(business);
@@ -266,6 +272,7 @@ router.get('/channels', authenticate, requireAdministrator, async (req: Authenti
 router.post('/channels', authenticate, requireAdministrator, async (req: AuthenticatedRequest, res) => {
     const { platform, externalId, name } = req.body || {};
     if (!platform || !externalId || !name) return res.status(400).json({ error: 'Platform, externalId, and name are required' });
+    if (platform === 'facebook') return res.status(400).json({ error: 'Facebook Pages must be connected through Meta authorization' });
     const channel = await BusinessChannel.create({
         businessId: new mongoose.Types.ObjectId(req.auth!.businessId),
         platform,
@@ -277,7 +284,14 @@ router.post('/channels', authenticate, requireAdministrator, async (req: Authent
 });
 
 router.patch('/channels/:id', authenticate, requireAdministrator, async (req: AuthenticatedRequest, res) => {
-    const { businessId: _ignoredBusinessId, ...updates } = req.body;
+    const current = await BusinessChannel.findOne({ _id: req.params.id, businessId: req.auth!.businessId }).select('platform').lean();
+    if (!current) return res.status(404).json({ error: 'Channel not found' });
+    const updates: Record<string, unknown> = {};
+    if (req.body?.name !== undefined) updates.name = String(req.body.name).trim().slice(0, 160);
+    if (req.body?.status !== undefined) {
+        if (!['active', 'disabled'].includes(req.body.status)) return res.status(400).json({ error: 'Invalid channel status' });
+        updates.status = req.body.status;
+    }
     const channel = await BusinessChannel.findOneAndUpdate(
         { _id: req.params.id, businessId: req.auth!.businessId },
         { $set: updates },

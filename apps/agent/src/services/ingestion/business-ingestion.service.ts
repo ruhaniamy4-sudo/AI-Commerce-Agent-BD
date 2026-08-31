@@ -5,6 +5,7 @@ import { Business } from '../../models/Business';
 import { Category } from '../../models/Category';
 import { Knowledge } from '../../models/Knowledge';
 import { Product } from '../../models/Product';
+import { Offering } from '../../models/Offering';
 import { TrainingCandidate, CandidateStatus } from '../../models/TrainingCandidate';
 import { TrainingRun } from '../../models/TrainingRun';
 import { TrainingSource } from '../../models/TrainingSource';
@@ -13,6 +14,8 @@ import { classifyProductSimilarity, knowledgeFact, normalizeMoney, normalizeSku,
 import { ExtractedKnowledge, ExtractedProduct, WebsiteExtraction, ingestWebsite } from './website-ingestion.service';
 import { mirrorExternalProductImages } from './external-image.service';
 import { getImageEmbedding } from '../embedding.service';
+import { normalizeProductAvailability } from './product-availability';
+import { defaultOfferingType, inferBusinessType, knowledgeDomain, normalizeBusinessType } from '../adaptive-training.service';
 
 export interface CandidateInput {
     products?: ExtractedProduct[];
@@ -40,8 +43,8 @@ function productPayload(raw: ExtractedProduct) {
     return {
         name: name.trim().slice(0, 240), description: description.replace(/\s+/g, ' ').trim().slice(0, 20_000),
         category: String(raw.category || 'Imported').trim().slice(0, 120), basePrice: price, salePrice: normalizeMoney(raw.salePrice),
-        stock: Number.isFinite(raw.stock) ? Math.max(0, Number(raw.stock)) : 0, sku: normalizeSku(raw.sku), barcode: raw.barcode,
-        availability: raw.availability || 'unknown', brand: raw.brand, canonicalUrl: raw.canonicalUrl, images, variants, specs: raw.specs || {},
+        stock: Number.isFinite(raw.stock) ? Math.max(0, Number(raw.stock)) : undefined, sku: normalizeSku(raw.sku), barcode: raw.barcode,
+        availability: raw.availability === 'preorder' ? 'unknown' : normalizeProductAvailability(raw.availability, raw.stock), brand: raw.brand, canonicalUrl: raw.canonicalUrl, images, variants, specs: raw.specs || {},
     };
 }
 function conflictsForProduct(existing: any, imported: any) {
@@ -67,8 +70,21 @@ async function upsertCandidate(source: any, run: any, values: Record<string, any
 
 export async function stageCandidates(businessId: string, sourceId: string, runId: string, input: CandidateInput) {
     assertTenantBusinessId(businessId, 'ingestion.stage');
-    const [source, run] = await Promise.all([TrainingSource.findById(sourceId), TrainingRun.findById(runId)]);
+    const [source, run, currentBusiness] = await Promise.all([TrainingSource.findById(sourceId), TrainingRun.findById(runId), Business.findById(businessId).lean()]);
     if (!source || !run) throw new Error('Training source or run is unavailable');
+    const inferenceText = [
+        ...(input.products || []).flatMap((item) => [item.name, item.description, item.category]),
+        ...(input.knowledge || []).flatMap((item) => [item.title, item.content, item.topic]),
+        ...Object.values(input.business || {}),
+    ].filter(Boolean).join(' ');
+    const inference = inferBusinessType(inferenceText) || ((input.products || []).length ? { businessType: 'ECOMMERCE' as const, confidence: .65, evidence: ['catalog-like offerings'] } : undefined);
+    if (inference && currentBusiness?.businessTypeStatus !== 'confirmed') {
+        await Business.findByIdAndUpdate(businessId, { $set: {
+            businessType: inference.businessType, businessTypeStatus: 'inferred',
+            businessTypeInference: { value: inference.businessType, confidence: inference.confidence, evidence: inference.evidence, sourceId: source._id, inferredAt: new Date() },
+        } });
+    }
+    const businessType = normalizeBusinessType(currentBusiness?.businessTypeStatus === 'confirmed' ? currentBusiness.businessType : inference?.businessType || currentBusiness?.businessType) || 'ECOMMERCE';
     const stats = {
         pages: input.pages || 0, discovered: input.crawl?.discovered || input.pages || 0, productUrls: input.crawl?.productUrls || 0,
         remaining: input.crawl?.remaining || 0, failed: input.crawl?.failed || 0, fetches: input.crawl?.fetches || 0,
@@ -89,6 +105,23 @@ export async function stageCandidates(businessId: string, sourceId: string, runI
         let duplicateKind: 'exact' | 'probable' | undefined;
         let matchedRecordId: mongoose.Types.ObjectId | undefined;
         let conflictFields: Array<{ field: string; currentValue: unknown; importedValue: unknown }> = [];
+        if (businessType !== 'ECOMMERCE') {
+            const offeringPayload = {
+                offeringType: defaultOfferingType(businessType), name: payload.name, description: payload.description,
+                category: payload.category, price: payload.basePrice, salePrice: payload.salePrice, currency: 'BDT',
+                availability: payload.availability, attributes: { ...payload.specs, variants: payload.variants }, images: payload.images,
+                canonicalUrl: payload.canonicalUrl,
+            };
+            const existingOffering = await Offering.findOne({ $or: [
+                ...(payload.canonicalUrl ? [{ canonicalUrl: payload.canonicalUrl }] : []),
+                { name: { $regex: `^${payload.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+            ] }).lean();
+            if (existingOffering) { duplicateKind = 'exact'; matchedRecordId = existingOffering._id; status = 'possible_duplicate'; stats.duplicates += 1; }
+            if (!payload.name) { status = 'needs_attention'; stats.needsAttention += 1; }
+            await upsertCandidate(source, run, { kind: 'offering', status, title: payload.name || 'Unnamed offering', normalizedKey: key, fingerprint, confidence: status === 'ready' ? 1 : .75, payload: offeringPayload, source: sourceMeta(source, payload.canonicalUrl), duplicateKind, matchedRecordId, conflictFields });
+            stats.products += 1;
+            continue;
+        }
         const exactQueries: Record<string, unknown>[] = [];
         if (payload.sku) exactQueries.push({ 'variants.sku': payload.sku });
         if (payload.barcode) exactQueries.push({ barcode: payload.barcode });
@@ -141,12 +174,11 @@ export async function stageCandidates(businessId: string, sourceId: string, runI
             }
         }
         if (status === 'needs_attention') stats.needsAttention += 1;
-        await upsertCandidate(source, run, { kind: 'knowledge', status, title: String(raw.title || 'Business information').slice(0, 200), normalizedKey: topic, fingerprint, confidence: raw.confidence ?? (status === 'ready' ? 1 : .75), payload: { title: raw.title, content, type: raw.type, topic: raw.topic, language: 'bn', normalizedFact: fact }, source: sourceMeta(source, raw.sourceUrl), duplicateKind, matchedRecordId, conflictFields });
+        await upsertCandidate(source, run, { kind: 'knowledge', status, title: String(raw.title || 'Business information').slice(0, 200), normalizedKey: topic, fingerprint, confidence: raw.confidence ?? (status === 'ready' ? 1 : .75), payload: { title: raw.title, content, type: raw.type, topic: raw.topic, language: 'bn', normalizedFact: fact, businessType, knowledgeDomain: knowledgeDomain(businessType, `${raw.title} ${content}`) }, source: sourceMeta(source, raw.sourceUrl), duplicateKind, matchedRecordId, conflictFields });
         stats.knowledge += 1;
     }
 
     const allowedBusinessFields = ['name', 'description', 'phone', 'email', 'address', 'openingHours', 'socialLinks'];
-    const currentBusiness = await Business.findById(businessId).lean();
     for (const field of allowedBusinessFields) {
         const value = String(input.business?.[field] || '').trim();
         if (!value) continue;
@@ -165,7 +197,7 @@ export async function stageCandidates(businessId: string, sourceId: string, runI
 
 export async function runWebsiteIngestion(businessId: string, sourceId: string, runId: string, options?: { failedOnly?: boolean }) {
     assertTenantBusinessId(businessId, 'ingestion.website');
-    const source = await TrainingSource.findById(sourceId);
+    const [source, business] = await Promise.all([TrainingSource.findById(sourceId), Business.findById(businessId).lean()]);
     if (!source?.url) throw new Error('Website source is unavailable');
     await Promise.all([
         source.updateOne({ $set: { status: 'learning' } }),
@@ -178,6 +210,7 @@ export async function runWebsiteIngestion(businessId: string, sourceId: string, 
         } }).then(() => undefined), {
             previousPages: source.crawlPages || [],
             retryUrls: options?.failedOnly ? (source.crawlPages || []).filter((page) => page.status === 'failed').map((page) => page.url) : undefined,
+            businessType: normalizeBusinessType(business?.businessType),
         });
         if (extracted.crawl?.pages) {
             const pageMap = new Map<string, any>();
@@ -218,7 +251,7 @@ async function refreshApprovedImageIndex(product: InstanceType<typeof Product>) 
     }
 }
 
-export async function approveCandidate(businessId: string, candidateId: string, userId: string) {
+async function promoteClaimedCandidate(businessId: string, candidateId: string, userId: string) {
     assertTenantBusinessId(businessId, 'ingestion.approve');
     const candidate = await TrainingCandidate.findById(candidateId);
     if (!candidate) throw new Error('Candidate not found');
@@ -253,7 +286,7 @@ export async function approveCandidate(businessId: string, candidateId: string, 
             const product = await Product.create(tenantDocument({
                 name: data.name, slug: `${slug(data.name)}-${candidate.fingerprint.slice(0, 8)}`, description: data.description || data.name,
                 categoryId: category._id, basePrice: data.basePrice, salePrice: data.salePrice, stock: data.stock || 0,
-                variants: (data.variants || []).map((variant: any, index: number) => ({ variantId: `import-${index}-${candidate.fingerprint.slice(0, 6)}`, name: variant.name || 'Variant', sku: variant.sku || `${candidate.fingerprint.slice(0, 10)}-${index}`, price: variant.price ?? data.basePrice, stock: variant.stock ?? data.stock ?? 0, images: variant.images || [], specs: variant.specs || {}, isActive: true })),
+                variants: (data.variants?.length ? data.variants : data.sku ? [{ name: 'Default', sku: data.sku, price: data.basePrice, stock: data.stock, images: data.images || [], specs: {} }] : []).map((variant: any, index: number) => ({ variantId: `import-${index}-${candidate.fingerprint.slice(0, 6)}`, name: variant.name || 'Variant', sku: variant.sku || `${candidate.fingerprint.slice(0, 10)}-${index}`, price: variant.price ?? data.basePrice, stock: variant.stock ?? data.stock ?? 0, images: variant.images || [], specs: variant.specs || {}, isActive: true })),
                 specs: data.specs || {}, compatibilityTags: [], images: imageImport.images, imageImports: imageImport.imports, barcode: data.barcode, brand: data.brand,
                 canonicalUrl: data.canonicalUrl, warrantyMonths: 0, isReturnable: true, returnDays: 7, isActive: true, isFeatured: false,
                 lowStockThreshold: 10, availability: data.availability, provenance: [provenance(candidate)], merchantConfirmed: true,
@@ -261,6 +294,16 @@ export async function approveCandidate(businessId: string, candidateId: string, 
             candidate.matchedRecordId = product._id;
             void refreshApprovedImageIndex(product);
         }
+    } else if (candidate.kind === 'offering') {
+        const data = candidate.payload;
+        let existing = candidate.matchedRecordId ? await Offering.findById(candidate.matchedRecordId) : null;
+        if (!existing && data.canonicalUrl) existing = await Offering.findOne({ canonicalUrl: data.canonicalUrl });
+        const values = { ...data, fingerprint: candidate.fingerprint, provenance: [provenance(candidate)], merchantConfirmed: true, createdBy: userId, updatedBy: userId };
+        if (existing) {
+            Object.assign(existing, values, { provenance: [...(existing.provenance || []).filter((item: any) => item.fingerprint !== candidate.fingerprint), provenance(candidate)] });
+            await existing.save();
+        } else existing = await Offering.create(tenantDocument(values));
+        candidate.matchedRecordId = existing._id;
     } else if (candidate.kind === 'knowledge') {
         const data = candidate.payload;
         let existing = await Knowledge.findOne({ $or: [{ fingerprint: candidate.fingerprint }, { normalizedFact: data.normalizedFact }] });
@@ -268,10 +311,12 @@ export async function approveCandidate(businessId: string, candidateId: string, 
             if ((data.resolvedFields || []).includes('content')) {
                 existing.content = data.content; existing.normalizedFact = data.normalizedFact; existing.updatedBy = userId;
             }
+            existing.businessType = data.businessType || existing.businessType;
+            existing.knowledgeDomain = data.knowledgeDomain || existing.knowledgeDomain;
             existing.provenance = [...(existing.provenance || []).filter((item: any) => item.fingerprint !== candidate.fingerprint), provenance(candidate)];
             await existing.save(); candidate.matchedRecordId = existing._id;
         } else {
-            existing = await Knowledge.create(tenantDocument({ title: data.title, content: data.content, type: data.type, language: data.language || 'bn', tags: normalizedText(`${data.title} ${data.content}`).split(' ').slice(0, 12), status: 'active', sourcePriority: 'normal', createdBy: userId, updatedBy: userId, isPinned: data.type === 'POLICY', normalizedFact: data.normalizedFact, fingerprint: candidate.fingerprint, provenance: [provenance(candidate)], merchantConfirmed: true }));
+            existing = await Knowledge.create(tenantDocument({ title: data.title, content: data.content, type: data.type, language: data.language || 'bn', tags: normalizedText(`${data.title} ${data.content}`).split(' ').slice(0, 12), status: 'active', sourcePriority: 'normal', createdBy: userId, updatedBy: userId, isPinned: data.type === 'POLICY', normalizedFact: data.normalizedFact, fingerprint: candidate.fingerprint, provenance: [provenance(candidate)], merchantConfirmed: true, businessType: data.businessType, knowledgeDomain: data.knowledgeDomain }));
             candidate.matchedRecordId = existing._id;
         }
     } else {
@@ -283,10 +328,32 @@ export async function approveCandidate(businessId: string, candidateId: string, 
     candidate.status = 'imported'; candidate.approvedBy = userId; candidate.approvedAt = new Date();
     await candidate.save();
     const [productsImported, knowledgeImported, needsReview] = await Promise.all([
-        TrainingCandidate.countDocuments({ kind: 'product', status: 'imported' }),
+        TrainingCandidate.countDocuments({ kind: { $in: ['product', 'offering'] }, status: 'imported' }),
         TrainingCandidate.countDocuments({ kind: { $in: ['knowledge', 'business'] }, status: 'imported' }),
         TrainingCandidate.countDocuments({ status: { $in: ['possible_duplicate', 'conflict', 'needs_attention'] } }),
     ]);
     await Business.findByIdAndUpdate(businessId, { $set: { 'training.status': needsReview ? 'needs_review' : 'ready', 'training.productsImported': productsImported, 'training.knowledgeImported': knowledgeImported, 'training.needsReview': needsReview, 'onboarding.productAdded': productsImported > 0, 'onboarding.knowledgeAdded': knowledgeImported > 0 } });
     return candidate;
+}
+
+export async function approveCandidate(businessId: string, candidateId: string, userId: string) {
+    assertTenantBusinessId(businessId, 'ingestion.approve');
+    const current = await TrainingCandidate.findById(candidateId);
+    if (!current) throw new Error('Candidate not found');
+    if (current.status === 'imported') return current;
+    const candidate = await TrainingCandidate.findOneAndUpdate(
+        { _id: candidateId, status: { $in: ['ready', 'failed', 'approved'] } },
+        { $set: { status: 'approving' }, $unset: { lastError: 1 }, $inc: { approvalAttempts: 1 } },
+        { new: true }
+    );
+    if (!candidate) throw new Error(current.status === 'approving' ? 'Approval is already in progress' : 'Resolve this item before approval');
+    try {
+        return await promoteClaimedCandidate(businessId, candidateId, userId);
+    } catch (error) {
+        await TrainingCandidate.updateOne(
+            { _id: candidateId, status: 'approving' },
+            { $set: { status: 'failed', lastError: error instanceof Error ? error.message.slice(0, 500) : 'Approval failed' } }
+        );
+        throw error;
+    }
 }
