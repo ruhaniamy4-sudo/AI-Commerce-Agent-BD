@@ -31,6 +31,7 @@ describe('runtime configuration', () => {
         const checks = validateConfiguration({ MONGODB_URI: 'mongodb+srv://example', AUTH_JWT_SECRET: 'secret', AI_PROVIDER: 'groq', GROQ_API_KEY: 'key' });
         expect(checks.filter((item) => item.category === 'core').every((item) => item.configured)).toBe(true);
         expect(checks.find((item) => item.feature === 'facebook')).toMatchObject({ category: 'feature', configured: false });
+        expect(checks.find((item) => item.feature === 'authentication-email')).toMatchObject({ category: 'feature', configured: false });
         expect(checks.find((item) => item.feature === 'google')).toMatchObject({ category: 'optional', configured: false });
     });
 
@@ -39,12 +40,12 @@ describe('runtime configuration', () => {
         expect(getAIConfiguration({ AI_PROVIDER: 'openai', OPENAI_API_KEY: 'openai' })).toMatchObject({ provider: 'openai', configured: true });
     });
 
-    it('validates bootstrap and platform-admin passwords at eight characters', () => {
+    it('validates bootstrap and platform-admin passwords at the configured minimum', () => {
         const short = validateConfiguration({ BOOTSTRAP_OWNER_EMAIL: 'owner@example.com', BOOTSTRAP_OWNER_PASSWORD: '1234567', PLATFORM_ADMIN_EMAIL: 'admin@example.com', PLATFORM_ADMIN_PASSWORD: '1234567' });
         expect(short.find((item) => item.feature === 'bootstrap-owner')?.configured).toBe(false);
         expect(short.find((item) => item.feature === 'platform-admin')?.configured).toBe(false);
 
-        const valid = validateConfiguration({ BOOTSTRAP_OWNER_EMAIL: 'owner@example.com', BOOTSTRAP_OWNER_PASSWORD: '12345678', PLATFORM_ADMIN_EMAIL: 'admin@example.com', PLATFORM_ADMIN_PASSWORD: '12345678' });
+        const valid = validateConfiguration({ BOOTSTRAP_OWNER_EMAIL: 'owner@example.com', BOOTSTRAP_OWNER_PASSWORD: 'S3curePass!', PLATFORM_ADMIN_EMAIL: 'admin@example.com', PLATFORM_ADMIN_PASSWORD: 'AdminPass1!' });
         expect(valid.find((item) => item.feature === 'bootstrap-owner')?.configured).toBe(true);
         expect(valid.find((item) => item.feature === 'platform-admin')?.configured).toBe(true);
     });

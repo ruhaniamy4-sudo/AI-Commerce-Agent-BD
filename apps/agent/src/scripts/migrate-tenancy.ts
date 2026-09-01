@@ -17,6 +17,8 @@ import { WebhookEvent } from '../models/WebhookEvent';
 import { AIUsage } from '../models/AIUsage';
 import { repairLanguageNeutralTextIndexes } from '../db/text-index-migration';
 import { PASSWORD_MIN_LENGTH } from '@edutechs/shared';
+import { AuthSession } from '../models/AuthSession';
+import { AuthActionToken } from '../models/AuthActionToken';
 
 dotenv.config();
 
@@ -71,8 +73,20 @@ async function main() {
             email: ownerEmail,
             passwordHash: await hashPassword(ownerPassword),
             status: 'active',
+            emailVerified: true,
+            emailVerifiedAt: new Date(),
+            emailVerificationMethod: 'bootstrap',
         });
     }
+
+    await User.updateOne(
+        { _id: user._id, emailVerified: { $ne: true } },
+        { $set: { emailVerified: true, emailVerifiedAt: new Date(), emailVerificationMethod: 'bootstrap' } }
+    );
+    await User.collection.updateMany(
+        { emailVerified: true, emailVerifiedAt: null },
+        [{ $set: { emailVerifiedAt: { $ifNull: ['$updatedAt', '$createdAt'] }, emailVerificationMethod: { $ifNull: ['$emailVerificationMethod', 'legacy'] } } }]
+    );
 
     await BusinessMember.updateOne(
         { businessId: business._id, userId: user._id },
@@ -113,6 +127,7 @@ async function main() {
     await dropLegacyGlobalUniqueIndexes();
     await repairLanguageNeutralTextIndexes(mongoose.connection);
     for (const model of tenantModels) await model.syncIndexes();
+    for (const model of [User, BusinessMember, AuthSession, AuthActionToken]) await model.createIndexes();
 
     console.log(`Tenancy migration complete for ${business.name} (${business._id})`);
 }

@@ -1,6 +1,8 @@
 export type ID = string;
 export type BusinessRole = 'Owner' | 'Admin' | 'Staff';
-export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MIN_LENGTH = 10;
+export const MERCHANT_ACCESS_TOKEN_MAX_AGE_SECONDS = 15 * 60;
+export const ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS = 15 * 60;
 export const MERCHANT_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
 export const TEST_AI_API = {

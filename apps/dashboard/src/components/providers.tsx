@@ -13,6 +13,7 @@ function AuthSessionBridge() {
 
   useEffect(() => {
     if (status !== "loading") setApiSession(session)
+    if (status === "authenticated" && session?.authError) void signOut({ callbackUrl: "/login" })
   }, [session, status])
 
   useEffect(() => {

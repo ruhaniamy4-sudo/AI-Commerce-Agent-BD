@@ -6,6 +6,7 @@ import { PlatformAdmin } from '../models/PlatformAdmin';
 import { User } from '../models/User';
 import { Business } from '../models/Business';
 import { touchMerchantActivity } from '../services/merchant-activity.service';
+import { isSessionActive } from './session';
 
 export interface AuthenticatedRequest extends Request {
     auth?: TenantPrincipal;
@@ -36,6 +37,13 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     }
 
     try {
+        if (payload.sid && !await isSessionActive(payload.sid, {
+            userId: payload.sub,
+            type: 'merchant',
+            businessId: payload.businessId,
+            membershipId: payload.membershipId,
+            role: payload.role,
+        })) return res.status(401).json({ error: 'Session is no longer active' });
         const membership = await BusinessMember.findOne({
             _id: payload.membershipId,
             userId: payload.sub,
@@ -56,6 +64,7 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
             businessId: payload.businessId,
             membershipId: payload.membershipId,
             role: payload.role,
+            sessionId: payload.sid,
         };
         try {
             await touchMerchantActivity(payload.sub, payload.businessId);
@@ -73,6 +82,9 @@ export async function authenticateAccount(req: AccountAuthenticatedRequest, res:
     if (!token) return res.status(401).json({ error: 'Authentication required' });
     try {
         const payload = verifyAccountToken(token);
+        if (payload.sid && !await isSessionActive(payload.sid, { userId: payload.sub, type: 'account' })) {
+            return res.status(401).json({ error: 'Session is no longer active' });
+        }
         req.account = { userId: payload.sub };
         return next();
     } catch {

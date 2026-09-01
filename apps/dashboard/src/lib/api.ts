@@ -252,7 +252,7 @@ export interface SetupStatus {
 }
 export const onboardingApi = {
     status: () => apiClient.get<SetupStatus>('/onboarding/status'),
-    createBusiness: (data: Record<string, unknown>) => apiClient.post<{ accessToken: string; business: { id: string; name: string }; role: 'Owner'; needsOnboarding: false }>('/auth/business', data),
+    createBusiness: (data: Record<string, unknown>) => apiClient.post<{ accessToken: string; refreshToken: string; accessTokenExpiresAt: string; refreshTokenExpiresAt: string; business: { id: string; name: string }; role: 'Owner'; needsOnboarding: false }>('/auth/business', data),
     addProduct: (data: Record<string, unknown>) => apiClient.post('/onboarding/product', data),
     addKnowledge: (data: Record<string, unknown>) => apiClient.post('/onboarding/knowledge', data),
     configureChannel: () => apiClient.post('/onboarding/channel', { platform: 'web' }),
@@ -311,10 +311,14 @@ export const trainingApi = {
 export interface TeamMember { _id: string; role: 'Owner'|'Admin'|'Staff'; status: string; userId: { _id: string; name: string; email: string; status: string } }
 export interface BrandVoiceProfile { tone: 'friendly'|'professional'|'casual'|'premium'|'custom'; replyLength: 'short'|'balanced'|'detailed'; language: 'auto'|'bn'|'en'|'banglish'; salesBehavior: 'helpful'|'balanced'|'sales_focused'; emoji: 'none'|'light'|'normal'; customTone?: string; examples: string[] }
 export interface BusinessProfile { _id: string; name: string; businessType?: string; phone?: string; website?: string; preferredLanguage: 'bn'|'en'; currency: 'BDT'; brandVoice?: BrandVoiceProfile }
+export interface SecuritySession { id:string; type:'account'|'merchant'; userAgent?:string; createdAt:string; lastUsedAt?:string; expiresAt:string; revokedAt?:string; current:boolean }
 export const businessApi = {
     get: () => apiClient.get<BusinessProfile>('/auth/business'), update: (data: Partial<BusinessProfile>) => apiClient.patch<BusinessProfile>('/auth/business', data),
     updateBrandVoice: (data: Partial<BrandVoiceProfile>) => apiClient.patch<BusinessProfile>('/auth/business/brand-voice', data),
     members: () => apiClient.get<TeamMember[]>('/auth/members'), addMember: (data: {name:string;email:string;password:string;role:string}) => apiClient.post<TeamMember>('/auth/members', data),
     updateMember: (id:string,data:{role?:string;status?:string}) => apiClient.patch<TeamMember>(`/auth/members/${id}`,data),
     channels: () => apiClient.get<Array<{_id:string;platform:string;name:string;status:string}>>('/auth/channels'),
+    changePassword: (data:{currentPassword:string;newPassword:string}) => apiClient.post<{passwordChanged:true;allSessionsRevoked:true}>('/auth/password/change',data),
+    sessions: () => apiClient.get<SecuritySession[]>('/auth/sessions'),
+    revokeSession: (id:string) => apiClient.delete<void>(`/auth/sessions/${id}`),
 };

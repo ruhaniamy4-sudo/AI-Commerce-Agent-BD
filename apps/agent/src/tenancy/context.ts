@@ -8,6 +8,7 @@ export interface TenantPrincipal {
     businessId: string;
     membershipId: string;
     role: BusinessRole;
+    sessionId?: string;
 }
 
 const tenantStorage = new AsyncLocalStorage<TenantPrincipal>();

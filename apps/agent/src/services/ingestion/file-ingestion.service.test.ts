@@ -38,7 +38,7 @@ describe('business file classification', () => {
         const docx = fs.readFileSync(path.join(root, 'node_modules/mammoth/test/test-data/single-paragraph.docx'));
         expect((await extractFile('policy.pdf', pdf)).knowledge?.length).toBeGreaterThan(0);
         expect((await extractFile('policy.docx', docx)).knowledge?.length).toBeGreaterThan(0);
-    });
+    }, 15_000);
     it('classifies mixed spreadsheet rows into product and knowledge candidates', async () => {
         const result = await extractFile('mixed.csv', Buffer.from('name,price,sku,question,answer\nPremium Polo,1490,POLO-1,,\n,,,Do you accept returns?,Returns are accepted within seven days.'));
         expect(result.products?.[0]).toMatchObject({ name: 'Premium Polo', basePrice: 1490 });

@@ -27,6 +27,7 @@ export async function getHealthStatus() {
         api: 'up',
         mongo,
         redis,
+        email: runtime.emailConfigured ? 'configured' : 'not_configured',
         worker: 'external',
         aiProvider: getAIConfiguration().provider,
         aiConfigured: runtime.aiConfigured,
@@ -44,6 +45,7 @@ export function printDeveloperStatus(mongo: 'Connected' | 'Unavailable') {
         `AI: ${runtime.aiProvider === 'groq' ? 'Groq' : 'OpenAI'} ${runtime.aiConfigured ? 'configured' : 'not configured'}`,
         `Redis: ${runtime.redisConfigured ? 'Configured' : 'Not configured'}`,
         `Queue features: ${runtime.redisConfigured ? 'Available (worker runs separately)' : 'Disabled'}`,
+        `Authentication email: ${runtime.emailConfigured ? 'Configured' : 'Not configured'}`,
         `Facebook: ${runtime.facebookConfigured ? 'Configured' : 'Not configured'}`,
         `Steadfast: ${runtime.steadfastEncryptionConfigured ? 'Configured' : 'Not configured'}`,
     ];
