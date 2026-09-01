@@ -259,7 +259,7 @@ export const onboardingApi = {
     complete: () => apiClient.post<SetupStatus>('/onboarding/complete'),
 };
 
-export interface TestAiMessage { id: string; role: 'user' | 'assistant'; content: string; imageUrl?: string; products?: Array<{ id?: string; name: string; price?: number; stock?: number; availability?: string; image?: string }>; createdAt: string; }
+export interface TestAiMessage { id: string; role: 'user' | 'assistant'; content: string; imageUrl?: string; products?: Array<{ id?: string; name: string; price?: number; currency?: string; stock?: number | null; availability?: string; image?: string }>; createdAt: string; }
 export interface TestAiState {
     conversation: { id: string; controlMode: string; createdAt: string; updatedAt: string } | null;
     messages: TestAiMessage[];
@@ -290,6 +290,7 @@ export const trainingApi = {
     connectFacebook: (connectionId: string) => apiClient.post<{ source: TrainingSource; run: TrainingRun }>('/api/training/sources/facebook', { connectionId }),
     addReference: (url: string, label?: string) => apiClient.post<TrainingSource>('/api/training/sources/reference', { url, label }),
     updateBusinessProfile: (data: { businessType: string; businessSubType?: string; customBusinessType?: string; secondaryBusinessTypes?: string[] }) => apiClient.patch('/api/training/business-profile', data),
+    saveBusinessFact: (key: string, value: string | string[]) => apiClient.put<{ key: string; value: string | string[]; updatedAt: string }>(`/api/training/business-facts/${key}`, { value }),
     confirmBusinessType: (businessType?: string) => apiClient.post('/api/training/business-profile/confirm', { businessType }),
     uploadFile: (file: File) => { const body = new FormData(); body.append('file', file); return apiClient.post<{ source: TrainingSource; run: TrainingRun; summary: { products: number; knowledge: number; warnings: string[] } }>('/api/training/sources/file', body); },
     addManual: (kind: 'faq'|'information', title: string, content: string) => apiClient.post('/api/training/sources/manual', { kind, title, content }),

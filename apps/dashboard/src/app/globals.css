@@ -34,6 +34,33 @@
     --shadow-premium: 0 4px 20px rgba(0, 0, 0, 0.03);
     --shadow-glass: 0 2px 8px rgba(0, 0, 0, 0.02);
   }
+
+  .dark {
+    color-scheme: dark;
+    --background: 224 32% 8%;
+    --foreground: 210 20% 96%;
+    --card: 224 28% 11%;
+    --card-foreground: 210 20% 96%;
+    --popover: 224 28% 11%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 263 85% 68%;
+    --primary-foreground: 224 32% 8%;
+    --secondary: 222 22% 17%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 222 22% 17%;
+    --muted-foreground: 217 13% 68%;
+    --accent: 222 22% 19%;
+    --accent-foreground: 210 20% 96%;
+    --destructive: 0 72% 54%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 222 19% 23%;
+    --input: 222 19% 23%;
+    --ring: 263 85% 68%;
+    --glass-bg: rgba(18, 22, 35, 0.82);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --shadow-premium: 0 12px 32px rgba(0, 0, 0, 0.28);
+    --shadow-glass: 0 4px 14px rgba(0, 0, 0, 0.22);
+  }
 }
 
 @layer utilities {
@@ -45,7 +72,7 @@
 
   .glass-card {
     @apply glass shadow-premium;
-    background: white;
+    background: hsl(var(--card) / 0.88);
   }
 
   .text-gradient {
@@ -61,5 +88,21 @@
 
   body {
     @apply bg-background text-foreground;
+    transition: background-color 180ms ease, color 180ms ease;
   }
+}
+
+@keyframes training-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes learned-enter { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+.training-panel { animation: training-enter 220ms ease-out both; transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
+.training-panel:hover { box-shadow: var(--shadow-premium); }
+.training-question { animation: training-enter 220ms ease-out both; transition: border-color 180ms ease, box-shadow 180ms ease; }
+.training-question:hover { border-color: hsl(var(--primary) / .32); box-shadow: 0 8px 22px hsl(var(--primary) / .07); }
+.answer-chip { transition: transform 150ms ease, border-color 150ms ease, background-color 150ms ease, color 150ms ease; }
+.answer-chip:active { transform: scale(.96); }
+.answer-chip.selected { transform: scale(1.015); }
+.training-progress { transition: width 320ms cubic-bezier(.4,0,.2,1); }
+.learned-reveal { animation: learned-enter 220ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

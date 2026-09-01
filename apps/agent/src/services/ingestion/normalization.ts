@@ -43,6 +43,20 @@ export function normalizeMoney(value: unknown): number | undefined {
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
+const currencyAliases: Record<string, string> = { '৳': 'BDT', tk: 'BDT', taka: 'BDT', bdt: 'BDT', '$': 'USD', usd: 'USD', '€': 'EUR', eur: 'EUR', '£': 'GBP', gbp: 'GBP', '₹': 'INR', inr: 'INR' };
+export function normalizeCurrency(...values: unknown[]): string | undefined {
+    for (const value of values) {
+        const text = String(value ?? '').trim();
+        if (!text) continue;
+        const upper = text.toUpperCase();
+        if (/^[A-Z]{3}$/.test(upper)) return upper;
+        for (const [token, code] of Object.entries(currencyAliases)) {
+            if (token.length === 1 ? text.includes(token) : new RegExp(`(?:^|\\b)${token}(?:\\b|$)`, 'i').test(text)) return code;
+        }
+    }
+    return undefined;
+}
+
 export function productKey(product: Record<string, any>): string {
     const sku = normalizeSku(product.sku || product.variants?.[0]?.sku);
     if (sku) return `sku:${sku}`;

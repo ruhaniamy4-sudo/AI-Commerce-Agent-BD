@@ -62,7 +62,9 @@ export interface ProductVariant {
   name: string;
   sku: string;
   price: number;
-  stock: number;
+  currency: string;
+  stock?: number | null;
+  availability?: 'in_stock'|'out_of_stock'|'preorder'|'unknown';
   images: string[];
   specs?: Record<string, unknown>;
   isActive: boolean;
@@ -87,7 +89,9 @@ export interface Product extends TenantEntity {
   description: string;
   categoryId: ID;
   basePrice: number;
-  stock: number;
+  currency: string;
+  stock?: number | null;
+  availability?: 'in_stock'|'out_of_stock'|'preorder'|'unknown';
   variants: ProductVariant[];
   specs: Record<string, unknown>;
   compatibilityTags: string[];
@@ -240,6 +244,8 @@ export interface TrainingOverview {
   businessTypeOptions: Array<{ value: string; label: string }>;
   gaps: Array<{ id: string; question: string; priority: 'CRITICAL'|'IMPORTANT'|'OPTIONAL'; domain: string }>;
   readiness: { ready: boolean; critical: number; important: number; optional: number };
+  setupQuestions: Record<string, Array<{ id: string; question: string; priority: 'CRITICAL'|'IMPORTANT'|'OPTIONAL'; domain: string; control: 'single'|'multi'|'yes_no'|'currency'|'duration'|'text'|'textarea'|'contact'|'date'|'schedule'; suggestions: string[]; customLabel?: string }>>;
+  setupAnswers: Record<string, { value: string | string[]; updatedAt: string }>;
   faqTemplates: Array<{ id: string; question: string }>;
   leadFields: string[];
 }

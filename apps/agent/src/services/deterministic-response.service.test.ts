@@ -13,7 +13,7 @@ vi.mock('./business-awareness.service', () => ({
 }));
 
 const businessId = '507f1f77bcf86cd799439011';
-const product = { _id: '507f1f77bcf86cd799439012', name: 'Zeblaze Vibe 7 Pro', basePrice: 5200, salePrice: 4990, stock: 4, availability: 'in_stock', images: ['https://example.com/watch.jpg'], variants: [{ variantId: 'black', name: 'Black', sku: 'VIBE7-BLK', price: 4990, stock: 3, images: ['https://example.com/black.jpg'] }] };
+const product = { _id: '507f1f77bcf86cd799439012', name: 'Zeblaze Vibe 7 Pro', basePrice: 5200, salePrice: 4990, currency: 'BDT', stock: 4, availability: 'in_stock', images: ['https://example.com/watch.jpg'], variants: [{ variantId: 'black', name: 'Black', sku: 'VIBE7-BLK', price: 4990, currency: 'BDT', stock: 3, availability: 'in_stock', images: ['https://example.com/black.jpg'] }] };
 const tenant = <T>(work: () => T) => withTenantContext({ businessId, userId: 'u', membershipId: 'm', role: 'Staff' }, work);
 const conversation = (state: Record<string, unknown> = {}) => vi.spyOn(Conversation, 'findOne').mockReturnValue({ select: () => ({ lean: () => Promise.resolve({ metadata: { entityState: state } }) }) } as never);
 
@@ -54,6 +54,23 @@ describe('zero-LLM canonical fast paths', () => {
         const result: any = await tenant(() => getDeterministicResponse(businessId, 'price OFFER-1'));
         expect(result).toMatchObject({ intent: 'PRODUCT_PRICE', message_text: expect.stringContaining('৳1400') });
         expect(result.message_text).toContain('5 in stock');
+    });
+
+    it('does not turn in-stock with unknown quantity into out of stock', async () => {
+        conversation({ activeProductId: product._id });
+        vi.spyOn(Product, 'findOne').mockReturnValue({ select: () => ({ lean: () => Promise.resolve({ ...product, stock: null, availability: 'in_stock', variants: [] }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'stock ache?', { conversationId: 'c' }));
+        expect(result.message_text).toContain('in stock');
+        expect(result.message_text).not.toContain('out of stock');
+        expect(result.suggested_products[0].stock).toBeNull();
+    });
+
+    it('uses the canonical USD currency instead of a global BDT symbol', async () => {
+        conversation();
+        vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([{ ...product, currency: 'USD', basePrice: 19, salePrice: undefined }]) }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'Zeblaze Vibe 7 Pro price?', { conversationId: 'c' }));
+        expect(result.message_text).toContain('$19');
+        expect(result.message_text).not.toContain('৳');
     });
 
     it('uses real courier status without inventing an ETA', async () => {

@@ -6,6 +6,7 @@ describe('product availability normalization', () => {
         ['https://schema.org/InStock', undefined, 'in_stock'],
         ['https://schema.org/OutOfStock', undefined, 'out_of_stock'],
         ['Sold Out', undefined, 'out_of_stock'],
+        ['PreOrder', undefined, 'preorder'],
         [undefined, 4, 'in_stock'],
         [undefined, 0, 'out_of_stock'],
         [undefined, undefined, 'unknown'],

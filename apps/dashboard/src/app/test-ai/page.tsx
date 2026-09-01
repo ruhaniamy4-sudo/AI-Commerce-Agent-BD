@@ -9,6 +9,7 @@ import { ImageUpload } from '@/components/ui/image-upload';
 import { Input } from '@/components/ui/input';
 import { SafeProductImage } from '@/components/ui/safe-product-image';
 import { cn } from '@/lib/utils';
+import { formatCurrency, stockLabel } from '@/lib/currency';
 
 const EMPTY_STATE: TestAiState = {
   conversation: null,
@@ -168,11 +169,9 @@ export default function TestAiPage() {
                         )}
                         <div className="p-2">
                           <b>{product.name}</b>
-                          {product.price !== undefined && <p>৳{product.price}</p>}
+                          {product.price !== undefined && <p>{formatCurrency(product.price, product.currency)}</p>}
                           <p className="text-xs text-muted-foreground">
-                            {product.stock !== undefined
-                              ? `Stock ${product.stock}`
-                              : product.availability}
+                            {stockLabel(product)}
                           </p>
                         </div>
                       </div>
@@ -189,7 +188,7 @@ export default function TestAiPage() {
               AI is thinking…
             </div>
           )}
-          {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+          {error && <p className="rounded border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
         </CardContent>
 
         <CardFooter className="border-t p-4">

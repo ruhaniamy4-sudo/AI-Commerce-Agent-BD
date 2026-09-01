@@ -16,6 +16,7 @@ import { Product } from '../models/Product';
 import { WebhookEvent } from '../models/WebhookEvent';
 import { AIUsage } from '../models/AIUsage';
 import { repairLanguageNeutralTextIndexes } from '../db/text-index-migration';
+import { repairSetupQuestionUniqueIndex } from '../db/setup-question-index-migration';
 import { PASSWORD_MIN_LENGTH } from '@edutechs/shared';
 
 dotenv.config();
@@ -51,6 +52,9 @@ async function main() {
         throw new Error(`BOOTSTRAP_OWNER_PASSWORD must be at least ${PASSWORD_MIN_LENGTH} characters`);
     }
 
+    // Migrations must inspect and replace incompatible legacy indexes before
+    // Mongoose attempts schema-driven index creation in the background.
+    mongoose.set('autoIndex', false);
     await connectMongo();
 
     const business = await Business.findOneAndUpdate(
@@ -112,7 +116,14 @@ async function main() {
 
     await dropLegacyGlobalUniqueIndexes();
     await repairLanguageNeutralTextIndexes(mongoose.connection);
-    for (const model of tenantModels) await model.syncIndexes();
+    const setupQuestionIndex = await repairSetupQuestionUniqueIndex(mongoose.connection);
+    console.log(
+        `Knowledge setup-question audit: ${setupQuestionIndex.legacyMissingCount} missing, `
+        + `${setupQuestionIndex.legacyNullCount} explicit null, `
+        + `${setupQuestionIndex.duplicateGroupCount} real duplicate group(s), `
+        + `${setupQuestionIndex.reconciledRecordCount} record(s) reconciled`
+    );
+    for (const model of tenantModels) await model.createIndexes();
 
     console.log(`Tenancy migration complete for ${business.name} (${business._id})`);
 }

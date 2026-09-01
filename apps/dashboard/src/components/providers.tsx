@@ -41,7 +41,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light">
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="sellpilot-theme" disableTransitionOnChange={false}>
       <SessionProvider refetchOnWindowFocus={false}>
         <AuthSessionBridge />
         <QueryClientProvider client={queryClient}>

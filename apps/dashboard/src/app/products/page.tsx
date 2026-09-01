@@ -45,6 +45,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
+import { formatCurrency, stockLabel } from '@/lib/currency';
 
 export default function ProductsPage() {
     const queryClient = useQueryClient();
@@ -83,6 +84,7 @@ export default function ProductsPage() {
         slug: '',
         description: '',
         basePrice: 0,
+        currency: 'BDT',
         stock: 0,
         images: [],
         categoryId: '',
@@ -122,6 +124,7 @@ export default function ProductsPage() {
             name: '',
             sku: '',
             price: formData.basePrice || 0,
+            currency: formData.currency || 'BDT',
             stock: 0,
             images: [],
             isActive: true
@@ -169,6 +172,7 @@ export default function ProductsPage() {
             slug: '',
             description: '',
             basePrice: 0,
+            currency: 'BDT',
             stock: 0,
             images: [],
             categoryId: '',
@@ -205,6 +209,7 @@ export default function ProductsPage() {
             slug: product.slug,
             description: product.description,
             basePrice: product.basePrice,
+            currency: product.currency || 'BDT',
             stock: product.stock,
             images: product.images || [],
             categoryId: product.categoryId,
@@ -283,16 +288,16 @@ export default function ProductsPage() {
                                                 </div>
                                             </TableCell>
                                             <TableCell className="py-6">
-                                                <span className="font-black text-foreground text-lg tracking-tight">${p.basePrice?.toLocaleString()}</span>
+                                                <span className="font-black text-foreground text-lg tracking-tight">{formatCurrency(p.basePrice, p.currency)}</span>
                                             </TableCell>
                                             <TableCell className="py-6">
                                                 <div className="flex flex-col gap-1">
                                                     <div className={cn(
                                                         "font-bold text-sm",
-                                                        p.stock <= (p.lowStockThreshold || 5) ? "text-rose-400" : "text-white"
+                                                        typeof p.stock === 'number' && p.stock <= (p.lowStockThreshold || 5) ? "text-rose-400" : "text-foreground"
                                                     )}>
-                                                        {p.stock} units
-                                                        {p.stock <= (p.lowStockThreshold || 5) && (
+                                                        {stockLabel(p)}
+                                                        {typeof p.stock === 'number' && p.stock <= (p.lowStockThreshold || 5) && (
                                                             <AlertTriangle className="h-3 w-3 inline ml-1 animate-pulse" />
                                                         )}
                                                     </div>
@@ -394,7 +399,7 @@ export default function ProductsPage() {
                                                     value={formData.name}
                                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                                     required
-                                                    className="h-14 bg-white/[0.03] border-white/10 focus:bg-white/[0.06] rounded-2xl shadow-inner transition-all text-white placeholder:text-muted-foreground/30 px-6 font-medium"
+                                                    className="h-14 bg-muted/30 border-border focus:bg-muted/50 rounded-2xl shadow-inner transition-all text-foreground placeholder:text-muted-foreground/60 px-6 font-medium"
                                                     placeholder="e.g. Wireless Gaming Headset"
                                                 />
                                             </div>
@@ -421,7 +426,7 @@ export default function ProductsPage() {
                                                 value={formData.description}
                                                 onChange={e => setFormData({ ...formData, description: e.target.value })}
                                                 required
-                                                className="h-[156px] bg-white/[0.03] border-white/10 focus:bg-white/[0.06] rounded-2xl shadow-inner p-6 transition-all resize-none text-white placeholder:text-muted-foreground/30 leading-relaxed font-medium"
+                                                className="h-[156px] bg-muted/30 border-border focus:bg-muted/50 rounded-2xl shadow-inner p-6 transition-all resize-none text-foreground placeholder:text-muted-foreground/60 leading-relaxed font-medium"
                                                 placeholder="Enter a detailed description of the product..."
                                             />
                                         </div>
@@ -441,7 +446,7 @@ export default function ProductsPage() {
                                 <TabsContent value="variants" className="m-0 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <h4 className="text-xl font-bold text-white tracking-tight">Product Variants</h4>
+                                            <h4 className="text-xl font-bold text-foreground tracking-tight">Product Variants</h4>
                                             <p className="text-sm text-muted-foreground mt-1">Manage multiple versions for size, color, or bundle variations.</p>
                                         </div>
                                         <Button type="button" onClick={addVariant} variant="outline" className="h-12 rounded-2xl border-dashed border-white/10 bg-white/[0.02] hover:bg-white/[0.05] text-muted-foreground hover:text-primary transition-all px-6 font-bold text-xs uppercase tracking-widest">
@@ -476,7 +481,7 @@ export default function ProductsPage() {
                                                             <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Stock</Label>
                                                             <Input
                                                                 type="number"
-                                                                value={variant.stock}
+                                                                value={variant.stock ?? ''}
                                                                 onChange={e => updateVariant(index, { stock: Number(e.target.value) })}
                                                                 className="h-11 bg-white/5 border-white/10 rounded-xl text-sm"
                                                             />
@@ -510,7 +515,7 @@ export default function ProductsPage() {
                                 <TabsContent value="specs" className="m-0 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <h4 className="text-xl font-bold text-white tracking-tight">Technical Specs</h4>
+                                            <h4 className="text-xl font-bold text-foreground tracking-tight">Technical Specs</h4>
                                             <p className="text-sm text-muted-foreground mt-1">Add details like weight, dimensions, or material.</p>
                                         </div>
                                     </div>
@@ -535,7 +540,7 @@ export default function ProductsPage() {
                                                 <div key={key} className="flex items-center justify-between p-5 bg-white/[0.02] border border-white/5 rounded-2xl group hover:border-primary/30 transition-all">
                                                     <div className="flex flex-col">
                                                         <span className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-1">{key}</span>
-                                                        <span className="text-white font-bold tracking-tight">{value as string}</span>
+                                                        <span className="text-foreground font-bold tracking-tight">{value as string}</span>
                                                     </div>
                                                     <Button type="button" variant="ghost" size="icon" onClick={() => removeSpec(key)} className="opacity-0 group-hover:opacity-100 transition-opacity h-10 w-10 text-muted-foreground/30 hover:text-rose-400 hover:bg-rose-400/10 rounded-xl">
                                                         <Trash2 className="h-5 w-5" />
@@ -556,14 +561,18 @@ export default function ProductsPage() {
                                         <div className="space-y-8">
                                             <div className="space-y-6">
                                                 <h5 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/50 border-l-2 border-primary pl-4">Pricing & Stock</h5>
-                                                <div className="grid grid-cols-2 gap-6">
+                                                <div className="grid gap-6 sm:grid-cols-3">
                                                     <div className="space-y-3">
                                                         <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Base Price</Label>
                                                         <Input type="number" value={formData.basePrice} onChange={e => setFormData({ ...formData, basePrice: Number(e.target.value) })} className="h-14 bg-white/[0.03] border-white/10 rounded-2xl" />
                                                     </div>
                                                     <div className="space-y-3">
+                                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Currency</Label>
+                                                        <Select value={formData.currency || 'BDT'} onValueChange={currency => setFormData({ ...formData, currency })}><SelectTrigger className="h-14 rounded-2xl"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="BDT">BDT (৳)</SelectItem><SelectItem value="USD">USD ($)</SelectItem><SelectItem value="EUR">EUR (€)</SelectItem><SelectItem value="GBP">GBP (£)</SelectItem><SelectItem value="INR">INR (₹)</SelectItem></SelectContent></Select>
+                                                    </div>
+                                                    <div className="space-y-3">
                                                         <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Total Stock</Label>
-                                                        <Input type="number" value={formData.stock} onChange={e => setFormData({ ...formData, stock: Number(e.target.value) })} className="h-14 bg-white/[0.03] border-white/10 rounded-2xl" />
+                                                        <Input type="number" value={formData.stock ?? ''} onChange={e => setFormData({ ...formData, stock: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Leave blank if unknown" className="h-14 bg-white/[0.03] border-white/10 rounded-2xl" />
                                                     </div>
                                                 </div>
                                             </div>
@@ -582,7 +591,7 @@ export default function ProductsPage() {
                                             <div className="space-y-4">
                                                 <div className="flex items-center justify-between p-5 bg-white/[0.02] rounded-2xl border border-white/5 hover:bg-white/[0.04] transition-colors">
                                                     <div>
-                                                        <p className="text-sm font-bold text-white tracking-tight">Show in Store</p>
+                                                        <p className="text-sm font-bold text-foreground tracking-tight">Show in Store</p>
                                                         <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter">Make this product visible to customers</p>
                                                     </div>
                                                     <Switch checked={formData.isActive} onCheckedChange={checked => setFormData({ ...formData, isActive: checked })} />
@@ -590,7 +599,7 @@ export default function ProductsPage() {
 
                                                 <div className="flex items-center justify-between p-5 bg-white/[0.02] rounded-2xl border border-white/5 hover:bg-white/[0.04] transition-colors">
                                                     <div>
-                                                        <p className="text-sm font-bold text-white tracking-tight">Featured Product</p>
+                                                        <p className="text-sm font-bold text-foreground tracking-tight">Featured Product</p>
                                                         <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter">Highlight this product in your store</p>
                                                     </div>
                                                     <Switch checked={formData.isFeatured} onCheckedChange={checked => setFormData({ ...formData, isFeatured: checked })} />
@@ -598,7 +607,7 @@ export default function ProductsPage() {
 
                                                 <div className="flex items-center justify-between p-5 bg-white/[0.02] rounded-2xl border border-white/5 hover:bg-white/[0.04] transition-colors">
                                                     <div>
-                                                        <p className="text-sm font-bold text-white tracking-tight">Returns Allowed</p>
+                                                        <p className="text-sm font-bold text-foreground tracking-tight">Returns Allowed</p>
                                                         <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter">Allow customers to return this product</p>
                                                     </div>
                                                     <Switch checked={formData.isReturnable} onCheckedChange={checked => setFormData({ ...formData, isReturnable: checked })} />

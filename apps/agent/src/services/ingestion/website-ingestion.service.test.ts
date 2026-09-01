@@ -7,13 +7,13 @@ describe('structured website extraction', () => {
     it('extracts JSON-LD products, business information, FAQ and policy text', () => {
         const html = `<html><head><title>Delivery Policy</title><script type="application/ld+json">${JSON.stringify({
             '@graph': [
-                { '@type': 'Product', name: 'Premium Polo', description: 'Cotton polo', sku: 'POLO-1', category: 'Shirts', image: ['/polo.jpg'], offers: { price: '1490', availability: 'https://schema.org/InStock' }, additionalProperty: [{ name: 'Color', value: 'Black' }] },
+                { '@type': 'Product', name: 'Premium Polo', description: 'Cotton polo', sku: 'POLO-1', category: 'Shirts', image: ['/polo.jpg'], offers: { price: '1490', priceCurrency: 'BDT', availability: 'https://schema.org/InStock' }, additionalProperty: [{ name: 'Color', value: 'Black' }] },
                 { '@type': 'LocalBusiness', name: 'Ruhan Shop', telephone: '+8801700000000', email: 'hello@example.com' },
                 { '@type': 'FAQPage', mainEntity: [{ name: 'COD available?', acceptedAnswer: { text: 'Yes, cash on delivery is available.' } }] },
             ],
         })}</script></head><body><main><h1>Delivery Policy</h1><p>Inside Dhaka delivery charge is Tk 70 and delivery takes two days.</p></main></body></html>`;
         const result = extractFromHtml(html, 'https://shop.example/delivery');
-        expect(result.products[0]).toMatchObject({ name: 'Premium Polo', sku: 'POLO-1', basePrice: 1490, category: 'Shirts' });
+        expect(result.products[0]).toMatchObject({ name: 'Premium Polo', sku: 'POLO-1', basePrice: 1490, currency: 'BDT', category: 'Shirts', availability: 'in_stock', stock: undefined });
         expect(result.products[0].images[0]).toBe('https://shop.example/polo.jpg');
         expect(result.business).toMatchObject({ name: 'Ruhan Shop', phone: '+8801700000000' });
         expect(result.knowledge.some((item) => item.type === 'FAQ' && item.title === 'COD available?')).toBe(true);
@@ -76,7 +76,7 @@ describe('structured website extraction', () => {
 
     it('rejects a redirect from a public site to an internal target', async () => {
         vi.spyOn(axios, 'get').mockResolvedValue({ status: 302, headers: { location: 'http://127.0.0.1/admin' }, data: Buffer.alloc(0) } as any);
-        await expect(fetchPublicText('https://example.com', 0, async () => [{ address: '93.184.216.34', family: 4 }])).rejects.toThrow('Private');
+        await expect(fetchPublicText('https://example.com', 0, async () => [{ address: '93.184.216.34', family: 4 }])).rejects.toThrow("can't be imported");
         expect(axios.get).toHaveBeenCalledTimes(1);
     });
 });
