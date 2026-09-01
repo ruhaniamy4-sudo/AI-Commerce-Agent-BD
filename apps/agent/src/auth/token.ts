@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { MERCHANT_SESSION_MAX_AGE_SECONDS } from '@edutechs/shared';
+import { ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS, MERCHANT_ACCESS_TOKEN_MAX_AGE_SECONDS } from '@edutechs/shared';
 import { BusinessRole } from '../tenancy/context';
 
 export interface AccessTokenPayload {
@@ -8,6 +8,7 @@ export interface AccessTokenPayload {
     businessId: string;
     membershipId: string;
     role: BusinessRole;
+    sid?: string;
     iat: number;
     exp: number;
 }
@@ -15,6 +16,7 @@ export interface AccessTokenPayload {
 export interface AccountTokenPayload {
     sub: string;
     purpose: 'account';
+    sid?: string;
     iat: number;
     exp: number;
 }
@@ -57,7 +59,7 @@ function verifyPayload(token: string): Record<string, unknown> {
     return payload;
 }
 
-export function signAccessToken(payload: Omit<AccessTokenPayload, 'iat' | 'exp' | 'purpose'>, ttlSeconds = MERCHANT_SESSION_MAX_AGE_SECONDS) {
+export function signAccessToken(payload: Omit<AccessTokenPayload, 'iat' | 'exp' | 'purpose'>, ttlSeconds = MERCHANT_ACCESS_TOKEN_MAX_AGE_SECONDS) {
     return signPayload({ ...payload, purpose: 'merchant' }, ttlSeconds);
 }
 
@@ -67,8 +69,8 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
     return payload;
 }
 
-export function signAccountToken(userId: string, ttlSeconds = 30 * 60) {
-    return signPayload({ sub: userId, purpose: 'account' }, ttlSeconds);
+export function signAccountToken(userId: string, sessionId?: string, ttlSeconds = ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS) {
+    return signPayload({ sub: userId, purpose: 'account', ...(sessionId ? { sid: sessionId } : {}) }, ttlSeconds);
 }
 
 export function verifyAccountToken(token: string): AccountTokenPayload {

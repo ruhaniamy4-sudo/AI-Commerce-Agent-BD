@@ -22,8 +22,11 @@ export function shouldRetryQuery(failureCount: number, error: unknown) {
 
 const axiosInstance: AxiosInstance = axios.create({
     baseURL: API_BASE_URL,
+    timeout: 15_000,
     headers: {
         'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
     },
 });
 
@@ -88,8 +91,25 @@ axiosInstance.interceptors.request.use(
 // Response Interceptor
 axiosInstance.interceptors.response.use(
     (response) => response.data,
-    (error: AxiosError) => {
+    async (error: AxiosError) => {
         const status = error.response?.status || 500;
+        const config = error.config as (InternalAxiosRequestConfig & { _authRetried?: boolean; _cacheRetried?: boolean }) | undefined;
+        if (status === 304 && config && !config._cacheRetried) {
+            config._cacheRetried = true;
+            config.params = { ...(config.params || {}), _fresh: Date.now() };
+            config.headers['Cache-Control'] = 'no-cache';
+            config.headers.Pragma = 'no-cache';
+            return axiosInstance.request(config);
+        }
+        if (status === 401 && config && !config._authRetried) {
+            config._authRetried = true;
+            cachedSession = await getSession();
+            const token = sessionToken(cachedSession);
+            if (token && token !== config.headers.Authorization?.toString().replace(/^Bearer\s+/, '')) {
+                config.headers.Authorization = `Bearer ${token}`;
+                return axiosInstance.request(config);
+            }
+        }
         if (status === 401) notifyAuthenticationRequired();
         const data = error.response?.data as Record<string, unknown>;
         const message = (data?.message as string) || (data?.error as string) || error.message || 'An unexpected error occurred';

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/context/cart-context";
 import { MarketingNav } from "@/components/marketing-nav";
@@ -8,7 +7,6 @@ import { LanguageProvider, type Locale } from "@/context/language-context";
 import { BRAND } from "@/lib/marketing-config";
 import { headers } from "next/headers";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 export const metadata: Metadata = {
   metadataBase: new URL(BRAND.siteUrl),
   title: { default: "SellPilot — AI Sales Agent for Bangladesh Commerce", template: "%s | SellPilot" },
@@ -29,5 +27,5 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const requestHeaders = await headers();
   const country = (requestHeaders.get("x-vercel-ip-country") || requestHeaders.get("cf-ipcountry") || "").toUpperCase();
   const detectedLocale: Locale = country === "BD" ? "bn" : "en";
-  return <html lang={detectedLocale === "bn" ? "bn-BD" : "en"} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className={`${inter.variable} antialiased`}><LanguageProvider detectedLocale={detectedLocale}><CartProvider><MarketingNav />{children}<MarketingFooter /></CartProvider></LanguageProvider></body></html>;
+  return <html lang={detectedLocale === "bn" ? "bn-BD" : "en"} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className="antialiased"><LanguageProvider detectedLocale={detectedLocale}><CartProvider><MarketingNav />{children}<MarketingFooter /></CartProvider></LanguageProvider></body></html>;
 }

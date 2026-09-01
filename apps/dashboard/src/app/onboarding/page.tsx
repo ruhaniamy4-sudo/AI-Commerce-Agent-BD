@@ -26,7 +26,7 @@ export default function OnboardingPage() {
         setBusy(true); setError('');
         try {
             const result = await onboardingApi.createBusiness(business);
-            await update({ accessToken: result.accessToken, accountToken: undefined, needsOnboarding: false, businessId: result.business.id, businessName: result.business.name, role: result.role, onboardingComplete: false });
+            await update({ accessToken: result.accessToken, accountToken: undefined, refreshToken: result.refreshToken, accessTokenExpiresAt: result.accessTokenExpiresAt, refreshTokenExpiresAt: result.refreshTokenExpiresAt, needsOnboarding: false, businessId: result.business.id, businessName: result.business.name, role: result.role, onboardingComplete: false });
             setBusinessCreated(true);
         } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create your business.'); }
         finally { setBusy(false); }

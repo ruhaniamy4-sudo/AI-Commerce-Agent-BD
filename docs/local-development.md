@@ -38,7 +38,7 @@ BOOTSTRAP_OWNER_EMAIL=you@example.com
 BOOTSTRAP_OWNER_PASSWORD=<generated or chosen securely>
 ```
 
-The courier encryption key is generated so the app has stable local encryption material; individual Steadfast tenant credentials are still optional. `BOOTSTRAP_OWNER_PASSWORD` must be at least 8 characters. No public default password is embedded.
+The courier encryption key is generated so the app has stable local encryption material; individual Steadfast tenant credentials are still optional. `BOOTSTRAP_OWNER_PASSWORD` must be at least 10 characters. No public default password is embedded.
 
 ## Core mode: no Redis
 
@@ -98,7 +98,7 @@ Test AI requires the key for the selected provider. Some existing embedding and 
 
 ## External services
 
-Google OAuth, Facebook Login/Messenger, Cloudinary, email, Steadfast tenant connections, and WhatsApp-related settings are optional for core mode. Missing credentials do not make process startup fail. Their UI or endpoint should report not configured/unavailable when used. Facebook async processing and courier background synchronization additionally require Redis and the worker.
+Google OAuth, Facebook Login/Messenger, Cloudinary, email, Steadfast tenant connections, and WhatsApp-related settings are optional for core process startup. Email delivery is nevertheless required to complete email/password registration and password recovery. Missing credentials do not make process startup fail; their UI or endpoint reports not configured/unavailable when used. Facebook async processing and courier background synchronization additionally require Redis and the worker.
 
 ## Migration and bootstrap
 
@@ -106,7 +106,7 @@ Google OAuth, Facebook Login/Messenger, Cloudinary, email, Steadfast tenant conn
 
 ```dotenv
 BOOTSTRAP_OWNER_EMAIL=you@example.com
-BOOTSTRAP_OWNER_PASSWORD=<unique value with 8+ characters>
+BOOTSTRAP_OWNER_PASSWORD=<unique value with 10+ characters>
 ```
 
 Optional names are `BOOTSTRAP_OWNER_NAME`, `DEFAULT_BUSINESS_NAME`, `DEFAULT_BUSINESS_SLUG`, and `DEFAULT_WEB_CHANNEL_ID`. Re-running setup does not replace an already configured owner password.
@@ -133,7 +133,7 @@ MongoDB could not be selected. Check the URI, Atlas database username/password, 
 
 ### `BOOTSTRAP_OWNER_EMAIL and BOOTSTRAP_OWNER_PASSWORD are required`
 
-The migration has no safe owner credentials. Set both values in `apps/agent/.env`; the password must be at least 8 characters. `npm run setup:env` generates a unique development password and shows it once.
+The migration has no safe owner credentials. Set both values in `apps/agent/.env`; the password must be at least 10 characters. `npm run setup:env` generates a unique development password and shows it once.
 
 ### Missing Groq key
 

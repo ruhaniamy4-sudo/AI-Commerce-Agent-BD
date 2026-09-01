@@ -10,4 +10,4 @@ export default withAuth(function middleware(req) {
     if (!token?.needsOnboarding && pathname === '/onboarding') return NextResponse.redirect(new URL('/', req.url));
     return NextResponse.next();
 }, { callbacks: { authorized: ({ req, token }) => req.nextUrl.pathname === '/admin/login' || req.nextUrl.pathname.startsWith('/platform-admin') ? true : Boolean(token) } });
-export const config = { matcher: ['/((?!api|login|signup|_next/static|_next/image|favicon.ico).*)'] };
+export const config = { matcher: ['/((?!api|login|signup|forgot-password|reset-password|verify-email|resend-verification|_next/static|_next/image|favicon.ico).*)'] };

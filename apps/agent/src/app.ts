@@ -33,10 +33,28 @@ import morgan from 'morgan';
 import { ensurePlatformAdmin } from './services/platform-admin-bootstrap.service';
 import { getHealthStatus, printDeveloperStatus } from './services/health.service';
 import { TEST_AI_API } from '@edutechs/shared';
+import crypto from 'node:crypto';
 
 // var morgan = require('morgan');
 dotenv.config();
 const app = express();
+app.disable('etag');
+if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
+
+app.use((req, res, next) => {
+    const requestId = String(req.headers['x-request-id'] || crypto.randomUUID()).slice(0, 128);
+    res.locals.requestId = requestId;
+    res.setHeader('X-Request-Id', requestId);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    if (process.env.NODE_ENV === 'production') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    next();
+});
 
 morgan.token('safe-path', (req) => new URL(req.url || '/', 'http://local').pathname);
 app.use(morgan(':method :safe-path :status :res[content-length] - :response-time ms'));
@@ -57,6 +75,7 @@ app.use(cors({
     },
 }));
 app.use(express.json({
+    limit: '256kb',
     verify(req, _res, buffer) {
         if (req.url?.startsWith('/facebook')) {
             (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
@@ -90,6 +109,12 @@ app.use('/api/training', authenticate, trainingRoutes);
 app.use('/onboarding', authenticate, onboardingRoutes);
 app.use(TEST_AI_API.base, authenticate, testAiRoutes);
 app.use('/api', authenticate, requireAdministrator, uploadRoutes);
+app.use((_req, res) => res.status(404).json({ error: 'Route not found', requestId: res.locals.requestId }));
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Unhandled request error', { requestId: res.locals.requestId, message });
+    res.status(500).json({ error: 'An unexpected error occurred', requestId: res.locals.requestId });
+});
 // Connect to MongoDB
 connectMongo()
     .then(async () => {

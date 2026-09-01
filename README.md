@@ -75,8 +75,10 @@ If running Node on the host, use `localhost` in local service URLs. The Compose 
 
 ## Architecture and security
 
-The simpler setup does not remove BullMQ, worker separation, queue retries, transaction boundaries, tenant isolation, RAG/memory, AI safeguards, idempotency, courier architecture, or platform-admin separation. OAuth, Facebook, Cloudinary, Steadfast, email, and other external providers are optional at core startup and fail only when their feature is used.
+The simpler setup does not remove BullMQ, worker separation, queue retries, transaction boundaries, tenant isolation, RAG/memory, AI safeguards, idempotency, courier architecture, or platform-admin separation. OAuth, Facebook, Cloudinary, Steadfast, email, and other external providers are optional at core startup and fail only when their feature is used. Email delivery is required before opening email/password registration or password recovery.
 
 Local `.env` and `.env.*` files are ignored by Git; safe `.env.example` templates remain tracked. Never expose provider keys in browser-prefixed variables. Health output reports only configuration presence, never values.
 
 See [docs/local-development.md](docs/local-development.md) for full environment details and practical troubleshooting.
+
+Authentication session rotation, email verification, password recovery, and rollout guidance are documented in [docs/authentication-security.md](docs/authentication-security.md).

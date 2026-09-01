@@ -31,7 +31,7 @@ Add only the integrations needed in the environment being run:
 - Facebook account login: `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` in the dashboard. Use the same Meta app as the agent's `FB_APP_ID`/`FB_APP_SECRET`; Page credentials remain tenant-scoped and are never dashboard environment variables.
 - Cloudinary uploads: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in the agent.
 - Steadfast: configure merchant API credentials through the dashboard. They are encrypted in MongoDB using `COURIER_CREDENTIALS_ENCRYPTION_KEY`; do not place merchant Steadfast keys in frontend variables.
-- Optional email/calendar support: `EMAIL_USER`, `EMAIL_PASS`, and the Google Calendar variables.
+- Required for email registration and password recovery: `EMAIL_USER`, a provider App Password in `EMAIL_PASS`, `EMAIL_SERVICE`, and `DASHBOARD_URL`. Google Calendar variables remain optional.
 
 `OPENAI_API_KEY`, all variables ending in `_SECRET`, tokens, passwords, `AUTH_JWT_SECRET`, `NEXTAUTH_SECRET`, `OAUTH_INTERNAL_SECRET`, `COURIER_CREDENTIALS_ENCRYPTION_KEY`, `FACEBOOK_CREDENTIALS_ENCRYPTION_KEY`, database credential-bearing URIs, and provider API keys are secrets. Keep them server-side.
 

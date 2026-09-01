@@ -9,7 +9,8 @@ import { MerchantActivity } from '../models/MerchantActivity';
 import { authenticate, authenticateAccount, authorize, AuthenticatedRequest } from './middleware';
 import { hashPassword, verifyPassword } from './password';
 import { signAccessToken, signAccountToken } from './token';
-import { MERCHANT_SESSION_MAX_AGE_SECONDS } from '@edutechs/shared';
+import { MERCHANT_ACCESS_TOKEN_MAX_AGE_SECONDS, PASSWORD_MIN_LENGTH } from '@edutechs/shared';
+import { AuthSession } from '../models/AuthSession';
 
 describe('authentication and role authorization', () => {
     const businessId = new mongoose.Types.ObjectId().toString();
@@ -39,10 +40,11 @@ describe('authentication and role authorization', () => {
         await expect(verifyPassword('wrong-password', encoded)).resolves.toBe(false);
     });
 
-    it('accepts exactly eight characters and rejects seven-character passwords', async () => {
-        const encoded = await hashPassword('12345678');
-        await expect(verifyPassword('12345678', encoded)).resolves.toBe(true);
-        await expect(hashPassword('1234567')).rejects.toThrow('Password must be at least 8 characters');
+    it('accepts the minimum password length and rejects shorter passwords', async () => {
+        const password = 'S3curePass!';
+        const encoded = await hashPassword(password);
+        await expect(verifyPassword(password, encoded)).resolves.toBe(true);
+        await expect(hashPassword('Short1!')).rejects.toThrow(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`);
     });
 
     it('returns 401 without a bearer token', async () => {
@@ -54,7 +56,7 @@ describe('authentication and role authorization', () => {
         const activeToken = token('Owner');
         const payload = JSON.parse(Buffer.from(activeToken.split('.')[1], 'base64url').toString('utf8'));
         expect(payload.purpose).toBe('merchant');
-        expect(payload.exp - payload.iat).toBe(MERCHANT_SESSION_MAX_AGE_SECONDS);
+        expect(payload.exp - payload.iat).toBe(MERCHANT_ACCESS_TOKEN_MAX_AGE_SECONDS);
 
         const expiredToken = signAccessToken({ sub: userId, businessId, membershipId, role: 'Owner' }, -1);
         const app = express().get('/protected', authenticate, (_req, res) => res.sendStatus(204));
@@ -68,6 +70,16 @@ describe('authentication and role authorization', () => {
         vi.mocked(User.findOne).mockReturnValueOnce({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: userId }) }) } as never);
         vi.mocked(Business.findOne).mockReturnValueOnce({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }) } as never);
         await request(app).get('/protected').set('authorization', `Bearer ${token('Owner')}`).expect(403);
+    });
+
+    it('requires the backing refresh session for newly issued session-bound access tokens', async () => {
+        const sessionId = new mongoose.Types.ObjectId().toString();
+        const sessionToken = signAccessToken({ sub: userId, businessId, membershipId, role: 'Owner', sid: sessionId });
+        const active = vi.spyOn(AuthSession, 'exists').mockResolvedValue({ _id: sessionId } as any);
+        const app = express().get('/protected', authenticate, (_req, res) => res.sendStatus(204));
+        await request(app).get('/protected').set('authorization', `Bearer ${sessionToken}`).expect(204);
+        active.mockResolvedValueOnce(null);
+        await request(app).get('/protected').set('authorization', `Bearer ${sessionToken}`).expect(401, { error: 'Session is no longer active' });
     });
 
     it('accepts a short-lived account token only on pre-business routes', async () => {

@@ -18,8 +18,8 @@ describe('platform administrator bootstrap password validation', () => {
         else process.env.PLATFORM_ADMIN_PASSWORD = originalPassword;
     });
 
-    it('accepts an eight-character platform administrator password', async () => {
-        process.env.PLATFORM_ADMIN_PASSWORD = '12345678';
+    it('accepts a strong platform administrator password', async () => {
+        process.env.PLATFORM_ADMIN_PASSWORD = 'AdminPass1!';
         vi.spyOn(PlatformAdmin, 'findOne').mockReturnValue({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }) } as any);
         const create = vi.spyOn(PlatformAdmin, 'create').mockResolvedValue({} as any);
 
@@ -31,7 +31,7 @@ describe('platform administrator bootstrap password validation', () => {
         process.env.PLATFORM_ADMIN_PASSWORD = '1234567';
         const create = vi.spyOn(PlatformAdmin, 'create');
 
-        await expect(ensurePlatformAdmin()).rejects.toThrow('at least 8 characters');
+        await expect(ensurePlatformAdmin()).rejects.toThrow('at least 10 characters');
         expect(create).not.toHaveBeenCalled();
     });
 });

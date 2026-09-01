@@ -16,6 +16,7 @@ import {
     BarChart3,
     UserRoundCog,
     Settings,
+    ShieldCheck,
     Sparkles,
 } from 'lucide-react';
 import { signOut } from 'next-auth/react';
@@ -39,6 +40,7 @@ const navigation = [
     { name: 'Integrations', href: '/settings/integrations', icon: PlugZap },
     { name: 'Team', href: '/settings/team', icon: UserRoundCog },
     { name: 'Business Settings', href: '/settings/business', icon: Settings },
+    { name: 'Security', href: '/settings/security', icon: ShieldCheck },
 ];
 
 interface SidebarProps {
@@ -99,7 +101,7 @@ export function Sidebar({ onClose, className }: SidebarProps) {
                 <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8 scrollbar-hide">
                     <div className="space-y-1.5">
                         <p className="px-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Management</p>
-                        {navigation.filter((item) => !item.href.startsWith('/settings/') || session?.role !== 'Staff').map((item) => (
+                        {navigation.filter((item) => item.href === '/settings/security' || !item.href.startsWith('/settings/') || session?.role !== 'Staff').map((item) => (
                             <NavItem key={item.name} item={item} />
                         ))}
                     </div>
