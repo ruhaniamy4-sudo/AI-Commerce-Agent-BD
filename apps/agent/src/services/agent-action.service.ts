@@ -20,7 +20,8 @@ export function parseAgentResponse(content: unknown): AgentResponse {
             message_text: String(parsed.message_text ?? parsed.content ?? ''),
         };
     } catch {
-        return { message_text: text, action: 'none' };
+        const looksStructured = /^\s*(?:```(?:json)?\s*)?[\[{]/i.test(text) || /"(?:message_text|language|action)"\s*:/.test(text);
+        return { message_text: looksStructured ? "I couldn't format that response safely. Please try again." : text, action: 'none' };
     }
 }
 

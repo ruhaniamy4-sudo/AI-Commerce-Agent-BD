@@ -46,9 +46,12 @@ export function businessTypeLabel(value: unknown): string {
     return BUSINESS_TYPE_OPTIONS.find((option) => option.value === type)?.label || 'Other';
 }
 
-interface GapDefinition {
+export interface GapDefinition {
     id: string; question: string; priority: GapPriority; domain: string; terms?: string[]; source?: 'products' | 'offerings' | 'phone' | 'customType';
 }
+
+export type SetupQuestionControl = 'single' | 'multi' | 'yes_no' | 'currency' | 'duration' | 'text' | 'textarea' | 'contact' | 'date' | 'schedule';
+export interface BusinessSetupQuestion extends GapDefinition { control: SetupQuestionControl; suggestions: string[]; customLabel?: string; }
 
 const common: GapDefinition[] = [
     { id: 'contact', question: 'What contact number should customers use?', priority: 'IMPORTANT', domain: 'CONTACT', source: 'phone' },
@@ -172,11 +175,54 @@ const gaps: Record<BusinessType, GapDefinition[]> = {
     ],
 };
 
+const setupQuestionMeta: Partial<Record<BusinessType, Record<string, { control?: SetupQuestionControl; suggestions?: string[]; customLabel?: string }>>> = {
+    ECOMMERCE: {
+        delivery_charge: { control: 'currency', suggestions: ['Inside Dhaka ৳60', 'Inside Dhaka ৳80', 'Depends on location'], customLabel: 'Enter your delivery charges' },
+        cod: { control: 'yes_no', suggestions: ['Yes', 'No', 'Selected orders or areas'] },
+        return: { control: 'duration', suggestions: ['7 days', '14 days', 'No returns; exchange only'] },
+        delivery_time: { control: 'duration', suggestions: ['1–2 days', '2–3 days', 'Depends on location'] },
+        payment: { control: 'multi', suggestions: ['Cash on delivery', 'bKash / Nagad', 'Card / bank transfer'] },
+        warranty: { control: 'single', suggestions: ['No warranty', 'Varies by product', 'Manufacturer warranty'] },
+    },
+    VISA_CONSULTANCY: {
+        countries: { control: 'multi', suggestions: ['Canada', 'Australia', 'United Kingdom'] },
+        visa_types: { control: 'multi', suggestions: ['Student visa', 'Visitor visa', 'Work visa'] },
+        process: { control: 'textarea' }, fee: { control: 'currency' }, documents: { control: 'textarea' },
+        appointment: { control: 'single', suggestions: ['In person', 'Phone / WhatsApp', 'Video consultation'] },
+        handoff: { control: 'textarea' }, timeline: { control: 'duration' }, office: { control: 'contact' },
+    },
+    EDUCATION_CONSULTANCY: {
+        countries: { control: 'multi', suggestions: ['Canada', 'Australia', 'United Kingdom'] },
+        programs: { control: 'textarea' }, intake: { control: 'multi', suggestions: ['Spring', 'Summer', 'Fall'] },
+        entry: { control: 'textarea' }, application: { control: 'textarea' }, appointment: { control: 'single', suggestions: ['In person', 'Phone / WhatsApp', 'Video consultation'] },
+    },
+    EDTECH: {
+        audience: { control: 'multi', suggestions: ['SSC', 'HSC', 'University / professional'] },
+        course: { control: 'textarea' }, schedule: { control: 'schedule' }, duration: { control: 'duration' }, fee: { control: 'currency' },
+        format: { control: 'single', suggestions: ['Live', 'Recorded', 'Live + recorded'] }, enrollment: { control: 'textarea' },
+        trial: { control: 'yes_no', suggestions: ['Yes', 'No', 'Selected courses'] },
+    },
+    AGENCY: { services: { control: 'textarea' }, packages: { control: 'currency' }, deliverables: { control: 'textarea' }, timeline: { control: 'duration' }, revision: { control: 'textarea' }, quote: { control: 'contact' } },
+    REAL_ESTATE: { properties: { control: 'textarea' }, details: { control: 'textarea' }, viewing: { control: 'contact' }, deposit: { control: 'currency' }, agent: { control: 'contact' } },
+    CLINIC_SERVICE: { services: { control: 'textarea' }, appointment: { control: 'contact' }, hours: { control: 'schedule' }, location: { control: 'contact' }, fees: { control: 'currency' } },
+    RESTAURANT: { menu: { control: 'textarea' }, delivery: { control: 'currency' }, hours: { control: 'schedule' }, location: { control: 'contact' }, reservation: { control: 'yes_no', suggestions: ['Yes', 'No', 'Call to confirm'] }, payment: { control: 'multi', suggestions: ['Cash', 'Mobile payment', 'Card'] } },
+    SAAS: { plans: { control: 'textarea' }, pricing: { control: 'currency' }, limits: { control: 'textarea' }, trial: { control: 'yes_no', suggestions: ['Free trial', 'Demo only', 'No trial'] }, onboarding: { control: 'textarea' }, cancellation: { control: 'textarea' } },
+    OTHER: { custom_type: { control: 'textarea' }, offerings: { control: 'textarea' }, process: { control: 'textarea' } },
+};
+
+export function getBusinessSetupQuestions(typeValue: unknown): BusinessSetupQuestion[] {
+    const type = normalizeBusinessType(typeValue);
+    if (!type) return [];
+    return gaps[type]
+        .filter((gap) => !['catalog', 'properties', 'menu', 'course', 'plans', 'services', 'offerings'].includes(gap.id) || gap.source !== 'products')
+        .map((gap) => ({ ...gap, control: setupQuestionMeta[type]?.[gap.id]?.control || 'text', suggestions: setupQuestionMeta[type]?.[gap.id]?.suggestions || [], customLabel: setupQuestionMeta[type]?.[gap.id]?.customLabel }));
+}
+
 export interface BusinessProfileInput {
     businessType?: string; customBusinessType?: string; phone?: string;
 }
 
-export function getTrainingPlan(profile: BusinessProfileInput, context: { facts?: string; productCount?: number; offeringCount?: number } = {}) {
+export function getTrainingPlan(profile: BusinessProfileInput, context: { facts?: string; productCount?: number; offeringCount?: number; answeredKeys?: string[] } = {}) {
     const type = normalizeBusinessType(profile.businessType);
     if (!type) return {
         businessType: undefined,
@@ -184,7 +230,9 @@ export function getTrainingPlan(profile: BusinessProfileInput, context: { facts?
         ready: false,
     };
     const facts = String(context.facts || '').toLowerCase();
+    const answeredKeys = new Set(context.answeredKeys || []);
     const isCovered = (gap: GapDefinition) => {
+        if (answeredKeys.has(gap.id)) return true;
         if (gap.source === 'products') return Number(context.productCount || 0) > 0;
         if (gap.source === 'offerings') return Number(context.offeringCount || 0) > 0 || (type === 'EDTECH' && Number(context.productCount || 0) > 0);
         if (gap.source === 'phone') return Boolean(profile.phone);

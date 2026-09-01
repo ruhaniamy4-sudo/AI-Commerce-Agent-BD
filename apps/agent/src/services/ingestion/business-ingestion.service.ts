@@ -10,8 +10,8 @@ import { TrainingCandidate, CandidateStatus } from '../../models/TrainingCandida
 import { TrainingRun } from '../../models/TrainingRun';
 import { TrainingSource } from '../../models/TrainingSource';
 import { assertTenantBusinessId, tenantDocument } from '../../tenancy/context';
-import { classifyProductSimilarity, knowledgeFact, normalizeMoney, normalizeSku, normalizedText, productKey, stableFingerprint, tokenSimilarity } from './normalization';
-import { ExtractedKnowledge, ExtractedProduct, WebsiteExtraction, ingestWebsite } from './website-ingestion.service';
+import { classifyProductSimilarity, knowledgeFact, normalizeCurrency, normalizeMoney, normalizeSku, normalizedText, productKey, stableFingerprint, tokenSimilarity } from './normalization';
+import { ExtractedKnowledge, ExtractedProduct, WebsiteExtraction, WebsiteIngestionError, ingestWebsite } from './website-ingestion.service';
 import { mirrorExternalProductImages } from './external-image.service';
 import { getImageEmbedding } from '../embedding.service';
 import { normalizeProductAvailability } from './product-availability';
@@ -36,20 +36,20 @@ function productPayload(raw: ExtractedProduct) {
     const images = [...new Set((raw.images || []).filter((url) => /^https?:\/\//i.test(String(url))))].slice(0, 12);
     const variants = (raw.variants || []).map((variant) => ({
         ...variant, name: String(variant.name || variant.specs?.color || variant.specs?.size || 'Variant').trim(),
-        sku: normalizeSku(variant.sku), price: normalizeMoney(variant.price), stock: Number.isFinite(variant.stock) ? Math.max(0, Number(variant.stock)) : undefined,
+        sku: normalizeSku(variant.sku), price: normalizeMoney(variant.price), currency: normalizeCurrency(variant.currency, raw.currency), stock: Number.isFinite(variant.stock) ? Math.max(0, Number(variant.stock)) : undefined, availability: normalizeProductAvailability(variant.availability, variant.stock),
         images: [...new Set((variant.images || []).filter((url) => /^https?:\/\//i.test(String(url))))],
         specs: Object.fromEntries(Object.entries(variant.specs || {}).filter(([, value]) => value !== undefined && value !== '')),
     }));
     return {
         name: name.trim().slice(0, 240), description: description.replace(/\s+/g, ' ').trim().slice(0, 20_000),
-        category: String(raw.category || 'Imported').trim().slice(0, 120), basePrice: price, salePrice: normalizeMoney(raw.salePrice),
+        category: String(raw.category || 'Imported').trim().slice(0, 120), basePrice: price, salePrice: normalizeMoney(raw.salePrice), currency: normalizeCurrency(raw.currency),
         stock: Number.isFinite(raw.stock) ? Math.max(0, Number(raw.stock)) : undefined, sku: normalizeSku(raw.sku), barcode: raw.barcode,
-        availability: raw.availability === 'preorder' ? 'unknown' : normalizeProductAvailability(raw.availability, raw.stock), brand: raw.brand, canonicalUrl: raw.canonicalUrl, images, variants, specs: raw.specs || {},
+        availability: normalizeProductAvailability(raw.availability, raw.stock), brand: raw.brand, canonicalUrl: raw.canonicalUrl, images, variants, specs: raw.specs || {},
     };
 }
 function conflictsForProduct(existing: any, imported: any) {
     const conflicts: Array<{ field: string; currentValue: unknown; importedValue: unknown }> = [];
-    for (const field of ['basePrice', 'salePrice', 'stock', 'availability'] as const) {
+    for (const field of ['basePrice', 'salePrice', 'currency', 'stock', 'availability'] as const) {
         if (existing?.[field] !== undefined && imported[field] !== undefined && Number(existing[field]) !== Number(imported[field])) {
             conflicts.push({ field, currentValue: existing[field], importedValue: imported[field] });
         }
@@ -101,14 +101,14 @@ export async function stageCandidates(businessId: string, sourceId: string, runI
         if (seenProducts.has(key)) { stats.duplicates += 1; continue; }
         seenProducts.add(key);
         const fingerprint = stableFingerprint(key);
-        let status: CandidateStatus = payload.name.length < 2 || payload.basePrice === undefined ? 'needs_attention' : 'ready';
+        let status: CandidateStatus = payload.name.length < 2 || payload.basePrice === undefined || !payload.currency ? 'needs_attention' : 'ready';
         let duplicateKind: 'exact' | 'probable' | undefined;
         let matchedRecordId: mongoose.Types.ObjectId | undefined;
         let conflictFields: Array<{ field: string; currentValue: unknown; importedValue: unknown }> = [];
         if (businessType !== 'ECOMMERCE') {
             const offeringPayload = {
                 offeringType: defaultOfferingType(businessType), name: payload.name, description: payload.description,
-                category: payload.category, price: payload.basePrice, salePrice: payload.salePrice, currency: 'BDT',
+                category: payload.category, price: payload.basePrice, salePrice: payload.salePrice, currency: payload.currency,
                 availability: payload.availability, attributes: { ...payload.specs, variants: payload.variants }, images: payload.images,
                 canonicalUrl: payload.canonicalUrl,
             };
@@ -223,11 +223,15 @@ export async function runWebsiteIngestion(businessId: string, sourceId: string, 
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Website import failed';
         console.error('Website ingestion failed:', message);
-        const merchantMessage = "We couldn't finish learning from this website. Please try again.";
+        const code = error instanceof WebsiteIngestionError ? error.code : 'CRAWLER_FAILURE';
+        const merchantMessage = code === 'TIMEOUT' ? "The website didn't respond in time. Try again."
+            : code === 'UNREACHABLE' ? "We couldn't reach this website. Check the link and try again."
+            : code === 'BLOCKED' ? "This website couldn't be accessed for learning."
+            : "We couldn't finish learning from this website. Please try again.";
         const hasOtherResults = Boolean(await TrainingSource.exists({ _id: { $ne: source._id }, status: { $in: ['ready', 'needs_attention'] } }));
         await Promise.all([
-            TrainingRun.findByIdAndUpdate(runId, { $set: { status: 'error', stage: 'Learning failed', progress: 0, errorCode: 'WEBSITE_IMPORT_FAILED', errorMessage: merchantMessage, completedAt: new Date() } }),
-            TrainingSource.findByIdAndUpdate(sourceId, { $set: { status: 'error', errorCode: 'WEBSITE_IMPORT_FAILED', errorMessage: merchantMessage } }),
+            TrainingRun.findByIdAndUpdate(runId, { $set: { status: 'error', stage: 'Learning failed', progress: 0, errorCode: code, errorMessage: merchantMessage, completedAt: new Date() } }),
+            TrainingSource.findByIdAndUpdate(sourceId, { $set: { status: 'error', errorCode: code, errorMessage: merchantMessage } }),
             Business.findByIdAndUpdate(businessId, { $set: { 'training.status': hasOtherResults ? 'needs_review' : 'error' } }),
         ]);
         throw error;
@@ -270,7 +274,7 @@ async function promoteClaimedCandidate(businessId: string, candidateId: string, 
         }
         if (existing) {
             for (const field of data.resolvedFields || []) {
-                if (['basePrice', 'salePrice', 'stock', 'availability'].includes(field) && data[field] !== undefined) (existing as any)[field] = data[field];
+                if (['basePrice', 'salePrice', 'currency', 'stock', 'availability'].includes(field) && data[field] !== undefined) (existing as any)[field] = data[field];
             }
             existing.provenance = [...(existing.provenance || []).filter((item: any) => item.fingerprint !== candidate.fingerprint), provenance(candidate)];
             if (imageImport.images.length && !existing.images?.length) existing.images = imageImport.images;
@@ -285,8 +289,8 @@ async function promoteClaimedCandidate(businessId: string, candidateId: string, 
             if (!category) category = await Category.create(tenantDocument({ name: categoryName, slug: categorySlug, isActive: true, order: 0 }));
             const product = await Product.create(tenantDocument({
                 name: data.name, slug: `${slug(data.name)}-${candidate.fingerprint.slice(0, 8)}`, description: data.description || data.name,
-                categoryId: category._id, basePrice: data.basePrice, salePrice: data.salePrice, stock: data.stock || 0,
-                variants: (data.variants?.length ? data.variants : data.sku ? [{ name: 'Default', sku: data.sku, price: data.basePrice, stock: data.stock, images: data.images || [], specs: {} }] : []).map((variant: any, index: number) => ({ variantId: `import-${index}-${candidate.fingerprint.slice(0, 6)}`, name: variant.name || 'Variant', sku: variant.sku || `${candidate.fingerprint.slice(0, 10)}-${index}`, price: variant.price ?? data.basePrice, stock: variant.stock ?? data.stock ?? 0, images: variant.images || [], specs: variant.specs || {}, isActive: true })),
+                categoryId: category._id, basePrice: data.basePrice, salePrice: data.salePrice, currency: data.currency, stock: data.stock ?? null,
+                variants: (data.variants?.length ? data.variants : data.sku ? [{ name: 'Default', sku: data.sku, price: data.basePrice, currency: data.currency, stock: data.stock, availability: data.availability, images: data.images || [], specs: {} }] : []).map((variant: any, index: number) => ({ variantId: `import-${index}-${candidate.fingerprint.slice(0, 6)}`, name: variant.name || 'Variant', sku: variant.sku || `${candidate.fingerprint.slice(0, 10)}-${index}`, price: variant.price ?? data.basePrice, currency: variant.currency || data.currency, stock: variant.stock ?? null, availability: variant.availability || normalizeProductAvailability(undefined, variant.stock), images: variant.images || [], specs: variant.specs || {}, isActive: true })),
                 specs: data.specs || {}, compatibilityTags: [], images: imageImport.images, imageImports: imageImport.imports, barcode: data.barcode, brand: data.brand,
                 canonicalUrl: data.canonicalUrl, warrantyMonths: 0, isReturnable: true, returnDays: 7, isActive: true, isFeatured: false,
                 lowStockThreshold: 10, availability: data.availability, provenance: [provenance(candidate)], merchantConfirmed: true,

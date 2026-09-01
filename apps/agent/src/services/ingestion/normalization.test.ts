@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyProductSimilarity, knowledgeFact, productKey } from './normalization';
+import { classifyProductSimilarity, knowledgeFact, normalizeCurrency, productKey } from './normalization';
 
 describe('tenant-local ingestion normalization', () => {
     it('uses SKU and canonical URL as exact product signals', () => {
@@ -17,5 +17,12 @@ describe('tenant-local ingestion normalization', () => {
 
     it('normalizes equivalent Dhaka delivery facts', () => {
         expect(knowledgeFact('Inside Dhaka delivery fee is Tk 70.')).toBe(knowledgeFact('Dhaka delivery charge 70 taka'));
+    });
+
+    it('normalizes explicit currency evidence without applying a global symbol', () => {
+        expect(normalizeCurrency('BDT')).toBe('BDT');
+        expect(normalizeCurrency('৳3,690')).toBe('BDT');
+        expect(normalizeCurrency('$19.99')).toBe('USD');
+        expect(normalizeCurrency('3690')).toBeUndefined();
     });
 });

@@ -7,7 +7,9 @@ export interface IProductVariant {
     name: string; // e.g., "Black 16GB", "Blue 32GB"
     sku: string;
     price: number;
-    stock: number;
+    currency: string;
+    stock?: number | null;
+    availability?: 'in_stock' | 'out_of_stock' | 'preorder' | 'unknown';
     images: string[];
     specs?: Record<string, any>; // Variant-specific specs
     isActive: boolean;
@@ -22,7 +24,8 @@ export interface IProduct extends Document {
 
     // Default price and stock (for single-variant products)
     basePrice: number;
-    stock: number;
+    currency: string;
+    stock?: number | null;
 
     // Variants (for multi-variant products like different colors/sizes)
     variants: IProductVariant[];
@@ -80,7 +83,9 @@ const ProductVariantSchema = new Schema({
     name: { type: String, required: true },
     sku: { type: String, required: true },
     price: { type: Number, required: true, min: 0 },
-    stock: { type: Number, required: true, min: 0, default: 0 },
+    currency: { type: String, required: true, trim: true, uppercase: true, default: 'BDT' },
+    stock: { type: Number, min: 0, default: null },
+    availability: { type: String, enum: ['in_stock', 'out_of_stock', 'preorder', 'unknown'], default: 'unknown' },
     images: [{ type: String }],
     specs: { type: Schema.Types.Mixed },
     isActive: { type: Boolean, default: true },
@@ -118,7 +123,8 @@ const ProductSchema = new Schema(
         },
 
         basePrice: { type: Number, required: true, min: 0 },
-        stock: { type: Number, required: true, min: 0, default: 0 },
+        currency: { type: String, required: true, trim: true, uppercase: true, default: 'BDT' },
+        stock: { type: Number, min: 0, default: null },
 
         variants: [ProductVariantSchema],
 
@@ -200,7 +206,7 @@ ProductSchema.index({ businessId: 1, 'intelligence.sizes': 1, isActive: 1 });
 
 // Virtual for low stock check
 ProductSchema.virtual('isLowStock').get(function (this: IProduct) {
-    return this.stock <= this.lowStockThreshold;
+    return typeof this.stock === 'number' && this.stock <= this.lowStockThreshold;
 });
 
 ProductSchema.pre('validate', function (this: IProduct) {

@@ -1,13 +1,13 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { canonicalUrl, normalizeMoney, stableFingerprint } from './normalization';
+import { canonicalUrl, normalizeCurrency, normalizeMoney, stableFingerprint } from './normalization';
 import { Resolver, validatePublicUrl } from './url-security';
 import { normalizeProductAvailability } from './product-availability';
 
 export interface ExtractedProduct {
-    name: string; description: string; category?: string; basePrice?: number; salePrice?: number;
+    name: string; description: string; category?: string; basePrice?: number; salePrice?: number; currency?: string;
     sku?: string; barcode?: string; brand?: string; canonicalUrl?: string; images: string[];
-    stock?: number; availability?: string; variants: Array<{ name: string; sku?: string; price?: number; stock?: number; images: string[]; specs?: Record<string, unknown> }>;
+    stock?: number; availability?: string; variants: Array<{ name: string; sku?: string; price?: number; currency?: string; stock?: number; availability?: string; images: string[]; specs?: Record<string, unknown> }>;
     specs: Record<string, unknown>;
 }
 export interface ExtractedKnowledge { title: string; content: string; type: 'FAQ' | 'POLICY' | 'GUIDE'; sourceUrl: string; topic?: PageType; confidence?: number; }
@@ -15,6 +15,11 @@ export type PageType = 'PRODUCT' | 'CATEGORY' | 'COLLECTION' | 'CONTACT' | 'FAQ'
 export interface WebsiteExtraction {
     pages: number; products: ExtractedProduct[]; knowledge: ExtractedKnowledge[]; business: Record<string, string>; warnings: string[];
     crawl?: { discovered: number; productUrls: number; processed: number; remaining: number; failed: number; fetches: number; aiCalls: number; pagesWithoutAI: number; unchanged: number; changed: number; newPages: number; durationMs: number; pages: Array<{ url: string; fingerprint?: string; pageType: PageType; status: 'pending'|'processed'|'unchanged'|'failed'; error?: string; lastSeenAt: Date }> };
+}
+
+export type WebsiteIngestionErrorCode = 'TIMEOUT' | 'BLOCKED' | 'UNREACHABLE' | 'CRAWLER_FAILURE';
+export class WebsiteIngestionError extends Error {
+    constructor(public readonly code: WebsiteIngestionErrorCode, message: string) { super(message); this.name = 'WebsiteIngestionError'; }
 }
 
 const MAX_BYTES = Number(process.env.INGESTION_MAX_RESPONSE_BYTES || 2_000_000);
@@ -45,6 +50,39 @@ function availabilityStock(value: unknown): number | undefined {
 function normalizedAvailability(value: unknown): ExtractedProduct['availability'] {
     if (String(value || '').toLowerCase().includes('preorder')) return 'preorder';
     return normalizeProductAvailability(value);
+}
+function productPrice(value: unknown, supportingText?: unknown): number | undefined {
+    const direct = normalizeMoney(value);
+    if (direct !== undefined && direct > 0) return direct;
+    const text = String(supportingText || '').replace(/,/g, ' ');
+    const match = text.match(/(?:price[^.\d]{0,45}(?:is|starts?\s+from|from)?|starts?\s+from)\s*(?:bdt|tk\.?|taka|৳)?\s*(\d{2,9}(?:\.\d{1,2})?)/i);
+    return match ? normalizeMoney(match[1]) : undefined;
+}
+
+function productSpecs($: cheerio.CheerioAPI): Record<string, string> {
+    const specs: Record<string, string> = {};
+    $('table tr').each((_index, row) => {
+        const cells = $(row).find('th,td').map((_i, cell) => $(cell).text().replace(/\s+/g, ' ').trim()).get();
+        if (cells.length >= 2 && cells[0].length > 1 && cells[0].length <= 80 && cells[1].length <= 500) specs[cells[0]] = cells[1];
+    });
+    $('dt').each((_index, term) => {
+        const key = $(term).text().replace(/\s+/g, ' ').trim(); const value = $(term).next('dd').text().replace(/\s+/g, ' ').trim();
+        if (key.length > 1 && key.length <= 80 && value && value.length <= 500) specs[key] = value;
+    });
+    const pageText = $('main, article, [role="main"], body').first().text().replace(/\s+/g, ' ');
+    const knownLabels = ['Display', 'Processor', 'Chipset', 'CPU', 'GPU', 'RAM', 'Storage', 'Camera System', 'Rear Camera', 'Main Camera', 'Front Camera', 'Selfie Camera', 'Battery', 'Charging', 'Operating System', 'OS', 'Warranty', 'Material', 'Fit', 'Multiple Store Locations'];
+    for (const label of ['Display', 'Processor', 'Chipset', 'RAM', 'Storage', 'Main Camera', 'Selfie Camera', 'Battery', 'Operating System', 'OS', 'Warranty', 'Material', 'Fit']) {
+        if (specs[label]) continue;
+        const match = new RegExp(`${label.replace(/ /g, '\\s+')}\\s*:\\s*`, 'i').exec(pageText);
+        if (!match) continue;
+        let tail = pageText.slice(match.index + match[0].length, match.index + match[0].length + 300);
+        const nextLabel = knownLabels.filter((item) => item !== label).map((item) => tail.search(new RegExp(`${item.replace(/ /g, '\\s+')}\\s*:`, 'i'))).filter((index) => index > 0).sort((a, b) => a - b)[0];
+        if (nextLabel) tail = tail.slice(0, nextLabel);
+        const sentenceEnd = tail.search(/\.(?:\s+)?(?=[A-Z])/); if (sentenceEnd > 0) tail = tail.slice(0, sentenceEnd + 1);
+        const value = tail.trim().replace(new RegExp(`(?:${knownLabels.map((item) => item.replace(/ /g, '\\s+')).join('|')})$`, 'i'), '').replace(/[;,\s]+$/, '').slice(0, 240);
+        if (value) specs[label] = value;
+    }
+    return Object.fromEntries(Object.entries(specs).slice(0, 60));
 }
 
 export function classifyPageUrl(input: string): PageType {
@@ -140,26 +178,28 @@ export function extractFromHtml(html: string, pageUrl: string): Omit<WebsiteExtr
         try { nodes.push(...flattenJsonLd(JSON.parse($(element).text()))); } catch { /* malformed third-party metadata */ }
     });
     $('script,style,noscript,template,svg').remove();
+    const pageSpecs = productSpecs($);
+    const domGallery = uniqueUrls($('[itemprop="image"], [class*="product"] img, [class*="gallery"] img, [class*="swiper"] img').map((_index, element) => relevantProductImage($(element).attr('data-src') || $(element).attr('data-lazy-src') || $(element).attr('srcset')?.split(',')[0]?.trim().split(/\s+/)[0] || $(element).attr('src'), pageUrl)).get()).slice(0, 12);
     for (const node of nodes) {
         const types = typesOf(node);
         if (types.some((type) => ['Product', 'ProductGroup'].includes(type)) && node.name) {
             const offer = offerFrom(node);
             const imageValues = Array.isArray(node.image) ? node.image : node.image ? [node.image] : [];
-            const images = uniqueUrls(imageValues.map((image: any) => relevantProductImage(image?.url || image, pageUrl)));
+            const images = uniqueUrls([...imageValues.map((image: any) => relevantProductImage(image?.url || image, pageUrl)), relevantProductImage($('meta[property="og:image"]').attr('content'), pageUrl), ...domGallery]).slice(0, 12);
             const variants = (node.hasVariant || []).map((variant: any) => {
                 const variantOffer = offerFrom(variant);
                 return {
                     name: String(variant.name || variant.color || variant.size || 'Variant'), sku: variant.sku ? String(variant.sku) : undefined,
-                    price: normalizeMoney(variantOffer.price), stock: availabilityStock(variantOffer.availability), images: [],
+                    price: normalizeMoney(variantOffer.price), currency: normalizeCurrency(variantOffer.priceCurrency, variantOffer.price), stock: availabilityStock(variantOffer.availability), availability: normalizedAvailability(variantOffer.availability), images: [],
                     specs: { color: variant.color, size: variant.size },
                 };
             });
             products.push({
                 name: String(node.name).trim(), description: String(node.description || '').trim(), category: String(node.category || '').trim() || undefined,
-                basePrice: normalizeMoney(offer.price || offer.lowPrice), salePrice: normalizeMoney(offer.salePrice), sku: node.sku ? String(node.sku) : undefined,
+                basePrice: productPrice(offer.price || offer.lowPrice, `${node.description || ''} ${$('meta[name="description"]').attr('content') || ''}`), salePrice: productPrice(offer.salePrice), currency: normalizeCurrency(offer.priceCurrency, offer.price, offer.lowPrice, node.description), sku: node.sku ? String(node.sku) : undefined,
                 barcode: node.gtin || node.gtin13 || node.gtin12 || node.mpn, brand: String(node.brand?.name || node.brand || '').trim() || undefined,
                 canonicalUrl: canonicalUrl(absolute(node.url, pageUrl) || pageUrl), images, stock: availabilityStock(offer.availability), availability: normalizedAvailability(offer.availability),
-                variants, specs: { ...Object.fromEntries((node.additionalProperty || []).filter((item: any) => item?.name).map((item: any) => [item.name, item.value])), ...(node.color ? { color: node.color } : {}), ...(node.size ? { size: node.size } : {}) },
+                variants, specs: { ...pageSpecs, ...Object.fromEntries((node.additionalProperty || []).filter((item: any) => item?.name).map((item: any) => [item.name, item.value])), ...(node.color ? { color: node.color } : {}), ...(node.size ? { size: node.size } : {}) },
             });
         }
         if (types.includes('FAQPage')) {
@@ -181,13 +221,14 @@ export function extractFromHtml(html: string, pageUrl: string): Omit<WebsiteExtr
     if (!products.length) {
         const likelyProductPage = /product|shop\/[^/]+|item/.test(new URL(pageUrl).pathname.toLowerCase()) || /product/i.test(String($('meta[property="og:type"]').attr('content') || ''));
         const name = String($('meta[property="og:title"]').attr('content') || $('h1').first().text()).trim();
-        const price = normalizeMoney($('meta[property="product:price:amount"]').attr('content') || $('[itemprop="price"]').first().attr('content') || $('[itemprop="price"]').first().text() || $('[class*="price"]').first().text());
+        const priceText = $('meta[property="product:price:amount"]').attr('content') || $('[itemprop="price"]').first().attr('content') || $('[itemprop="price"]').first().text() || $('[class*="price"]').first().text();
+        const price = productPrice(priceText, $('meta[name="description"]').attr('content'));
         if (likelyProductPage && name && price !== undefined) {
             const gallery = $('[itemprop="image"], [class*="product"] img, [class*="gallery"] img, [class*="swiper"] img').map((_index, element) => relevantProductImage($(element).attr('data-src') || $(element).attr('data-lazy-src') || $(element).attr('src'), pageUrl)).get();
             const image = relevantProductImage($('meta[property="og:image"]').attr('content') || $('[itemprop="image"]').first().attr('src'), pageUrl);
-            products.push({ name, description: String($('meta[name="description"]').attr('content') || $('[itemprop="description"]').first().text()).trim(), basePrice: price,
+            products.push({ name, description: String($('meta[name="description"]').attr('content') || $('[itemprop="description"]').first().text()).trim(), basePrice: price, currency: normalizeCurrency($('meta[property="product:price:currency"]').attr('content'), $('[itemprop="priceCurrency"]').first().attr('content'), priceText),
                 sku: String($('[itemprop="sku"]').first().attr('content') || $('[itemprop="sku"]').first().text() || $('[data-sku]').first().attr('data-sku') || '').trim() || undefined,
-                canonicalUrl: canonicalUrl(pageUrl), images: uniqueUrls([image, ...gallery]).slice(0, 12), variants: [], specs: {},
+                canonicalUrl: canonicalUrl(pageUrl), images: uniqueUrls([image, ...gallery]).slice(0, 12), variants: [], specs: pageSpecs,
             });
         }
     }
@@ -293,11 +334,11 @@ export async function ingestWebsite(input: string, onProgress?: (stage: string, 
                 if (path) disallowed.push(path);
             }
         }
-        if (disallowed.includes('/')) throw new Error('This website does not allow automated access. Upload a catalog or add information manually instead.');
+        if (disallowed.includes('/')) throw new WebsiteIngestionError('BLOCKED', 'This website does not allow automated access.');
     } catch (error) {
-        if (error instanceof Error && error.message.includes('does not allow automated access')) throw error;
+        if (error instanceof WebsiteIngestionError) throw error;
     }
-    await onProgress?.(retryUrls.length ? 'Retrying failed pages...' : 'Checking your store catalog...', 8);
+    await onProgress?.(retryUrls.length ? 'Retrying failed pages' : 'Connecting', 8);
     for (const endpoint of retryUrls.length ? [] : ['/products.json?limit=250', '/wp-json/wc/store/v1/products?per_page=100']) {
         try {
             const feed = await fetchPublicText(new URL(endpoint, origin).toString());
@@ -305,7 +346,8 @@ export async function ingestWebsite(input: string, onProgress?: (stage: string, 
             const rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed.products) ? parsed.products : [];
             for (const row of rows.slice(0, 500)) {
                 const shopify = Boolean(row.title || row.body_html);
-                const variants = (row.variants || []).map((variant: any) => ({ name: variant.title || 'Variant', sku: variant.sku, price: normalizeMoney(variant.price), stock: Number.isFinite(variant.inventory_quantity) ? Math.max(0, variant.inventory_quantity) : undefined, images: [], specs: {} }));
+                const feedCurrency = normalizeCurrency(row.prices?.currency_code, row.currency);
+                const variants = (row.variants || []).map((variant: any) => ({ name: variant.title || 'Variant', sku: variant.sku, price: normalizeMoney(variant.price), currency: normalizeCurrency(variant.currency, feedCurrency), stock: Number.isFinite(variant.inventory_quantity) ? Math.max(0, variant.inventory_quantity) : undefined, availability: Number.isFinite(variant.inventory_quantity) ? normalizeProductAvailability(undefined, variant.inventory_quantity) : 'unknown', images: [], specs: {} }));
                 const minorUnit = Number(row.prices?.currency_minor_unit || 0);
                 const rawPrice = row.prices?.price !== undefined ? Number(row.prices.price) / Math.pow(10, minorUnit) : undefined;
                 const name = String(row.name || row.title || '').trim();
@@ -313,7 +355,7 @@ export async function ingestWebsite(input: string, onProgress?: (stage: string, 
                 if (!name || price === undefined) continue;
                 const images = (row.images || []).map((image: any) => absolute(image.src || image.thumbnail || image, origin)).filter(Boolean) as string[];
                 result.products.push({ name, description: cheerio.load(String(row.description || row.short_description || row.body_html || '')).text().trim(), category: row.categories?.[0]?.name || row.product_type,
-                    basePrice: price, sku: row.sku || variants[0]?.sku, brand: row.vendor, canonicalUrl: canonicalUrl(row.permalink || (shopify && row.handle ? new URL(`/products/${row.handle}`, origin).toString() : undefined)),
+                    basePrice: price, currency: feedCurrency || variants[0]?.currency, sku: row.sku || variants[0]?.sku, brand: row.vendor, canonicalUrl: canonicalUrl(row.permalink || (shopify && row.handle ? new URL(`/products/${row.handle}`, origin).toString() : undefined)),
                     images, stock: row.is_in_stock === false ? 0 : undefined, availability: row.is_in_stock === false ? 'out_of_stock' : 'unknown', variants, specs: {},
                 });
             }
@@ -351,7 +393,7 @@ export async function ingestWebsite(input: string, onProgress?: (stage: string, 
         if (!next || seen.has(next) || new URL(next).origin !== origin) continue;
         if (disallowed.some((path) => new URL(next).pathname.startsWith(path))) continue;
         seen.add(next);
-        await onProgress?.(seen.size === 1 ? 'Scanning your business...' : 'Finding products and policies...', Math.min(80, 10 + seen.size * (65 / MAX_PAGES)), {
+        await onProgress?.(seen.size === 1 ? 'Discovering pages' : classifyPageUrl(next) === 'PRODUCT' ? 'Reading products' : 'Reading business information', Math.min(80, 10 + seen.size * (65 / MAX_PAGES)), {
             discovered: discovered.size, pages: result.pages, productUrls: [...discovered].filter((url) => classifyPageUrl(url) === 'PRODUCT').length,
             remaining: Math.max(0, discovered.size - seen.size), failed: pageStates.filter((page) => page.status === 'failed').length, fetches,
         });
@@ -382,8 +424,14 @@ export async function ingestWebsite(input: string, onProgress?: (stage: string, 
             pageStates.push({ url: next, pageType: classifyPageUrl(next), status: 'failed', error: message, lastSeenAt: new Date() });
         }
     }
-    if (!result.pages) throw new Error('No accessible website pages were found');
-    if (!result.products.length && !result.knowledge.length && !Object.values(result.business).some(Boolean) && !unchanged) throw new Error('The website was reachable, but no useful business information was found');
+    if (!result.pages) {
+        const failures = result.warnings.join(' ').toLowerCase();
+        if (/timeout|econnaborted|timed out/.test(failures)) throw new WebsiteIngestionError('TIMEOUT', 'The website did not respond in time.');
+        if (/403|401|forbidden|robots|blocked/.test(failures)) throw new WebsiteIngestionError('BLOCKED', 'The website blocked automated access.');
+        if (/enotfound|econnrefused|network|socket|dns/.test(failures)) throw new WebsiteIngestionError('UNREACHABLE', 'The website could not be reached.');
+        throw new WebsiteIngestionError('CRAWLER_FAILURE', 'No accessible website pages were found.');
+    }
+    if (!result.products.length && !result.knowledge.length && !Object.values(result.business).some(Boolean) && !unchanged) throw new WebsiteIngestionError('CRAWLER_FAILURE', 'The website was reachable, but no useful business information was found.');
     const remaining = [...discovered].filter((url) => !seen.has(canonicalUrl(url) || '')).length;
     const stateUrls = new Set(pageStates.map((page) => canonicalUrl(page.url)));
     for (const url of discovered) {
@@ -397,6 +445,6 @@ export async function ingestWebsite(input: string, onProgress?: (stage: string, 
         processed: result.pages, remaining, failed: result.warnings.filter((warning) => warning.startsWith('/')).length,
         fetches, aiCalls: 0, pagesWithoutAI: result.pages, unchanged, changed, newPages, durationMs: Date.now() - startedAt, pages: pageStates,
     };
-    await onProgress?.('Removing duplicates and checking conflicts...', 85);
+    await onProgress?.('Organizing information', 85);
     return result;
 }

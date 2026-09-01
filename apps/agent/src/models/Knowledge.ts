@@ -37,6 +37,9 @@ export interface IKnowledge extends Document {
     intelligence?: SearchProfile;
     businessType?: string;
     knowledgeDomain?: string;
+    setupQuestionKey?: string;
+    structuredValue?: unknown;
+    factSource?: 'MANUAL' | 'BUSINESS_SETUP' | 'WEBSITE' | 'FILE' | 'FACEBOOK';
 
     createdAt: Date;
     updatedAt: Date;
@@ -108,6 +111,9 @@ const KnowledgeSchema = new Schema(
         merchantConfirmed: { type: Boolean, default: true },
         businessType: { type: String, index: true },
         knowledgeDomain: { type: String, trim: true, uppercase: true, index: true },
+        setupQuestionKey: { type: String, trim: true, index: true },
+        structuredValue: { type: Schema.Types.Mixed },
+        factSource: { type: String, enum: ['MANUAL', 'BUSINESS_SETUP', 'WEBSITE', 'FILE', 'FACEBOOK'] },
         intelligence: { type: KnowledgeIntelligenceSchema, select: false },
     },
     { timestamps: true }
@@ -129,6 +135,14 @@ KnowledgeSchema.index({ businessId: 1, type: 1, language: 1, status: 1 });
 KnowledgeSchema.index({ businessId: 1, tags: 1, status: 1 });
 KnowledgeSchema.index({ businessId: 1, isPinned: 1, sourcePriority: 1 });
 KnowledgeSchema.index({ businessId: 1, fingerprint: 1 }, { sparse: true });
+KnowledgeSchema.index(
+    { businessId: 1, setupQuestionKey: 1 },
+    {
+        name: 'businessId_1_setupQuestionKey_1',
+        unique: true,
+        partialFilterExpression: { setupQuestionKey: { $type: 'string' } },
+    }
+);
 KnowledgeSchema.index({ businessId: 1, 'intelligence.terms': 1, status: 1 });
 
 KnowledgeSchema.pre('validate', function (this: IKnowledge) {

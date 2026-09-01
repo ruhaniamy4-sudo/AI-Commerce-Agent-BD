@@ -4,7 +4,7 @@ const { createOrder } = vi.hoisted(() => ({ createOrder: vi.fn() }));
 vi.mock('./checkout.service', () => ({ createOrder }));
 
 import { withTenantContext } from '../tenancy/context';
-import { executeAgentAction } from './agent-action.service';
+import { executeAgentAction, parseAgentResponse } from './agent-action.service';
 import { Conversation } from '../models/Conversation';
 
 describe('agent action confirmation safety', () => {
@@ -14,6 +14,12 @@ describe('agent action confirmation safety', () => {
         vi.spyOn(Conversation, 'findOne').mockReturnValue({
             select: () => ({ lean: () => Promise.resolve({ _id: 'conversation-1' }) }),
         } as never);
+    });
+
+    it('never exposes malformed provider JSON as customer chat text', () => {
+        const response = parseAgentResponse('{"language":"en","message_text":"hello"');
+        expect(response.message_text).not.toContain('{');
+        expect(response.message_text).not.toContain('message_text');
     });
 
     it('never represents a failed order action as successful', async () => {

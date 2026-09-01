@@ -9,7 +9,7 @@ import { detectConversationLanguage } from './conversation-intelligence.service'
 import { retrieveRelevantAwareness } from './business-awareness.service';
 import { classifyLightweightIntent, extractBudget, extractLightweightMemory, LightweightIntent, parseSearchTerms } from './turn-routing.service';
 
-export interface CompactProductCard { id: string; sku?: string; name: string; price: number; salePrice?: number; availability: string; stock: number; image?: string; relevantVariant?: { id: string; name: string; price: number; stock: number; image?: string }; }
+export interface CompactProductCard { id: string; sku?: string; name: string; price: number; currency: string; salePrice?: number; availability: string; stock?: number | null; image?: string; relevantVariant?: { id: string; name: string; price: number; currency: string; availability: string; stock?: number | null; image?: string }; }
 export interface DeterministicTurnResponse { message_text: string; suggested_products?: CompactProductCard[]; intent: LightweightIntent; memory?: Record<string, unknown>; }
 
 const deliveryIntent = /status|where|track|parcel|delivery|koi|kothay|hoise|অবস্থা|কোথায়|পার্সেল|ডেলিভারি/i;
@@ -24,24 +24,33 @@ function requestedSku(text: string) {
     const adjacent = text.match(/\b(?:stock|price)\s+([a-z0-9-]{3,})\b/i)?.[1];
     return adjacent && /\d/.test(adjacent) && /-/.test(adjacent) ? adjacent : undefined;
 }
+function money(amount: number, currency: string) { const symbol = ({ BDT: '৳', USD: '$', EUR: '€', GBP: '£', INR: '₹' } as Record<string, string>)[currency]; return symbol ? `${symbol}${amount}` : `${currency} ${amount}`; }
 function card(product: any, text = ''): CompactProductCard {
     const color = parseSearchTerms(text).find((word) => ['black','white','blue','red','green','কালো','সাদা','নীল','লাল'].includes(word));
     const sku = requestedSku(text);
     const variant = sku
         ? (product.variants || []).find((item: any) => String(item.sku).toLowerCase() === sku.toLowerCase())
         : color ? (product.variants || []).find((item: any) => String(item.name).toLowerCase().includes(color)) : undefined;
-    return { id: String(product._id), sku: variant?.sku || product.variants?.[0]?.sku, name: product.name, price: product.salePrice ?? variant?.price ?? product.basePrice, salePrice: product.salePrice, availability: (variant ? variant.stock > 0 : product.availability === 'in_stock' || product.stock > 0) ? 'in_stock' : product.availability || 'unknown', stock: variant?.stock ?? product.stock ?? 0, image: variant?.images?.[0] || product.images?.[0], relevantVariant: variant ? { id: variant.variantId, name: variant.name, price: product.salePrice ?? variant.price, stock: variant.stock, image: variant.images?.[0] } : undefined };
+    const availability = variant ? (variant.availability || (typeof variant.stock === 'number' ? (variant.stock > 0 ? 'in_stock' : 'out_of_stock') : 'unknown')) : (product.availability || (typeof product.stock === 'number' ? (product.stock > 0 ? 'in_stock' : 'out_of_stock') : 'unknown'));
+    const currency = String(variant?.currency || product.currency || 'BDT').toUpperCase();
+    return { id: String(product._id), sku: variant?.sku || product.variants?.[0]?.sku, name: product.name, price: product.salePrice ?? variant?.price ?? product.basePrice, currency, salePrice: product.salePrice, availability, stock: variant ? variant.stock : product.stock, image: variant?.images?.[0] || product.images?.[0], relevantVariant: variant ? { id: variant.variantId, name: variant.name, price: product.salePrice ?? variant.price, currency, availability, stock: variant.stock, image: variant.images?.[0] } : undefined };
 }
 
 function productText(intent: LightweightIntent, cards: CompactProductCard[], language: string, text = '') {
     const one = cards[0]; const bn = language !== 'en';
     if (intent === 'PRODUCT_IMAGE') return bn ? `${one.name}-এর ছবি দিলাম।` : `Here is ${one.name}.`;
     if (intent === 'PRODUCT_PRICE') {
-        const stock = requestedSku(text) ? (bn ? ` এখন ${one.stock}টা available আছে।` : ` It currently has ${one.stock} in stock.`) : '';
-        return bn ? `${one.name}-এর price ৳${one.price}।${stock}` : `${one.name} is ৳${one.price}.${stock}`;
+        const stock = requestedSku(text) && typeof one.stock === 'number' ? (bn ? ` এখন ${one.stock}টা available আছে।` : ` It currently has ${one.stock} in stock.`) : '';
+        return bn ? `${one.name}-এর price ${money(one.price, one.currency)}।${stock}` : `${one.name} is ${money(one.price, one.currency)}.${stock}`;
     }
-    if (intent === 'PRODUCT_STOCK') return one.stock > 0 ? (bn ? `জি, ${one.name} এখন ${one.stock}টা available আছে।` : `${one.name} is in stock (${one.stock} available).`) : (bn ? `${one.name} এখন out of stock।` : `${one.name} is currently out of stock.`);
-    if (intent === 'PRODUCT_VARIANT' && one.relevantVariant) return bn ? `${one.name}-এর ${one.relevantVariant.name} variant আছে—৳${one.relevantVariant.price}, stock ${one.relevantVariant.stock}।` : `${one.relevantVariant.name} is available for ৳${one.relevantVariant.price} (${one.relevantVariant.stock} in stock).`;
+    if (intent === 'PRODUCT_STOCK') {
+        if (one.availability === 'out_of_stock') return bn ? `${one.name} এখন out of stock।` : `${one.name} is currently out of stock.`;
+        if (one.availability === 'preorder') return bn ? `${one.name} preorder করা যাচ্ছে।` : `${one.name} is available for preorder.`;
+        if (one.availability === 'in_stock' && typeof one.stock === 'number') return bn ? `জি, ${one.name} এখন ${one.stock}টা available আছে।` : `${one.name} is in stock (${one.stock} available).`;
+        if (one.availability === 'in_stock') return bn ? `জি, ${one.name} in stock আছে। Exact quantity দেওয়া নেই।` : `${one.name} is in stock; an exact quantity is not listed.`;
+        return bn ? `${one.name}-এর stock এখনো নিশ্চিত করা হয়নি।` : `${one.name}'s stock has not been confirmed.`;
+    }
+    if (intent === 'PRODUCT_VARIANT' && one.relevantVariant) { const qty = typeof one.relevantVariant.stock === 'number' ? ` (${one.relevantVariant.stock} in stock)` : ''; return bn ? `${one.name}-এর ${one.relevantVariant.name} variant—${money(one.relevantVariant.price, one.relevantVariant.currency)}${qty}।` : `${one.relevantVariant.name} is ${money(one.relevantVariant.price, one.relevantVariant.currency)}${qty}.`; }
     return bn ? `${cards.length}টা relevant option পেলাম।` : `I found ${cards.length} relevant option${cards.length === 1 ? '' : 's'}.`;
 }
 
@@ -51,19 +60,19 @@ async function findProducts(businessId: string, text: string, activeProductId?: 
     const intent = classifyLightweightIntent(text);
     const sku = requestedSku(text);
     if (sku) {
-        const exactSkuProduct = await Product.findOne({ businessId, isActive: true, $or: [{ slug: sku.toLowerCase() }, { 'variants.sku': sku }] }).select('name basePrice salePrice stock availability variants images').lean();
+        const exactSkuProduct = await Product.findOne({ businessId, isActive: true, $or: [{ slug: sku.toLowerCase() }, { 'variants.sku': sku }] }).select('name basePrice salePrice currency stock availability variants images').lean();
         if (exactSkuProduct) return [exactSkuProduct];
     }
     if (activeProductId && (followupWords.test(text.trim()) || ['PRODUCT_IMAGE','PRODUCT_STOCK','PRODUCT_VARIANT'].includes(intent))) {
-        const active = await Product.findOne({ _id: activeProductId, businessId }).select('name basePrice salePrice stock availability variants images').lean();
+        const active = await Product.findOne({ _id: activeProductId, businessId }).select('name basePrice salePrice currency stock availability variants images').lean();
         if (active) return [active];
     }
-    if (intent === 'PRODUCT_COMPARE' && recentProductIds.length) return Product.find({ businessId, _id: { $in: recentProductIds.slice(0, 4) }, isActive: true }).select('name basePrice salePrice stock availability variants images specs brand').limit(4).lean();
+    if (intent === 'PRODUCT_COMPARE' && recentProductIds.length) return Product.find({ businessId, _id: { $in: recentProductIds.slice(0, 4) }, isActive: true }).select('name basePrice salePrice currency stock availability variants images specs brand').limit(4).lean();
     const terms = parseSearchTerms(text); if (!terms.length) return [];
     const pattern = terms.map(escaped).join('.*'); const max = extractBudget(text);
     const searchFilter = { $or: [{ name: { $regex: pattern, $options: 'i' } }, { description: { $regex: terms.slice(0, 3).map(escaped).join('|'), $options: 'i' } }, { compatibilityTags: { $in: terms } }, { 'intelligence.terms': { $in: terms } }] };
     const priceFilter = { $or: [{ salePrice: { $lte: max } }, { salePrice: null, basePrice: { $lte: max } }] };
-    return Product.find({ businessId, isActive: true, merchantConfirmed: { $ne: false }, ...(max !== undefined ? { $and: [searchFilter, priceFilter] } : searchFilter) }).select('name basePrice salePrice stock availability variants images specs brand').limit(4).lean();
+    return Product.find({ businessId, isActive: true, merchantConfirmed: { $ne: false }, ...(max !== undefined ? { $and: [searchFilter, priceFilter] } : searchFilter) }).select('name basePrice salePrice currency stock availability variants images specs brand').limit(4).lean();
 }
 
 async function stableBusinessFact(businessId: string, text: string, language: string) {
@@ -96,8 +105,9 @@ export async function getDeterministicResponse(businessId: string, text: string,
         if (cards.length && (intent === 'PRODUCT_SEARCH' || (exact && ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_IMAGE','PRODUCT_VARIANT'].includes(intent)))) return { message_text: productText(intent, cards, language, text), suggested_products: cards, intent, memory: { ...lightweightMemory, activeProductId: cards.length === 1 ? cards[0].id : entity.activeProductId, recentProductIds: cards.map((item) => item.id) } };
         if (!cards.length && intent === 'PRODUCT_PRICE') {
             const terms = parseSearchTerms(text); const pattern = terms.map(escaped).join('.*');
-            const offering = pattern ? await Offering.findOne({ businessId, status: 'active', merchantConfirmed: { $ne: false }, name: { $regex: pattern, $options: 'i' } }).select('name price salePrice availability offeringType').lean() : entity.activeOfferingId ? await Offering.findOne({ _id: entity.activeOfferingId, businessId }).select('name price salePrice availability offeringType').lean() : null;
-            if (offering && (offering.salePrice ?? offering.price) !== undefined) return { message_text: language === 'en' ? `${offering.name} is ৳${offering.salePrice ?? offering.price}.` : `${offering.name}-এর fee ৳${offering.salePrice ?? offering.price}।`, intent, memory: { ...lightweightMemory, activeOfferingId: String(offering._id), activeService: offering.name } };
+            const offering = pattern ? await Offering.findOne({ businessId, status: 'active', merchantConfirmed: { $ne: false }, name: { $regex: pattern, $options: 'i' } }).select('name price salePrice currency availability offeringType').lean() : entity.activeOfferingId ? await Offering.findOne({ _id: entity.activeOfferingId, businessId }).select('name price salePrice currency availability offeringType').lean() : null;
+            const amount = offering ? offering.salePrice ?? offering.price : undefined;
+            if (offering && amount !== undefined) { const formatted = money(amount, offering.currency || 'BDT'); return { message_text: language === 'en' ? `${offering.name} is ${formatted}.` : `${offering.name}-এর fee ${formatted}।`, intent, memory: { ...lightweightMemory, activeOfferingId: String(offering._id), activeService: offering.name } }; }
         }
     }
     if (!requestedSku(text) && /offer|discount|sale|price drop|অফার|ছাড়/i.test(text)) {

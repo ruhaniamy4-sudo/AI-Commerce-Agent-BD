@@ -86,7 +86,7 @@ export async function processChatTurn(input: ChatTurnInput) {
                 await completeInboundEvent(eventIdentifier, processingToken, body);
                 return { status: 202, body };
             }
-            const products = imageResult.matchedProducts.slice(0, 3).map((product: any) => ({ id: String(product._id), name: product.name, price: product.salePrice ?? product.basePrice, availability: product.availability, stock: product.stock, image: product.images?.[0] }));
+            const products = imageResult.matchedProducts.slice(0, 3).map((product: any) => ({ id: String(product._id), name: product.name, price: product.salePrice ?? product.basePrice, currency: product.currency || 'BDT', availability: product.availability, stock: product.stock, image: product.images?.[0] }));
             const reply = products.length ? `I found ${products.length} visually similar product${products.length === 1 ? '' : 's'}.` : 'I could not confirm a catalog match from this image.';
             await Promise.all([
                 saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source }),

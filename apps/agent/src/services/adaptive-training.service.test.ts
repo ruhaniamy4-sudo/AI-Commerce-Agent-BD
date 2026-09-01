@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultOfferingType, getConversationGuidance, getTrainingPlan, inferBusinessType, knowledgeDomain, normalizeBusinessType, safeReferenceInsights, testPrompts } from './adaptive-training.service';
+import { defaultOfferingType, getBusinessSetupQuestions, getConversationGuidance, getTrainingPlan, inferBusinessType, knowledgeDomain, normalizeBusinessType, safeReferenceInsights, testPrompts } from './adaptive-training.service';
 
 describe('adaptive business training', () => {
     it.each([
@@ -26,6 +26,22 @@ describe('adaptive business training', () => {
         expect(ecommerce.gaps.some((gap) => /visa|intake/i.test(gap.question))).toBe(false);
         expect(visa.gaps.some((gap) => /stock|variant|size/i.test(gap.question))).toBe(false);
         expect(ecommerce.gaps.map((gap) => gap.id)).not.toEqual(visa.gaps.map((gap) => gap.id));
+    });
+
+    it('provides business-specific guided questions and useful answer controls', () => {
+        const ecommerce = getBusinessSetupQuestions('ECOMMERCE');
+        const visa = getBusinessSetupQuestions('VISA_CONSULTANCY');
+        const edtech = getBusinessSetupQuestions('EDTECH');
+        expect(ecommerce.find((question) => question.id === 'delivery_charge')).toMatchObject({ control: 'currency', suggestions: expect.arrayContaining(['Inside Dhaka ৳60']) });
+        expect(visa.map((question) => question.id)).toEqual(expect.arrayContaining(['countries', 'visa_types', 'appointment', 'handoff']));
+        expect(visa.some((question) => /stock|cart/i.test(question.question))).toBe(false);
+        expect(edtech.map((question) => question.id)).toEqual(expect.arrayContaining(['audience', 'course', 'schedule', 'fee', 'enrollment']));
+    });
+
+    it('marks a confirmed setup key complete without losing unrelated facts', () => {
+        const plan = getTrainingPlan({ businessType: 'ECOMMERCE' }, { productCount: 1, answeredKeys: ['delivery_charge'] });
+        expect(plan.gaps.some((gap) => gap.id === 'delivery_charge')).toBe(false);
+        expect(plan.gaps.some((gap) => gap.id === 'cod')).toBe(true);
     });
 
     it('assigns approved information to a business-specific knowledge domain', () => {

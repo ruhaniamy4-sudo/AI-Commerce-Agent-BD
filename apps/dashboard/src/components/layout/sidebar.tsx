@@ -23,6 +23,8 @@ import { signOut } from 'next-auth/react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTheme } from 'next-themes';
+import { Monitor, Moon, Sun } from 'lucide-react';
 
 
 const navigation = [
@@ -49,6 +51,7 @@ interface SidebarProps {
 export function Sidebar({ onClose, className }: SidebarProps) {
     const pathname = usePathname();
     const { data: session } = useSession();
+    const { theme, setTheme } = useTheme();
 
     const NavItem = ({ item }: { item: typeof navigation[0] }) => {
         const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
@@ -107,6 +110,10 @@ export function Sidebar({ onClose, className }: SidebarProps) {
 
                 {/* Footer Section */}
                 <div className="p-4 border-t border-border bg-muted/5 space-y-2">
+
+                    <div className="grid grid-cols-3 gap-1 rounded-xl border bg-background/70 p-1" aria-label="Color theme">
+                        {([{ value: 'light', label: 'Light', Icon: Sun }, { value: 'dark', label: 'Dark', Icon: Moon }, { value: 'system', label: 'System', Icon: Monitor }] as const).map(({ value, label, Icon }) => <button key={value} type="button" title={`${label} theme`} aria-pressed={theme === value} onClick={() => setTheme(value)} className={cn('flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs transition-all active:scale-95', theme === value ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}><Icon className="h-3.5 w-3.5"/><span className="sr-only lg:not-sr-only">{label}</span></button>)}
+                    </div>
 
                     <button
                         onClick={() => signOut({ callbackUrl: '/login' })}
