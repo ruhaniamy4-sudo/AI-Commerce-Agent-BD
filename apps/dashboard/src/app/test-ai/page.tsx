@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { SafeProductImage } from '@/components/ui/safe-product-image';
 import { cn } from '@/lib/utils';
 import { formatCurrency, stockLabel } from '@/lib/currency';
+import { customerFacingText } from '@/lib/assistant-response';
 
 const EMPTY_STATE: TestAiState = {
   conversation: null,
@@ -154,7 +155,7 @@ export default function TestAiPage() {
                     <SafeProductImage src={message.imageUrl} alt="Attached product" />
                   </div>
                 )}
-                {message.content && <p>{message.content}</p>}
+                {message.content && <p>{message.role === 'assistant' ? customerFacingText(message.content) : message.content}</p>}
                 {message.products?.length ? (
                   <div className="grid gap-2 sm:grid-cols-3">
                     {message.products.slice(0, 3).map((product, index) => (

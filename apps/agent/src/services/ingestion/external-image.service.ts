@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import axios from 'axios';
-import { isCloudinaryConfigured, uploadImageBuffer } from '../cloudinary.service';
+import { cloudinaryPublicIdFromUrl, getCloudinaryImage, isCloudinaryConfigured, uploadImageBuffer } from '../cloudinary.service';
 import { Resolver, validatePublicUrl } from './url-security';
 
 const MAX_IMAGE_BYTES = 8_000_000;
@@ -12,10 +12,24 @@ export interface ProductImageImport {
     managedUrl?: string;
     status: 'managed' | 'mirrored' | 'external_fallback';
     errorCode?: 'INVALID_URL' | 'UNAVAILABLE' | 'UNSUPPORTED_TYPE' | 'TOO_LARGE';
+    provider?: 'cloudinary';
+    providerAssetId?: string;
+    resourceType?: 'image';
+    mimeType?: string;
+    size?: number;
+    width?: number;
+    height?: number;
+    source?: 'PRODUCT_UPLOAD'|'TRAINING_REVIEW'|'SCRAPED_PRODUCT';
+    createdAt?: Date;
 }
 
 export class ExternalImageError extends Error {
     constructor(message: string, public code: ProductImageImport['errorCode']) { super(message); this.name = 'ExternalImageError'; }
+}
+
+function provenanceUrl(value: string) {
+    try { const url = new URL(value); url.username = ''; url.password = ''; url.search = ''; url.hash = ''; return url.toString(); }
+    catch { return value.slice(0, 2000); }
 }
 
 function hasSupportedSignature(buffer: Buffer, contentType: string) {
@@ -54,25 +68,36 @@ export async function fetchPublicImage(input: string, redirects = 0, resolver?: 
     return { url: safeUrl.toString(), buffer, contentType };
 }
 
-function isManagedUrl(value: string) {
-    try { return new URL(value).protocol === 'https:' && new URL(value).hostname === 'res.cloudinary.com'; }
-    catch { return false; }
+async function managedReference(value: string, businessId: string): Promise<ProductImageImport | undefined> {
+    if (!isCloudinaryConfigured()) return undefined;
+    const publicId = cloudinaryPublicIdFromUrl(value);
+    if (!publicId?.startsWith(`sellpilot/${businessId}/`)) return undefined;
+    try {
+        const resource = await getCloudinaryImage(publicId);
+        return { sourceUrl: provenanceUrl(value), managedUrl: resource.secure_url, status: 'managed', provider: 'cloudinary', providerAssetId: resource.public_id, resourceType: 'image', mimeType: resource.format ? `image/${resource.format === 'jpg' ? 'jpeg' : resource.format}` : undefined, size: resource.bytes, width: resource.width, height: resource.height, source: publicId.includes('/training-review/') ? 'TRAINING_REVIEW' : 'PRODUCT_UPLOAD', createdAt: resource.created_at ? new Date(resource.created_at) : new Date() };
+    } catch { return undefined; }
 }
 
-export async function mirrorExternalProductImages(urls: string[], businessId: string): Promise<{ images: string[]; imports: ProductImageImport[] }> {
+export async function mirrorExternalProductImages(urls: string[], businessId: string, resolver?: Resolver): Promise<{ images: string[]; imports: ProductImageImport[] }> {
     const images: string[] = []; const imports: ProductImageImport[] = [];
     for (const sourceUrl of [...new Set(urls.filter((url) => typeof url === 'string' && url.trim()).map((url) => url.trim()))].slice(0, 12)) {
-        if (isManagedUrl(sourceUrl)) { images.push(sourceUrl); imports.push({ sourceUrl, managedUrl: sourceUrl, status: 'managed' }); continue; }
-        if (!isCloudinaryConfigured()) { images.push(sourceUrl); imports.push({ sourceUrl, status: 'external_fallback', errorCode: 'UNAVAILABLE' }); continue; }
+        const managed = await managedReference(sourceUrl, businessId);
+        if (managed) { images.push(managed.managedUrl!); imports.push(managed); continue; }
+        if (!isCloudinaryConfigured()) {
+            try { images.push((await validatePublicUrl(sourceUrl, resolver)).toString()); imports.push({ sourceUrl: provenanceUrl(sourceUrl), status: 'external_fallback', errorCode: 'UNAVAILABLE' }); }
+            catch { imports.push({ sourceUrl: provenanceUrl(sourceUrl), status: 'external_fallback', errorCode: 'INVALID_URL' }); }
+            continue;
+        }
         try {
-            const downloaded = await fetchPublicImage(sourceUrl);
+            const downloaded = await fetchPublicImage(sourceUrl, 0, resolver);
             const publicId = crypto.createHash('sha256').update(sourceUrl).digest('hex').slice(0, 32);
             const uploaded = await uploadImageBuffer(downloaded.buffer, `sellpilot/${businessId}/products/imported`, publicId);
-            images.push(uploaded.secure_url); imports.push({ sourceUrl, managedUrl: uploaded.secure_url, status: 'mirrored' });
+            images.push(uploaded.secure_url); imports.push({ sourceUrl: provenanceUrl(sourceUrl), managedUrl: uploaded.secure_url, status: 'mirrored', provider: 'cloudinary', providerAssetId: uploaded.public_id, resourceType: 'image', mimeType: uploaded.format ? `image/${uploaded.format === 'jpg' ? 'jpeg' : uploaded.format}` : downloaded.contentType, size: uploaded.bytes, width: uploaded.width, height: uploaded.height, source: 'SCRAPED_PRODUCT', createdAt: uploaded.created_at ? new Date(uploaded.created_at) : new Date() });
         } catch (error) {
             const code = error instanceof ExternalImageError ? error.code : 'UNAVAILABLE';
             console.warn(`Product image mirroring skipped: ${code}`);
-            images.push(sourceUrl); imports.push({ sourceUrl, status: 'external_fallback', errorCode: code });
+            if (code === 'UNAVAILABLE') images.push(sourceUrl);
+            imports.push({ sourceUrl: provenanceUrl(sourceUrl), status: 'external_fallback', errorCode: code });
         }
     }
     return { images, imports };

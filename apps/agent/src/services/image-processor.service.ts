@@ -3,6 +3,7 @@ import { analyzeProductImage, createImageContext } from './vision.service';
 import { matchProductsWithRAG, formatProductsForResponse } from './product-matcher.service';
 import { assertTenantBusinessId } from '../tenancy/context';
 import { getRagTopK } from './ai-config';
+import type { StoredMediaReference } from './media-storage.service';
 
 /**
  * Shared logic for processing an image in a conversation
@@ -12,7 +13,8 @@ export async function handleImageInput(
     businessId: string,
     convId: string,
     imageUrl: string,
-    eventIdentifier?: string
+    eventIdentifier?: string,
+    media?: StoredMediaReference
 ) {
     assertTenantBusinessId(businessId, 'images.handleInput');
     try {
@@ -38,7 +40,8 @@ export async function handleImageInput(
         const imageContext = createImageContext(
             imageUrl,
             visionResult,
-            matchedProducts.map((p: any) => p._id.toString())
+            matchedProducts.map((p: any) => p._id.toString()),
+            media
         );
 
         await Conversation.updateOne(

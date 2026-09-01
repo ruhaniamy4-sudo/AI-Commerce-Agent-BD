@@ -18,6 +18,7 @@ export interface IProductVariant {
 export interface IProduct extends Document {
     businessId: mongoose.Types.ObjectId;
     name: string;
+    aliases: string[];
     slug: string;
     description: string;
     categoryId: mongoose.Types.ObjectId;
@@ -36,7 +37,7 @@ export interface IProduct extends Document {
 
     // Media
     images: string[];
-    imageImports?: Array<{ sourceUrl: string; managedUrl?: string; status: 'managed' | 'mirrored' | 'external_fallback'; errorCode?: string }>;
+    imageImports?: Array<{ sourceUrl: string; managedUrl?: string; status: 'managed' | 'mirrored' | 'external_fallback'; errorCode?: string; provider?: 'cloudinary'; providerAssetId?: string; resourceType?: 'image'; mimeType?: string; size?: number; width?: number; height?: number; source?: string; createdAt?: Date }>;
 
     // Warranty and policies
     warrantyMonths: number;
@@ -108,6 +109,7 @@ const ProductIntelligenceSchema = new Schema({
 const ProductSchema = new Schema(
     {
         name: { type: String, required: true, trim: true },
+        aliases: [{ type: String, trim: true, lowercase: true }],
         slug: {
             type: String,
             required: true,
@@ -135,6 +137,9 @@ const ProductSchema = new Schema(
         imageImports: [{
             sourceUrl: { type: String, required: true }, managedUrl: String,
             status: { type: String, enum: ['managed', 'mirrored', 'external_fallback'], required: true }, errorCode: String,
+            provider: { type: String, enum: ['cloudinary'] }, providerAssetId: String,
+            resourceType: { type: String, enum: ['image'] }, mimeType: String, size: Number, width: Number, height: Number,
+            source: String, createdAt: Date,
         }],
 
         warrantyMonths: { type: Number, default: 0, min: 0 },
@@ -195,6 +200,7 @@ ProductSchema.index(
 );
 ProductSchema.index({ businessId: 1, categoryId: 1, isActive: 1 });
 ProductSchema.index({ businessId: 1, compatibilityTags: 1 });
+ProductSchema.index({ businessId: 1, aliases: 1, isActive: 1 });
 ProductSchema.index({ businessId: 1, basePrice: 1 });
 ProductSchema.index({ businessId: 1, canonicalUrl: 1 }, { sparse: true });
 ProductSchema.index({ businessId: 1, barcode: 1 }, { sparse: true });
@@ -210,7 +216,7 @@ ProductSchema.virtual('isLowStock').get(function (this: IProduct) {
 });
 
 ProductSchema.pre('validate', function (this: IProduct) {
-    if (this.isNew || ['name', 'description', 'brand', 'specs', 'compatibilityTags', 'variants'].some((path) => this.isModified(path))) {
+    if (this.isNew || ['name', 'aliases', 'description', 'brand', 'specs', 'compatibilityTags', 'variants'].some((path) => this.isModified(path))) {
         this.intelligence = buildProductSearchProfile(this.toObject({ depopulate: true }));
     }
 });

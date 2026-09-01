@@ -12,6 +12,7 @@ import { getDeterministicResponse } from './deterministic-response.service';
 import { detectConversationLanguage, shouldHandoffToHuman } from './conversation-intelligence.service';
 import { evaluateBusinessAIAccess } from './business-ai-access.service';
 import { recordConversationTurn } from './turn-metrics.service';
+import { persistConversationImage } from './media-storage.service';
 
 export interface ChatTurnInput {
     businessId: string;
@@ -35,7 +36,9 @@ export async function processChatTurn(input: ChatTurnInput) {
     const processingToken = claim.processingToken;
     try {
     const conversation = await ensureConversation(input.businessId, convId);
-    await saveMessage(input.businessId, convId, 'user', input.message || '', input.imageUrl, { messageId: eventIdentifier, platform: source });
+    const imageMedia = input.imageUrl ? await persistConversationImage({ businessId: input.businessId, url: input.imageUrl, source: source === 'test' ? 'TEST_AI' : 'WEB_CHAT', conversationId: convId, messageId: eventIdentifier }) : undefined;
+    const stableImageUrl = imageMedia?.secureUrl;
+    await saveMessage(input.businessId, convId, 'user', input.message || '', stableImageUrl, { messageId: eventIdentifier, platform: source, media: imageMedia });
     const entitlement = await evaluateBusinessAIAccess(input.businessId);
     if (!entitlement.allowed) {
         const body = { conversationId: convId, messageId: eventIdentifier, reply: null, aiAccess: entitlement.reason };
@@ -78,9 +81,9 @@ export async function processChatTurn(input: ChatTurnInput) {
         await completeInboundEvent(eventIdentifier, processingToken, body);
         return { status: 200, body };
     }
-    if (input.imageUrl) {
+    if (stableImageUrl) {
         try {
-            const imageResult = await invokeIfAIActive(convId, () => handleImageInput(input.businessId, convId, input.imageUrl!, eventIdentifier));
+            const imageResult = await invokeIfAIActive(convId, () => handleImageInput(input.businessId, convId, stableImageUrl, eventIdentifier, imageMedia));
             if (!imageResult) {
                 const body = { conversationId: convId, messageId: eventIdentifier, reply: null, controller: 'HUMAN_ACTIVE' };
                 await completeInboundEvent(eventIdentifier, processingToken, body);

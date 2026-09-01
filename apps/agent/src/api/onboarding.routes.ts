@@ -9,6 +9,7 @@ import { CourierIntegration } from '../models/CourierIntegration';
 import { Knowledge } from '../models/Knowledge';
 import { Product } from '../models/Product';
 import { tenantDocument } from '../tenancy/context';
+import { mirrorExternalProductImages } from '../services/ingestion/external-image.service';
 
 const router = Router();
 router.use(requireAdministrator);
@@ -48,11 +49,13 @@ router.post('/product', async (req: AuthenticatedRequest, res) => {
     let category = await Category.findOne({ slug: 'onboarding-products', isActive: true });
     if (!category) category = await Category.create(tenantDocument({ name: 'Onboarding Products', slug: 'onboarding-products', description: 'Products added during setup', isActive: true }));
     const slugBase = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60) || 'product';
+    const importedImages = imageUrl ? await mirrorExternalProductImages([imageUrl], req.auth!.businessId) : { images: [], imports: [] };
     const product = await Product.create(tenantDocument({
         name, description, basePrice: price, stock, categoryId: category._id,
         slug: `${slugBase}-${crypto.randomBytes(3).toString('hex')}`,
-        images: imageUrl ? [imageUrl] : [],
-        variants: sku ? [{ variantId: `default-${crypto.randomBytes(3).toString('hex')}`, name: 'Default', sku, price, stock, images: imageUrl ? [imageUrl] : [], isActive: true }] : [],
+        images: importedImages.images,
+        imageImports: importedImages.imports,
+        variants: sku ? [{ variantId: `default-${crypto.randomBytes(3).toString('hex')}`, name: 'Default', sku, price, stock, images: importedImages.images, isActive: true }] : [],
         specs: {}, compatibilityTags: [], isActive: true,
     }));
     await Business.findByIdAndUpdate(req.auth!.businessId, { $set: { 'onboarding.productAdded': true } });

@@ -1,11 +1,18 @@
 import { HumanMessage } from '@langchain/core/messages';
 import { describe, expect, it } from 'vitest';
-import { buildConversationInstructions, classifyConversationStage, deriveApprovedStyle, detectConversationLanguage, extractRememberedPreferences, guardResponseText, shouldHandoffToHuman, shouldOfferNextStep } from './conversation-intelligence.service';
+import { buildConversationInstructions, classifyConversationStage, deriveApprovedStyle, detectConversationLanguage, extractRememberedPreferences, guardResponseText, resolveConversationLanguage, shouldHandoffToHuman, shouldOfferNextStep } from './conversation-intelligence.service';
 
 describe('tenant conversation intelligence', () => {
     it.each([
         ['কালোটা আছে?', 'bn'], ['black ta available?', 'banglish'], ['Is black available?', 'en'], ['কালো color available?', 'mixed'],
     ])('detects %s as %s', (text, expected) => expect(detectConversationLanguage(text)).toBe(expected));
+
+    it('keeps explicit language preferences until the customer clearly switches', () => {
+        expect(resolveConversationLanguage('delivery charge koto?', 'bn')).toBe('bn');
+        expect(resolveConversationLanguage('Please explain this in English now', 'bn')).toBe('en');
+        expect(resolveConversationLanguage('bangla te bolo', 'en')).toBe('bn');
+        expect(resolveConversationLanguage('কালো color available?', 'en')).toBe('mixed');
+    });
 
     it('uses business-specific controls without leaking another tenant voice', () => {
         const first = buildConversationInstructions({ business: { name: 'A', brandVoice: { tone: 'premium', emoji: 'none' } }, customerText: 'price koto?', history: [], channel: 'facebook' });

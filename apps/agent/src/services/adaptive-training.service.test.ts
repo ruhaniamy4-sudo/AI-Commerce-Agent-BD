@@ -32,10 +32,16 @@ describe('adaptive business training', () => {
         const ecommerce = getBusinessSetupQuestions('ECOMMERCE');
         const visa = getBusinessSetupQuestions('VISA_CONSULTANCY');
         const edtech = getBusinessSetupQuestions('EDTECH');
+        const agency = getBusinessSetupQuestions('AGENCY');
+        const realEstate = getBusinessSetupQuestions('REAL_ESTATE');
+        const other = getBusinessSetupQuestions('OTHER');
         expect(ecommerce.find((question) => question.id === 'delivery_charge')).toMatchObject({ control: 'currency', suggestions: expect.arrayContaining(['Inside Dhaka ৳60']) });
         expect(visa.map((question) => question.id)).toEqual(expect.arrayContaining(['countries', 'visa_types', 'appointment', 'handoff']));
         expect(visa.some((question) => /stock|cart/i.test(question.question))).toBe(false);
         expect(edtech.map((question) => question.id)).toEqual(expect.arrayContaining(['audience', 'course', 'schedule', 'fee', 'enrollment']));
+        expect(agency.map((question) => question.id)).toEqual(expect.arrayContaining(['services', 'packages', 'deliverables', 'timeline', 'quote']));
+        expect(realEstate.map((question) => question.id)).toEqual(expect.arrayContaining(['property_type', 'sale_or_rent', 'price_range', 'viewing']));
+        expect(other.map((question) => question.id)).toEqual(expect.arrayContaining(['offerings', 'pricing', 'delivery', 'payment', 'support', 'policy']));
     });
 
     it('marks a confirmed setup key complete without losing unrelated facts', () => {

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { logError } from '../services/error.service';
 import { processChatTurn } from '../services/chat-turn.service';
 import { requireTenantContext } from '../tenancy/context';
+import { MediaStorageError } from '../services/media-storage.service';
 
 const router = Router();
 
@@ -17,6 +18,7 @@ router.post('/', async (req, res) => {
         return res.status(result.status).json(result.body);
     } catch (error) {
         await logError('CHAT_API_ERROR', error, { conversationId: req.body?.conversationId, hasMessage: Boolean(message), hasImage: Boolean(imageUrl) });
+        if (error instanceof MediaStorageError) return res.status(error.code === 'NOT_CONFIGURED' ? 503 : 400).json({ error: error.message });
         return res.status(500).json({ error: 'Internal server error' });
     }
 });

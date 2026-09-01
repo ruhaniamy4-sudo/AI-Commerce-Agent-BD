@@ -9,6 +9,8 @@ import { processChatTurn } from '../services/chat-turn.service';
 import { tenantDocument } from '../tenancy/context';
 import { TEST_AI_API } from '@edutechs/shared';
 import { validatePublicUrl } from '../services/ingestion/url-security';
+import { normalizeAssistantText } from '../services/assistant-response.service';
+import { MediaStorageError } from '../services/media-storage.service';
 
 const router = Router();
 
@@ -38,7 +40,7 @@ async function conversationPayload(req: AuthenticatedRequest, conversation: Inst
     return {
         conversation: { id: conversation.conversationId, controlMode: conversation.controlMode, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt },
         messages: messages.map((message: any) => ({
-            id: message._id, role: message.role, content: message.content, createdAt: message.createdAt,
+            id: message._id, role: message.role, content: message.role === 'assistant' ? normalizeAssistantText(message.content) : String(message.content || ''), createdAt: message.createdAt,
             imageUrl: message.attachments?.find((attachment: any) => String(attachment.type || '').startsWith('image/'))?.url,
             products: message.metadata?.products || [],
         })),
@@ -84,10 +86,16 @@ router.post(TEST_AI_API.currentMessages, async (req: AuthenticatedRequest, res) 
         try { await validatePublicUrl(imageUrl); } catch { return res.status(400).json({ error: 'The image must be hosted at a safe public address' }); }
     }
     const conversation = await findOwnedConversation(req) || await createOwnedConversation(req);
-    const result = await processChatTurn({
-        businessId: req.auth!.businessId, conversationId: conversation.conversationId, message, imageUrl: imageUrl || undefined,
-        eventIdentifier: String(req.headers['idempotency-key'] || crypto.randomUUID()), source: 'test',
-    });
+    let result;
+    try {
+        result = await processChatTurn({
+            businessId: req.auth!.businessId, conversationId: conversation.conversationId, message, imageUrl: imageUrl || undefined,
+            eventIdentifier: String(req.headers['idempotency-key'] || crypto.randomUUID()), source: 'test',
+        });
+    } catch (error) {
+        if (error instanceof MediaStorageError) return res.status(error.code === 'NOT_CONFIGURED' ? 503 : 400).json({ error: error.message });
+        throw error;
+    }
     await Business.findByIdAndUpdate(req.auth!.businessId, { $set: { 'onboarding.aiTested': true } });
     const refreshedConversation = await findOwnedConversation(req, conversation.conversationId);
     res.status(result.status).json({ ...result.body, ...(await conversationPayload(req, refreshedConversation)) });

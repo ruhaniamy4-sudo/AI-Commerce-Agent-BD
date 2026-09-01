@@ -17,7 +17,8 @@
         "migrate:tenancy": "ts-node src/scripts/migrate-tenancy.ts",
         "migrate:text-indexes": "ts-node src/scripts/migrate-text-indexes.ts",
         "migrate:training-indexes": "ts-node src/scripts/migrate-training-indexes.ts",
-        "migrate:intelligence": "ts-node src/scripts/migrate-intelligence-profiles.ts"
+        "migrate:intelligence": "ts-node src/scripts/migrate-intelligence-profiles.ts",
+        "cleanup:media": "ts-node src/scripts/cleanup-expired-media.ts"
     },
     "dependencies": {
         "@edutechs/shared": "*",

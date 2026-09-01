@@ -1,6 +1,7 @@
 import { Conversation } from '../models/Conversation';
 import { assertTenantBusinessId } from '../tenancy/context';
 import { createOrder } from './checkout.service';
+import { normalizeAssistantResponse } from './assistant-response.service';
 
 export interface AgentResponse {
     message_text: string;
@@ -12,17 +13,7 @@ export interface AgentResponse {
 }
 
 export function parseAgentResponse(content: unknown): AgentResponse {
-    const text = content?.toString() || '';
-    try {
-        const parsed = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
-        return {
-            ...parsed,
-            message_text: String(parsed.message_text ?? parsed.content ?? ''),
-        };
-    } catch {
-        const looksStructured = /^\s*(?:```(?:json)?\s*)?[\[{]/i.test(text) || /"(?:message_text|language|action)"\s*:/.test(text);
-        return { message_text: looksStructured ? "I couldn't format that response safely. Please try again." : text, action: 'none' };
-    }
+    return normalizeAssistantResponse(content) as AgentResponse;
 }
 
 export async function executeAgentAction(params: {

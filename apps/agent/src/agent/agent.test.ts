@@ -84,6 +84,9 @@ describe('AI Agent Logic', () => {
         const messages = result.messages;
         const lastMsg = messages[messages.length - 1];
 
-        expect(lastMsg.content).toBe(mockJson);
+        expect(JSON.parse(String(lastMsg.content))).toEqual({
+            language: 'en', message_text: 'Hello! I am ready to help.', suggested_products: [],
+            action: 'none', action_payload: {}, quick_replies: [],
+        });
     });
 });

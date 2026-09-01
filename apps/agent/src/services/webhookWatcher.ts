@@ -21,7 +21,7 @@ import { invokeIfAIActive, isAIActive } from './conversation-control.service';
 import { getDeterministicResponse } from './deterministic-response.service';
 import { recordConversationTurn } from './turn-metrics.service';
 import { containsPaymentCredential, facebookConversationId, isOptOutMessage, recordMetaInbound } from './meta-policy.service';
-import { validatePublicUrl } from './ingestion/url-security';
+import { MediaStorageError, persistConversationImage } from './media-storage.service';
 
 export const processWebhookEvent = async (data: any) => {
     const { businessId, eventId, psid, message, attachments = [], pageId, channelAIEnabled = true } = data;
@@ -38,9 +38,15 @@ export const processWebhookEvent = async (data: any) => {
         const conversation = await ensureConversation(businessId, convId, { senderId: psid, pageId });
 
         const paymentSensitive = containsPaymentCredential(message || '');
+        const imageAttachment = attachments.find((att: any) => att.type === 'image' && att.payload?.url);
+        let imageMedia; let mediaError: unknown;
+        if (!paymentSensitive && imageAttachment?.payload?.url) {
+            try { imageMedia = await persistConversationImage({ businessId, url: imageAttachment.payload.url, source: 'FACEBOOK', conversationId: convId, messageId: eventId }); }
+            catch (error) { mediaError = error; }
+        }
         const messageText = paymentSensitive ? '[Sensitive payment credential removed]' : message || (attachments.length ? '[Attachment]' : '');
-        await saveMessage(businessId, convId, 'user', messageText, undefined, {
-            messageId: eventId, platform: 'facebook',
+        await saveMessage(businessId, convId, 'user', messageText, imageMedia?.secureUrl, {
+            messageId: eventId, platform: 'facebook', media: imageMedia,
         });
         await recordMetaInbound(businessId, pageId, psid, convId, message || '');
         await updateLastHumanActivity();
@@ -71,6 +77,16 @@ export const processWebhookEvent = async (data: any) => {
             await sendOnce('payment-safety', () => sendMessage(psid, safeReply, pageId));
             await saveMessage(businessId, convId, 'assistant', safeReply, undefined, { messageId: `${eventId}:assistant`, platform: 'facebook' });
             await completeInboundEvent(eventId, processingToken, { policy: 'PAYMENT_CREDENTIAL_BLOCKED', reply: safeReply, deliveries });
+            return;
+        }
+
+        if (mediaError) {
+            const safeReply = mediaError instanceof MediaStorageError && mediaError.code === 'NOT_CONFIGURED'
+                ? 'Image storage is temporarily unavailable. Please try again later or send the product name.'
+                : 'I could not securely read that image. Please send a JPG, PNG, WebP, GIF, or AVIF image under 8 MB.';
+            await sendOnce('image-storage-error', () => sendMessage(psid, safeReply, pageId));
+            await saveMessage(businessId, convId, 'assistant', safeReply, undefined, { messageId: `${eventId}:assistant`, platform: 'facebook' });
+            await completeInboundEvent(eventId, processingToken, { reply: safeReply, mediaError: mediaError instanceof MediaStorageError ? mediaError.code : 'UPLOAD_FAILED', deliveries });
             return;
         }
 
@@ -105,12 +121,10 @@ export const processWebhookEvent = async (data: any) => {
         }
 
         // Image analysis is itself an AI path, so re-check control immediately before it.
-        const imageAttachment = attachments.find((att: any) => att.type === 'image');
-        if (imageAttachment && imageAttachment.payload?.url) {
+        if (imageMedia) {
             try {
-                const safeImageUrl = (await validatePublicUrl(imageAttachment.payload.url)).toString();
                 const imageResult = await invokeIfAIActive(convId, () => handleImageInput(
-                    businessId, convId, safeImageUrl, eventId
+                    businessId, convId, imageMedia.secureUrl, eventId, imageMedia
                 ));
                 if (!imageResult) {
                     await completeInboundEvent(eventId, processingToken, { controller: 'HUMAN_ACTIVE' });

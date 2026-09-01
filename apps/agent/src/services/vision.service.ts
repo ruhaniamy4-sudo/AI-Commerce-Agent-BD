@@ -32,7 +32,7 @@ export async function analyzeProductImage(
     usageContext?: { conversationId: string; eventIdentifier: string }
 ): Promise<VisionAnalysisResult> {
     try {
-        console.log(`Analyzing product image: ${imageUrl}`);
+        console.log('Analyzing a persisted product image');
 
         const model = process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini';
         const response = await getOpenAI().chat.completions.create({
@@ -133,7 +133,8 @@ export function isImageContextValid(expiresAt?: Date): boolean {
 export function createImageContext(
     url: string,
     analysis: VisionAnalysisResult,
-    matchedProductIds: string[] = []
+    matchedProductIds: string[] = [],
+    media?: import('./media-storage.service').StoredMediaReference
 ) {
     const ttlMinutes = parseInt(process.env.IMAGE_CONTEXT_TTL_MINUTES || '10', 10);
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
@@ -146,5 +147,6 @@ export function createImageContext(
         features: analysis.features || [],
         matchedProducts: matchedProductIds,
         expiresAt,
+        ...(media ? { media } : {}),
     };
 }

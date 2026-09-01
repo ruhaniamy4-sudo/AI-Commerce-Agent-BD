@@ -130,6 +130,9 @@ const gaps: Record<BusinessType, GapDefinition[]> = {
     ],
     REAL_ESTATE: [
         { id: 'properties', question: 'Which properties are currently available?', priority: 'CRITICAL', domain: 'PROPERTY', source: 'offerings' },
+        { id: 'property_type', question: 'Which property types do you handle?', priority: 'CRITICAL', domain: 'PROPERTY_TYPE', terms: ['apartment', 'flat', 'land', 'commercial property', 'property type'] },
+        { id: 'sale_or_rent', question: 'Are your properties for sale, rent, or both?', priority: 'CRITICAL', domain: 'TRANSACTION_TYPE', terms: ['for sale', 'for rent', 'sale or rent'] },
+        { id: 'price_range', question: 'What price or rent range can customers expect?', priority: 'IMPORTANT', domain: 'PRICING', terms: ['price range', 'rent range', 'starting price'] },
         { id: 'details', question: 'What location, price, size, rooms, and amenities are confirmed?', priority: 'IMPORTANT', domain: 'PROPERTY_DETAILS', terms: ['location', 'bedroom', 'bathroom', 'amenities', 'square feet'] },
         { id: 'viewing', question: 'How can a customer arrange a viewing?', priority: 'CRITICAL', domain: 'VIEWING', terms: ['viewing', 'site visit'] },
         { id: 'deposit', question: 'What booking or deposit rules apply?', priority: 'IMPORTANT', domain: 'BOOKING', terms: ['deposit', 'booking rule'] },
@@ -170,6 +173,11 @@ const gaps: Record<BusinessType, GapDefinition[]> = {
     OTHER: [
         { id: 'custom_type', question: 'What do you sell or provide?', priority: 'CRITICAL', domain: 'BUSINESS', source: 'customType' },
         { id: 'offerings', question: 'What products, services, programs, or other offerings are available?', priority: 'CRITICAL', domain: 'OFFERING', source: 'offerings' },
+        { id: 'pricing', question: 'What prices, fees, or starting rates can you confirm?', priority: 'IMPORTANT', domain: 'PRICING', terms: ['price', 'fee', 'starting rate'] },
+        { id: 'delivery', question: 'Do delivery, fulfillment, or service-area rules apply?', priority: 'OPTIONAL', domain: 'DELIVERY', terms: ['delivery', 'service area', 'fulfillment'] },
+        { id: 'payment', question: 'Which payment methods do you accept?', priority: 'IMPORTANT', domain: 'PAYMENT', terms: ['payment method', 'cash', 'card', 'bkash'] },
+        { id: 'support', question: 'How should customers contact support?', priority: 'IMPORTANT', domain: 'SUPPORT', terms: ['support', 'customer care'] },
+        { id: 'policy', question: 'Which cancellation, return, or refund policy applies?', priority: 'OPTIONAL', domain: 'POLICY', terms: ['cancellation', 'return policy', 'refund policy'] },
         { id: 'process', question: 'How does a customer buy, book, or get started?', priority: 'IMPORTANT', domain: 'PROCESS', terms: ['buy', 'book', 'get started', 'order process'] },
         ...common,
     ],
@@ -203,11 +211,11 @@ const setupQuestionMeta: Partial<Record<BusinessType, Record<string, { control?:
         trial: { control: 'yes_no', suggestions: ['Yes', 'No', 'Selected courses'] },
     },
     AGENCY: { services: { control: 'textarea' }, packages: { control: 'currency' }, deliverables: { control: 'textarea' }, timeline: { control: 'duration' }, revision: { control: 'textarea' }, quote: { control: 'contact' } },
-    REAL_ESTATE: { properties: { control: 'textarea' }, details: { control: 'textarea' }, viewing: { control: 'contact' }, deposit: { control: 'currency' }, agent: { control: 'contact' } },
+    REAL_ESTATE: { properties: { control: 'textarea' }, property_type: { control: 'multi', suggestions: ['Apartment / flat', 'Land', 'Commercial property'] }, sale_or_rent: { control: 'single', suggestions: ['For sale', 'For rent', 'Sale + rent'] }, price_range: { control: 'currency' }, details: { control: 'textarea' }, viewing: { control: 'contact' }, deposit: { control: 'currency' }, agent: { control: 'contact' } },
     CLINIC_SERVICE: { services: { control: 'textarea' }, appointment: { control: 'contact' }, hours: { control: 'schedule' }, location: { control: 'contact' }, fees: { control: 'currency' } },
     RESTAURANT: { menu: { control: 'textarea' }, delivery: { control: 'currency' }, hours: { control: 'schedule' }, location: { control: 'contact' }, reservation: { control: 'yes_no', suggestions: ['Yes', 'No', 'Call to confirm'] }, payment: { control: 'multi', suggestions: ['Cash', 'Mobile payment', 'Card'] } },
     SAAS: { plans: { control: 'textarea' }, pricing: { control: 'currency' }, limits: { control: 'textarea' }, trial: { control: 'yes_no', suggestions: ['Free trial', 'Demo only', 'No trial'] }, onboarding: { control: 'textarea' }, cancellation: { control: 'textarea' } },
-    OTHER: { custom_type: { control: 'textarea' }, offerings: { control: 'textarea' }, process: { control: 'textarea' } },
+    OTHER: { custom_type: { control: 'textarea' }, offerings: { control: 'textarea' }, pricing: { control: 'currency' }, delivery: { control: 'textarea' }, payment: { control: 'multi', suggestions: ['Cash', 'Mobile payment', 'Card / bank transfer'] }, support: { control: 'contact' }, policy: { control: 'textarea' }, process: { control: 'textarea' } },
 };
 
 export function getBusinessSetupQuestions(typeValue: unknown): BusinessSetupQuestion[] {

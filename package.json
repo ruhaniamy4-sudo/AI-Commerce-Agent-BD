@@ -14,7 +14,7 @@
     "dev:storefront": "npm run dev -w apps/storefront",
     "start": "npm run start -w apps/agent",
     "worker": "npm run worker -w apps/agent",
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build -w packages/shared && npm run build -w apps/agent && npm run build -w apps/dashboard && npm run build -w apps/storefront",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
     "smoke:baseline": "node scripts/smoke-baseline.mjs",

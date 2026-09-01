@@ -53,6 +53,11 @@ export interface IConversation extends Document {
         features?: string[];
         matchedProducts?: string[];
         expiresAt: Date;
+        media?: {
+            provider: 'cloudinary'; providerAssetId: string; secureUrl: string; resourceType: 'image';
+            mimeType?: string; size?: number; width?: number; height?: number; source: string;
+            originalUrl?: string; createdAt: Date; retention: 'persistent'|'temporary'; expiresAt?: Date; retentionStatus: 'active'|'deleted';
+        };
     };
 
     createdAt: Date;
@@ -123,6 +128,12 @@ const ConversationSchema = new Schema(
                 features: [String],
                 matchedProducts: [String],
                 expiresAt: Date,
+                media: {
+                    provider: { type: String, enum: ['cloudinary'] }, providerAssetId: String, secureUrl: String,
+                    resourceType: { type: String, enum: ['image'] }, mimeType: String, size: Number, width: Number, height: Number,
+                    source: String, originalUrl: String, createdAt: Date, retention: { type: String, enum: ['persistent', 'temporary'] },
+                    expiresAt: Date, retentionStatus: { type: String, enum: ['active', 'deleted'] },
+                },
             },
             required: false,
         },

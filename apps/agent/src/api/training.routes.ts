@@ -15,12 +15,13 @@ import { approveCandidate, runWebsiteIngestion, stageCandidates } from '../servi
 import { DEFAULT_MAX_TRAINING_FILE_BYTES, extractFile, FileIngestionError, validateTrainingFile } from '../services/ingestion/file-ingestion.service';
 import { FacebookPermissionError, importAuthorizedFacebookPage } from '../services/ingestion/facebook-ingestion.service';
 import { syncAuthorizedFacebookAwareness } from '../services/ingestion/facebook-awareness.service';
-import { canonicalUrl, knowledgeFact, stableFingerprint } from '../services/ingestion/normalization';
+import { canonicalUrl, stableFingerprint } from '../services/ingestion/normalization';
 import { validatePublicUrl } from '../services/ingestion/url-security';
 import { BusinessAwareness } from '../models/BusinessAwareness';
 import { upsertBusinessAwareness } from '../services/business-awareness.service';
 import { ingestWebsite } from '../services/ingestion/website-ingestion.service';
 import { BUSINESS_TYPE_OPTIONS, BUSINESS_TYPES, getBusinessSetupQuestions, getFaqTemplates, getLeadFields, getTrainingPlan, normalizeBusinessType, safeReferenceInsights, testPrompts } from '../services/adaptive-training.service';
+import { listConfirmedSetupAnswers, saveConfirmedSetupAnswer } from '../services/business-setup.service';
 
 const router = Router();
 router.use(requireAdministrator);
@@ -60,13 +61,14 @@ router.get('/status', async (req: AuthenticatedRequest, res) => {
         Business.findById(req.auth!.businessId).lean(), TrainingSource.find().sort({ updatedAt: -1 }).lean(),
         TrainingRun.findOne().sort({ createdAt: -1 }).lean(),
         TrainingCandidate.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
-        Product.find({ isActive: true }).limit(3).select('name variants').lean(), Knowledge.find({ status: 'active' }).limit(100).select('title type content knowledgeDomain setupQuestionKey structuredValue updatedAt').lean(),
+        Product.find({ isActive: true }).limit(3).select('name variants').lean(), Knowledge.find({ status: 'active' }).limit(100).select('title type content knowledgeDomain').lean(),
         Offering.find({ status: 'active' }).limit(20).select('name offeringType description').lean(),
     ]);
+    const setupAnswers = await listConfirmedSetupAnswers(req.auth!.businessId, business?.businessType);
     const candidateCounts = Object.fromEntries(groups.map((group: any) => [group._id, group.count]));
     const plan = getTrainingPlan(business || {}, {
         facts: knowledgeSamples.map((entry: any) => `${entry.title} ${entry.content} ${entry.knowledgeDomain || ''}`).join(' '),
-        productCount: productSamples.length, offeringCount: offeringSamples.length, answeredKeys: knowledgeSamples.map((entry: any) => entry.setupQuestionKey).filter(Boolean),
+        productCount: productSamples.length, offeringCount: offeringSamples.length, answeredKeys: Object.keys(setupAnswers),
     });
     const suggestedQuestions = testPrompts(business?.businessType);
     res.json({
@@ -75,7 +77,7 @@ router.get('/status', async (req: AuthenticatedRequest, res) => {
         businessTypeOptions: BUSINESS_TYPE_OPTIONS, gaps: plan.gaps, missing: plan.gaps.map((gap) => gap.question),
         readiness: { ready: plan.ready, critical: plan.gaps.filter((gap) => gap.priority === 'CRITICAL').length, important: plan.gaps.filter((gap) => gap.priority === 'IMPORTANT').length, optional: plan.gaps.filter((gap) => gap.priority === 'OPTIONAL').length },
         setupQuestions: Object.fromEntries(BUSINESS_TYPES.map((type) => [type, getBusinessSetupQuestions(type)])),
-        setupAnswers: Object.fromEntries(knowledgeSamples.filter((entry: any) => entry.setupQuestionKey).map((entry: any) => [entry.setupQuestionKey, { value: entry.structuredValue ?? entry.content, updatedAt: entry.updatedAt }])),
+        setupAnswers,
         faqTemplates: getFaqTemplates(business?.businessType), leadFields: getLeadFields(business?.businessType), suggestedQuestions,
     });
 });
@@ -103,23 +105,17 @@ router.post('/business-profile/confirm', async (req: AuthenticatedRequest, res) 
 });
 
 router.put('/business-facts/:key', async (req: AuthenticatedRequest, res) => {
-    const business = await Business.findById(req.auth!.businessId).select('businessType').lean();
-    const type = normalizeBusinessType(business?.businessType);
-    const question = getBusinessSetupQuestions(type).find((item) => item.id === req.params.key);
-    if (!type || !question) return res.status(400).json({ error: 'This question does not apply to the current business type' });
-    const rawValue = req.body?.value;
-    const value = Array.isArray(rawValue) ? rawValue.map((item) => String(item).trim()).filter(Boolean).slice(0, 30) : String(rawValue ?? '').trim();
-    if ((Array.isArray(value) && !value.length) || (!Array.isArray(value) && !value)) return res.status(400).json({ error: 'Choose or enter an answer before saving' });
-    const content = Array.isArray(value) ? value.join(', ') : value;
-    if (content.length > 8_000) return res.status(400).json({ error: 'Please keep this answer under 8,000 characters' });
-    const fingerprint = stableFingerprint(`business-setup:${req.params.key}`);
-    const now = new Date();
-    const fact = await Knowledge.findOneAndUpdate(
-        { setupQuestionKey: req.params.key },
-        { $set: { title: question.question, content, type: question.domain === 'RETURN' || question.domain === 'POLICY' ? 'POLICY' : 'GUIDE', language: 'en', tags: [question.id, question.domain.toLowerCase()], status: 'active', sourcePriority: 'high', updatedBy: req.auth!.userId, isPinned: true, normalizedFact: knowledgeFact(content), fingerprint, merchantConfirmed: true, businessType: type, knowledgeDomain: question.domain, setupQuestionKey: question.id, structuredValue: value, factSource: 'BUSINESS_SETUP', provenance: [{ sourceType: 'manual', fingerprint, lastSeenAt: now, lastSyncedAt: now }] }, $setOnInsert: tenantDocument({ createdBy: req.auth!.userId, versionHistory: [] }) },
-        { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
-    );
-    res.json({ key: question.id, value: fact.structuredValue, updatedAt: fact.updatedAt });
+    try {
+        res.json(await saveConfirmedSetupAnswer({
+            businessId: req.auth!.businessId,
+            userId: req.auth!.userId,
+            questionKey: String(req.params.key || ''),
+            value: req.body?.value,
+            merchantConfirmed: req.body?.merchantConfirmed === true,
+        }));
+    } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Could not save this business answer' });
+    }
 });
 
 router.post('/sources/reference', async (req: AuthenticatedRequest, res) => {

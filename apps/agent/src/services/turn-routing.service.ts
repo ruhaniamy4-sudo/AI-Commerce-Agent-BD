@@ -4,6 +4,12 @@ const stopWords = new Set('er ar ki koto dam price stock ache ase available avai
 const bangla = /[\u0980-\u09ff]/; const banglish = /\b(ache|ase|koto|lagbe|chai|ta|eta|ki|kivabe|dekhaw|deo|den|dam|pabo|hobe)\b/i;
 
 export function detectLightweightLanguage(text: string) { const hasBangla = bangla.test(text); const hasLatin = /[a-z]/i.test(text); return hasBangla && hasLatin ? 'mixed' : hasBangla ? 'bn' : banglish.test(text) ? 'banglish' : 'en'; }
+export function detectExplicitLanguagePreference(text: string): 'bn'|'en'|'banglish'|undefined {
+    if (/banglish(?:\s+(?:e|a|te))?\s+(?:bolo|bolen|reply|speak)|বাংলিশ/i.test(text)) return 'banglish';
+    if (/bangla(?:\s+(?:e|a|te))?\s+(?:bolo|bolen|reply|speak)|বাংলা(?:য়|তে)?\s*(?:বল|লিখ|উত্তর)/i.test(text)) return 'bn';
+    if (/english(?:\s+(?:e|a|te|please))?\s*(?:bolo|bolen|reply|speak)?|ইংরেজি(?:তে)?\s*(?:বল|লিখ|উত্তর)/i.test(text)) return 'en';
+    return undefined;
+}
 export function parseSearchTerms(text: string) { return text.toLowerCase().replace(/[^a-z0-9\u0980-\u09ff]+/g, ' ').split(/\s+/).filter((word) => word.length > 1 && !stopWords.has(word)).slice(0, 8); }
 export function extractBudget(text: string) { const match = text.toLowerCase().match(/(?:under|within|moddhe|মধ্যে|ভিতরে|budget)?\s*(?:৳|tk|bdt)?\s*(\d+(?:\.\d+)?)\s*(k|হাজার)?/i); if (!match || !/(under|within|moddhe|মধ্যে|ভিতরে|budget|৳|tk|bdt|হাজার|\bk\b)/i.test(text)) return undefined; return Math.round(Number(match[1]) * (match[2] ? 1000 : 1)); }
 
@@ -13,7 +19,7 @@ export function classifyLightweightIntent(text: string): LightweightIntent {
     if (/picture|photo|image|pic|ছবি/i.test(text)) return 'PRODUCT_IMAGE';
     if (/compare|better|best|কোনটা ভালো|konta better|versus|\bvs\b/i.test(text)) return 'PRODUCT_COMPARE';
     if (/stock|available|availability|আছে|pawa jabe/i.test(text)) return 'PRODUCT_STOCK';
-    if (/delivery charge|cod|cash on delivery|payment method|support number|phone|address|location|opening hour|working hour|ডেলিভারি চার্জ|ঠিকানা/i.test(text)) return 'BUSINESS_FACT';
+    if (/(?:delivery|shipping).*(?:charge|cost|fee|koto)|(?:charge|cost|fee).*(?:delivery|shipping)|dhaka.*delivery|delivery.*dhaka|cod|cash on delivery|payment method|support number|phone|address|location|opening hour|working hour|ডেলিভারি(?:\s|.*)(?:চার্জ|খরচ|কত)|ঠিকানা/i.test(text)) return 'BUSINESS_FACT';
     if (/price|cost|dam|দাম|fee|ফি/i.test(text)) return 'PRODUCT_PRICE';
     if (/black|white|blue|red|green|size|color|colour|কালো|সাদা|নীল|লাল/i.test(text)) return 'PRODUCT_VARIANT';
     if (/dekhaw|dekhao|show|recommend|suggest|khujchi|চাই|দেখা/i.test(text) || extractBudget(text) !== undefined) return 'PRODUCT_SEARCH';
@@ -23,6 +29,7 @@ export function classifyLightweightIntent(text: string): LightweightIntent {
 
 export function extractLightweightMemory(text: string) {
     const memory: Record<string, string> = { detectedLanguage: detectLightweightLanguage(text), conversationStage: classifyLightweightIntent(text) };
+    const preferredLanguage = detectExplicitLanguagePreference(text); if (preferredLanguage) memory.preferredLanguage = preferredLanguage;
     const country = text.match(/\b(canada|australia|uk|usa|germany|japan|কানাডা|অস্ট্রেলিয়া|যুক্তরাজ্য)\b/i); if (country) memory.activeCountry = country[1];
     const visa = text.match(/\b(student|tourist|work|business|family)\s+visa\b/i); if (visa) memory.activeVisaType = `${visa[1]} visa`;
     const course = text.match(/\b(ssc|hsc|class\s*\d+|grade\s*\d+|science|commerce|arts|batch)\b/i); if (course) memory.activeCourse = course[1];

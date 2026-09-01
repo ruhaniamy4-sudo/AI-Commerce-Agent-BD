@@ -13,6 +13,7 @@ import { Business } from '../models/Business';
 import { Conversation } from '../models/Conversation';
 import { buildConversationInstructions, guardResponseText } from '../services/conversation-intelligence.service';
 import { classifyLightweightIntent, extractLightweightMemory } from '../services/turn-routing.service';
+import { normalizeAssistantResponse } from '../services/assistant-response.service';
 
 dotenv.config();
 
@@ -63,10 +64,11 @@ async function callModel(state: AgentState) {
         Business.findById(businessId).select('name businessType businessSubType customBusinessType preferredLanguage brandVoice').lean(),
         Conversation.findOne({ businessId, conversationId: state.conversationId }).select('platform metadata').lean(),
     ]);
-    const intelligence = buildConversationInstructions({ business: business || {}, customerText: userQuery, history: state.messages, channel: conversation?.platform });
+    const intelligence = buildConversationInstructions({ business: business || {}, customerText: userQuery, history: state.messages, channel: conversation?.platform, preferredLanguage: conversation?.metadata?.entityState?.preferredLanguage });
     const entityMemory = extractLightweightMemory(userQuery);
+    entityMemory.preferredLanguage = intelligence.language;
     await Conversation.updateOne({ businessId, conversationId: state.conversationId }, { $set: { 'metadata.conversationIntelligence': { stage: intelligence.stage, language: intelligence.language, rememberedPreferences: intelligence.memory, leadFields: intelligence.leadFields, updatedAt: new Date() }, ...Object.fromEntries(Object.entries(entityMemory).map(([key, value]) => [`metadata.entityState.${key}`, value])) } });
-    const fullSystemPrompt = `${SYSTEM_PROMPT}${intelligence.prompt}${contextStr !== '{}' ? `\nCONTEXT:\n${contextStr}` : ''}`;
+    const fullSystemPrompt = `${SYSTEM_PROMPT}${intelligence.prompt}${contextStr !== '{}' ? `\nCONTEXT:\n${contextStr}` : ''}\nNever make a catalog-wide negative claim from limited context. Ask for the product or model name when canonical lookup is inconclusive.`;
 
     // 4. Call Model
     // We send the full history, but with the updated system prompt at the start
@@ -97,12 +99,9 @@ async function callModel(state: AgentState) {
         // Usage accounting must not discard a successful provider response and trigger a costly retry.
         console.error('Failed to record AI usage:', error);
     }
-    let guardedResponse: BaseMessage = response;
-    try {
-        const parsed = JSON.parse(String(response.content).replace(/```json/g, '').replace(/```/g, '').trim());
-        parsed.message_text = guardResponseText(String(parsed.message_text || ''), contextStr);
-        guardedResponse = new AIMessage({ content: JSON.stringify(parsed), response_metadata: response.response_metadata, usage_metadata: response.usage_metadata });
-    } catch { /* parseAgentResponse retains its existing safe fallback */ }
+    const parsed = normalizeAssistantResponse(response.content);
+    parsed.message_text = guardResponseText(parsed.message_text, contextStr);
+    const guardedResponse: BaseMessage = new AIMessage({ content: JSON.stringify(parsed), response_metadata: response.response_metadata, usage_metadata: response.usage_metadata });
     return { messages: [guardedResponse] };
 }
 

@@ -194,7 +194,7 @@ export interface Message extends TenantEntity {
   role: 'user' | 'assistant' | 'system';
   content: string;
   contentType: 'text' | 'image' | 'file' | 'audio' | 'video';
-  attachments?: Array<{ url?: string; type?: string; filename?: string; size?: number }>;
+  attachments?: Array<{ url?: string; type?: string; filename?: string; size?: number; provider?: 'cloudinary'; providerAssetId?: string; resourceType?: 'image'; width?: number; height?: number; source?: string; originalUrl?: string; retention?: 'persistent'|'temporary'; expiresAt?: string; retentionStatus?: 'active'|'deleted' }>;
   metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;

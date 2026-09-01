@@ -21,6 +21,19 @@ const MessageSchema = new Schema(
                 type: { type: String }, // 'image/jpeg', 'application/pdf', etc.
                 filename: { type: String },
                 size: { type: Number }, // bytes
+                provider: { type: String, enum: ['cloudinary'] },
+                providerAssetId: { type: String },
+                resourceType: { type: String, enum: ['image'] },
+                width: { type: Number },
+                height: { type: Number },
+                source: { type: String },
+                originalUrl: { type: String },
+                conversationId: { type: String },
+                messageId: { type: String },
+                retention: { type: String, enum: ['persistent', 'temporary'] },
+                expiresAt: { type: Date },
+                retentionStatus: { type: String, enum: ['active', 'deleted'], default: 'active' },
+                mediaCreatedAt: { type: Date },
             },
         ],
 
@@ -55,5 +68,6 @@ MessageSchema.index(
 );
 MessageSchema.index({ businessId: 1, 'metadata.platform': 1 });
 MessageSchema.index({ businessId: 1, role: 1, createdAt: -1 });
+MessageSchema.index({ businessId: 1, 'attachments.expiresAt': 1, 'attachments.retentionStatus': 1 });
 
 export const Message = mongoose.model('Message', MessageSchema);

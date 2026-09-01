@@ -53,6 +53,26 @@ describe('canonical tenant-safe Test AI routes', () => {
         expect(response.body).toMatchObject({ conversation: { id: 'test-conversation' }, messages: [] });
     });
 
+    it('never returns raw structured provider output in assistant history', async () => {
+        vi.spyOn(Conversation, 'findOne').mockReturnValue({ sort: vi.fn().mockResolvedValue(conversation) } as any);
+        vi.spyOn(Message, 'find').mockReturnValue({ sort: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([
+            { _id: 'm1', role: 'assistant', content: '{"message_text":"Safe hello","action":"none"}', createdAt: new Date() },
+            { _id: 'm2', role: 'assistant', content: '{"message_text":"broken"', createdAt: new Date() },
+        ]) }) }) } as any);
+        const response = await authenticated(request(app).get(endpoint(TEST_AI_API.currentMessages))).expect(200);
+        expect(response.body.messages[0].content).toBe('Safe hello');
+        expect(response.body.messages[1].content).not.toContain('message_text');
+        expect(response.body.messages[1].content).not.toContain('{');
+    });
+
+    it('returns the persisted managed image after Test AI history reload', async () => {
+        const stableUrl = 'https://res.cloudinary.com/demo/image/upload/v1/sellpilot/business/test-image.png';
+        vi.spyOn(Conversation, 'findOne').mockReturnValue({ sort: vi.fn().mockResolvedValue(conversation) } as any);
+        vi.spyOn(Message, 'find').mockReturnValue({ sort: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([{ _id: 'image-message', role: 'user', content: '', createdAt: new Date(), attachments: [{ url: stableUrl, type: 'image/png', provider: 'cloudinary', retention: 'temporary' }] }]) }) }) } as any);
+        const response = await authenticated(request(app).get(endpoint(TEST_AI_API.currentMessages))).expect(200);
+        expect(response.body.messages[0]).toMatchObject({ role: 'user', imageUrl: stableUrl });
+    });
+
     it('uses the exact dashboard POST endpoint and invokes the real pipeline boundary', async () => {
         const find = vi.spyOn(Conversation, 'findOne').mockReturnValue({ sort: vi.fn().mockResolvedValue(conversation) } as any);
         vi.mocked(processChatTurn).mockResolvedValue({ status: 200, body: { conversationId: conversation.conversationId, reply: 'Hello!' } } as any);

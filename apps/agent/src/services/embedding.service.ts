@@ -55,7 +55,7 @@ export async function generateImageEmbedding(imageUrl: string, usageContext?: Us
     model: string;
 }> {
     try {
-        console.log(`Generating embedding for image: ${imageUrl}`);
+        console.log('Generating embedding for a persisted image');
 
         // Get detailed description using Vision API
         const visionResponse = await getOpenAI().chat.completions.create({

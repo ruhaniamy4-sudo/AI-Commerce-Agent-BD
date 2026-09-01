@@ -89,14 +89,7 @@ export const chatApi = {
             conversationId,
             imageUrl
         }),
-    getSignature: (folder: string) =>
-        apiClient.get<{
-            timestamp: number;
-            signature: string;
-            apiKey: string;
-            cloudName: string;
-            folder: string;
-        }>('/api/upload/signature', { params: { folder } }),
+    uploadImage: (file: File, purpose = 'chat-tests') => { const body = new FormData(); body.append('file', file); body.append('purpose', purpose); return apiClient.post<{ url: string }>('/api/upload/image', body); },
 };
 
 export const systemPromptsApi = {
@@ -290,7 +283,7 @@ export const trainingApi = {
     connectFacebook: (connectionId: string) => apiClient.post<{ source: TrainingSource; run: TrainingRun }>('/api/training/sources/facebook', { connectionId }),
     addReference: (url: string, label?: string) => apiClient.post<TrainingSource>('/api/training/sources/reference', { url, label }),
     updateBusinessProfile: (data: { businessType: string; businessSubType?: string; customBusinessType?: string; secondaryBusinessTypes?: string[] }) => apiClient.patch('/api/training/business-profile', data),
-    saveBusinessFact: (key: string, value: string | string[]) => apiClient.put<{ key: string; value: string | string[]; updatedAt: string }>(`/api/training/business-facts/${key}`, { value }),
+    saveBusinessFact: (key: string, value: string | string[]) => apiClient.put<{ key: string; value: string | string[]; updatedAt: string; businessType: string; merchantConfirmed: true; source: 'BUSINESS_SETUP' }>(`/api/training/business-facts/${encodeURIComponent(key)}`, { value, merchantConfirmed: true }),
     confirmBusinessType: (businessType?: string) => apiClient.post('/api/training/business-profile/confirm', { businessType }),
     uploadFile: (file: File) => { const body = new FormData(); body.append('file', file); return apiClient.post<{ source: TrainingSource; run: TrainingRun; summary: { products: number; knowledge: number; warnings: string[] } }>('/api/training/sources/file', body); },
     addManual: (kind: 'faq'|'information', title: string, content: string) => apiClient.post('/api/training/sources/manual', { kind, title, content }),

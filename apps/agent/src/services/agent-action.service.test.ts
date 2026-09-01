@@ -22,6 +22,18 @@ describe('agent action confirmation safety', () => {
         expect(response.message_text).not.toContain('message_text');
     });
 
+    it('extracts customer text from valid, fenced, and double-encoded provider JSON', () => {
+        expect(parseAgentResponse('{"message_text":"hello","action":"none"}').message_text).toBe('hello');
+        expect(parseAgentResponse('```json\n{"message_text":"welcome"}\n```').message_text).toBe('welcome');
+        expect(parseAgentResponse(JSON.stringify(JSON.stringify({ message_text: 'nested' }))).message_text).toBe('nested');
+    });
+
+    it('normalizes provider content arrays without exposing their structure', () => {
+        const response = parseAgentResponse([{ type: 'text', text: '{"message_text":"array hello"}' }]);
+        expect(response.message_text).toBe('array hello');
+        expect(response.message_text).not.toContain('message_text');
+    });
+
     it('never represents a failed order action as successful', async () => {
         createOrder.mockResolvedValue({ success: false, error: 'Insufficient stock' });
         const response = { message_text: 'I will place that order.', action: 'create_order' };

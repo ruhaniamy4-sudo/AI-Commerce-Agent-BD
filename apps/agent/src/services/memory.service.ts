@@ -4,6 +4,7 @@ import { Message } from '../models/Message';
 import { getSenderProfile } from './facebook.service';
 import { assertTenantBusinessId } from '../tenancy/context';
 import { maybeUpdateConversationSummary } from './conversation-summary.service';
+import type { StoredMediaReference } from './media-storage.service';
 
 export async function ensureConversation(
     businessId: string,
@@ -102,7 +103,7 @@ export async function saveMessage(
     role: 'user' | 'assistant',
     content: string,
     imageUrl?: string,
-    options?: { messageId?: string; platform?: string; products?: unknown[] }
+    options?: { messageId?: string; platform?: string; products?: unknown[]; media?: StoredMediaReference }
 ) {
     assertTenantBusinessId(businessId, 'memory.saveMessage');
     const messageData: any = {
@@ -116,11 +117,27 @@ export async function saveMessage(
         } : undefined,
     };
 
-    if (imageUrl) {
+    const media = options?.media;
+    if (imageUrl || media) {
         messageData.contentType = 'image';
         messageData.attachments = [{
-            url: imageUrl,
-            type: 'image/jpeg', // Defaulting to jpeg for simplicity
+            url: media?.secureUrl || imageUrl,
+            type: media?.mimeType || 'image/jpeg',
+            filename: media?.originalFilename,
+            size: media?.size,
+            provider: media?.provider,
+            providerAssetId: media?.providerAssetId,
+            resourceType: media?.resourceType,
+            width: media?.width,
+            height: media?.height,
+            source: media?.source,
+            originalUrl: media?.originalUrl,
+            conversationId: media?.conversationId,
+            messageId: media?.messageId,
+            retention: media?.retention,
+            expiresAt: media?.expiresAt,
+            retentionStatus: media?.retentionStatus,
+            mediaCreatedAt: media?.createdAt,
         }];
     }
 

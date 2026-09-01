@@ -4,7 +4,9 @@ import { Product } from '../models/Product';
 import { Category } from '../models/Category';
 import { getImageEmbedding } from '../services/embedding.service';
 import { requireAdministrator } from '../auth/middleware';
-import { tenantDocument } from '../tenancy/context';
+import { requireTenantContext, tenantDocument } from '../tenancy/context';
+import { mirrorExternalProductImages } from '../services/ingestion/external-image.service';
+import { cleanupDetachedProductMedia } from '../services/media-storage.service';
 
 const router = Router();
 
@@ -101,6 +103,10 @@ router.post('/products', requireAdministrator, async (req, res) => {
         if (!(await Category.exists({ _id: productData.categoryId, isActive: true }))) {
             return res.status(400).json({ error: 'Category does not belong to this business' });
         }
+        if (Array.isArray(productData.images) && productData.images.length) {
+            const imported = await mirrorExternalProductImages(productData.images, requireTenantContext().businessId);
+            productData.images = imported.images; productData.imageImports = imported.imports;
+        }
 
         const product = new Product(productData);
 
@@ -152,9 +158,15 @@ router.patch('/products/:id', requireAdministrator, async (req, res) => {
             return res.status(404).json({ error: 'Product not found' });
         }
 
+        const previousImageImports = [...(product.imageImports || [])].map((item: any) => item.toObject?.() || item);
+        let removedImageImports: typeof previousImageImports = [];
         // If images are updated, regenerate ALL embeddings
         if (updates.images && Array.isArray(updates.images) &&
             JSON.stringify(updates.images) !== JSON.stringify(product.images)) {
+            const imported = await mirrorExternalProductImages(updates.images, requireTenantContext().businessId);
+            updates.images = imported.images; updates.imageImports = imported.imports;
+            const retainedIds = new Set(imported.imports.map((item) => item.providerAssetId).filter(Boolean));
+            removedImageImports = previousImageImports.filter((item: any) => item.providerAssetId && !retainedIds.has(item.providerAssetId));
             try {
                 const embeddingPromises = updates.images.map((url: string) => getImageEmbedding(url));
                 const results = await Promise.all(embeddingPromises);
@@ -179,6 +191,10 @@ router.patch('/products/:id', requireAdministrator, async (req, res) => {
 
         Object.assign(product, updates);
         await product.save();
+        if (removedImageImports.length) {
+            try { await cleanupDetachedProductMedia(requireTenantContext().businessId, String(product._id), removedImageImports); }
+            catch (error) { console.warn(`Product image cleanup deferred: ${error instanceof Error ? error.message : 'storage unavailable'}`); }
+        }
 
         res.json(product);
     } catch (error) {

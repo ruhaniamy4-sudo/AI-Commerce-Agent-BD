@@ -1,5 +1,6 @@
 import { BaseMessage } from '@langchain/core/messages';
 import { businessTypeLabel, getConversationGuidance } from './adaptive-training.service';
+import { detectExplicitLanguagePreference } from './turn-routing.service';
 
 export type ConversationLanguage = 'bn' | 'en' | 'banglish' | 'mixed';
 export type ConversationStage = 'DISCOVERY' | 'INTEREST' | 'QUALIFICATION' | 'COMPARISON' | 'OBJECTION' | 'PURCHASE_INTENT' | 'ORDER' | 'SUPPORT' | 'COMPLAINT' | 'HUMAN_HANDOFF';
@@ -23,6 +24,18 @@ export function detectConversationLanguage(text: string): ConversationLanguage {
     if (hasBangla) return 'bn';
     if (banglish.test(text)) return 'banglish';
     return 'en';
+}
+
+export function resolveConversationLanguage(text: string, preferred?: ConversationLanguage): ConversationLanguage {
+    const explicit = detectExplicitLanguagePreference(text);
+    if (explicit) return explicit;
+    const detected = detectConversationLanguage(text);
+    if (!preferred) return detected;
+    if (bangla.test(text)) return detected;
+    const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+    if (preferred === 'en' && detected === 'banglish' && wordCount >= 3) return 'banglish';
+    if (['bn','banglish','mixed'].includes(preferred) && detected === 'en' && wordCount >= 4) return 'en';
+    return preferred;
 }
 
 export function classifyConversationStage(text: string): ConversationStage {
@@ -75,13 +88,14 @@ export function deriveApprovedStyle(examples: string[] = []) {
 
 export function buildConversationInstructions(params: {
     business: { name?: string; businessType?: string; preferredLanguage?: string; brandVoice?: BrandVoiceSettings };
-    customerText: string; history: BaseMessage[]; channel?: string;
+    customerText: string; history: BaseMessage[]; channel?: string; preferredLanguage?: ConversationLanguage;
 }) {
-    const voice = params.business.brandVoice || {}; const detectedLanguage = detectConversationLanguage(params.customerText);
+    const voice = params.business.brandVoice || {};
     const stage = classifyConversationStage(params.customerText); const memory = extractRememberedPreferences(params.history);
     const learned = deriveApprovedStyle(voice.examples); const guidance = getConversationGuidance(params.business.businessType); const serviceBusiness = guidance.mode !== 'commerce';
     const configuredLanguage = voice.language || 'auto';
-    const language = configuredLanguage === 'auto' ? detectedLanguage : configuredLanguage;
+    const automaticLanguage = resolveConversationLanguage(params.customerText, params.preferredLanguage);
+    const language = configuredLanguage === 'auto' ? automaticLanguage : configuredLanguage;
     const approvedStyleExamples = learned.sampleCount >= 3 ? (voice.examples || []).slice(-5).map((example) => String(example).replace(/[\r\n]+/g, ' ').slice(0, 300)) : [];
     return {
         stage, language, memory, serviceBusiness, leadFields: guidance.leadFields,

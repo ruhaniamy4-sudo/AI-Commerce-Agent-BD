@@ -23,12 +23,13 @@ export async function loadConversationHistory(businessId: string, conversationId
         }
 
         // Handle multimodal content (text + image)
-        if (m.contentType === 'image' && m.attachments?.length > 0) {
+        const availableAttachments = (m.attachments || []).filter((attachment: any) => attachment.url && attachment.retentionStatus !== 'deleted');
+        if (m.contentType === 'image' && availableAttachments.length > 0) {
             const content: any[] = [
                 { type: 'text', text: m.content || 'Attached image' }
             ];
 
-            m.attachments.forEach((att: any) => {
+            availableAttachments.forEach((att: any) => {
                 content.push({
                     type: 'image_url',
                     image_url: { url: att.url }
