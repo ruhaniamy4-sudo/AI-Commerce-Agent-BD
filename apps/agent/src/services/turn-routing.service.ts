@@ -18,11 +18,12 @@ export function classifyLightweightIntent(text: string): LightweightIntent {
     if (/order|track|parcel|অর্ডার|পার্সেল/i.test(text) && /status|where|track|parcel|delivery|koi|kothay|hoise|অবস্থা|কোথায়|পার্সেল|ডেলিভারি/i.test(text)) return 'ORDER_STATUS';
     if (/picture|photo|image|pic|ছবি/i.test(text)) return 'PRODUCT_IMAGE';
     if (/compare|better|best|কোনটা ভালো|konta better|versus|\bvs\b/i.test(text)) return 'PRODUCT_COMPARE';
-    if (/stock|available|availability|আছে|pawa jabe/i.test(text)) return 'PRODUCT_STOCK';
     if (/(?:delivery|shipping).*(?:charge|cost|fee|koto)|(?:charge|cost|fee).*(?:delivery|shipping)|dhaka.*delivery|delivery.*dhaka|cod|cash on delivery|payment method|support number|phone|address|location|opening hour|working hour|ডেলিভারি(?:\s|.*)(?:চার্জ|খরচ|কত)|ঠিকানা/i.test(text)) return 'BUSINESS_FACT';
-    if (/price|cost|dam|দাম|fee|ফি/i.test(text)) return 'PRODUCT_PRICE';
+    if (/price|cost|dam|দাম|fee|ফি|\bkoto\b|কত/i.test(text)) return 'PRODUCT_PRICE';
     if (/black|white|blue|red|green|size|color|colour|কালো|সাদা|নীল|লাল/i.test(text)) return 'PRODUCT_VARIANT';
-    if (/dekhaw|dekhao|show|recommend|suggest|khujchi|চাই|দেখা/i.test(text) || extractBudget(text) !== undefined) return 'PRODUCT_SEARCH';
+    if (/\b(?:offer|discount|sale|price drop|অফার|ছাড়)\b/i.test(text)) return 'GENERAL_CONVERSATION';
+    if (/stock|available|availability|\b(?:ache|ase)\b|আছে|pawa jabe|পাওয়া যাবে/i.test(text)) return 'PRODUCT_STOCK';
+    if (/dekhaw|dekhao|show|recommend|suggest|khujchi|\b(?:chai|lagbe|nibo)\b|চাই|লাগবে|নিব|দেখা/i.test(text) || extractBudget(text) !== undefined) return 'PRODUCT_SEARCH';
     if (/policy|return|refund|warranty|document|eligibility|process|কাগজ|যোগ্যতা/i.test(text)) return 'KNOWLEDGE';
     return 'GENERAL_CONVERSATION';
 }

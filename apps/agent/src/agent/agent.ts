@@ -14,6 +14,7 @@ import { Conversation } from '../models/Conversation';
 import { buildConversationInstructions, guardResponseText } from '../services/conversation-intelligence.service';
 import { classifyLightweightIntent, extractLightweightMemory } from '../services/turn-routing.service';
 import { computeSalesSignals, buildSalesContextSnippet } from '../services/sales-intelligence.service';
+import { normalizeAssistantResponse } from '../services/assistant-response.service';
 
 
 dotenv.config();
@@ -125,12 +126,13 @@ async function callModel(state: AgentState) {
         // Usage accounting must not discard a successful provider response and trigger a costly retry.
         console.error('Failed to record AI usage:', error);
     }
-    let guardedResponse: BaseMessage = response;
-    try {
-        const parsed = JSON.parse(String(response.content).replace(/```json/g, '').replace(/```/g, '').trim());
-        parsed.message_text = guardResponseText(String(parsed.message_text || ''), contextStr);
-        guardedResponse = new AIMessage({ content: JSON.stringify(parsed), response_metadata: response.response_metadata, usage_metadata: response.usage_metadata });
-    } catch { /* parseAgentResponse retains its existing safe fallback */ }
+    const normalized = normalizeAssistantResponse(response.content);
+    normalized.message_text = guardResponseText(normalized.message_text, contextStr);
+    const guardedResponse = new AIMessage({
+        content: JSON.stringify(normalized),
+        response_metadata: response.response_metadata,
+        usage_metadata: response.usage_metadata,
+    });
     return { messages: [guardedResponse] };
 }
 

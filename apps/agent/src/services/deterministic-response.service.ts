@@ -14,7 +14,7 @@ export interface CompactProductCard { id: string; sku?: string; name: string; pr
 export interface DeterministicTurnResponse { message_text: string; suggested_products?: CompactProductCard[]; intent: LightweightIntent; memory?: Record<string, unknown>; }
 
 const deliveryIntent = /status|where|track|parcel|delivery|koi|kothay|hoise|অবস্থা|কোথায়|পার্সেল|ডেলিভারি/i;
-const followupWords = /^(?:etar|etaar|eta|this|it|this one|ওটার|এটার|এটি|এইটার)?\s*(?:price|dam|দাম|stock|available|availability|ছবি|picture|photo|image|pic|black|white|blue|red|size).{0,20}$/i;
+const followupWords = /^(?:etar|etaar|eta|this|it|this one|ওটার|এটার|এটি|এইটার)?\s*(?:price|dam|দাম|stock|available|availability|ache|ase|আছে|ছবি|picture|photo|image|pic|black|white|blue|red|size).{0,20}$/i;
 
 const courierStatusLabels: Record<string, string> = { pending: 'pending courier processing', submitted: 'submitted to Steadfast', in_transit: 'in transit', delivered: 'delivered', cancelled: 'cancelled', returned: 'returned', failed: 'affected by a courier processing issue', unknown: 'awaiting a confirmed courier update' };
 
@@ -125,7 +125,7 @@ export async function getDeterministicResponse(businessId: string, text: string,
     const lightweightMemory = { ...extractLightweightMemory(text), preferredLanguage: language };
     if (explicitLanguage) return { message_text: explicitLanguage === 'en' ? 'Sure — I’ll reply in English.' : explicitLanguage === 'bn' ? 'অবশ্যই—আমি বাংলায় উত্তর দেব।' : 'Thik ache—ami Banglish-e reply dibo.', intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
     if (/\b(are you|r u)\s+(?:an?\s+)?(?:ai|bot|human)|তুমি কি (?:এআই|বট|মানুষ)|আপনি কি (?:এআই|বট|মানুষ)/i.test(text)) return { message_text: language === 'en' ? "I'm this business's automated SellPilot assistant." : 'আমি এই business-এর SellPilot automated assistant।', intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
-    if (/^(?:hi|hello|hey|assalamu alaikum|salam|আসসালামু আলাইকুম|হ্যালো|হাই|thanks?|thank you|ধন্যবাদ)[!.\s]*$/i.test(text.trim())) {
+    if (/^(?:hi(?:\s+there)?|hello(?:\s+there)?|hey(?:\s+there)?|good\s+(?:morning|afternoon|evening)|assalamu\s+alaikum|assalamualaykum|assalamu['’]?alaikum|salam(?:(?:\s+bhai|\s+apu|\s+alaikum))?|kemon\s+achen\??|kemon\s+acho\??|ki\s+khobor\??|আসসালামু\s+আলাইকুম|সালাম|হ্যালো|হাই|কেমন\s+আছেন\??|কেমন\s+আছো\??|thanks?(?:\s+(?:you|u|a\s+lot|so\s+much))?|thank\s+(?:you|u)(?:\s+so\s+much)?|thx|many\s+thanks|ধন্যবাদ(?:\s+(?:আপনাকে|ভাই|আপু))?|অনেক\s+ধন্যবাদ)[!.\s]*$/i.test(text.trim())) {
         const business = await Business.findById(businessId).select('name brandVoice').lean();
         if (business?.brandVoice?.tone === 'custom' && (business.brandVoice.customTone || business.brandVoice.examples?.length)) return null;
         const thanks = /thank|ধন্যবাদ/i.test(text);

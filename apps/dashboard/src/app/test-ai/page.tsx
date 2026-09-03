@@ -75,6 +75,10 @@ export default function TestAiPage() {
       setState(await testAiApi.send(text, imageUrl));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'AI request failed');
+      setState((current) => ({
+        ...current,
+        messages: current.messages.filter((m) => !m.id.startsWith('pending-')),
+      }));
       await testAiApi.history().then(setState).catch(() => undefined);
     } finally {
       setLoading(false);
