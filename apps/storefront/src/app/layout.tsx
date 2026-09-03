@@ -6,6 +6,7 @@ import { MarketingFooter } from "@/components/marketing";
 import { LanguageProvider, type Locale } from "@/context/language-context";
 import { BRAND } from "@/lib/marketing-config";
 import { headers } from "next/headers";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
   metadataBase: new URL(BRAND.siteUrl),
@@ -27,5 +28,5 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const requestHeaders = await headers();
   const country = (requestHeaders.get("x-vercel-ip-country") || requestHeaders.get("cf-ipcountry") || "").toUpperCase();
   const detectedLocale: Locale = country === "BD" ? "bn" : "en";
-  return <html lang={detectedLocale === "bn" ? "bn-BD" : "en"} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className="antialiased"><LanguageProvider detectedLocale={detectedLocale}><CartProvider><MarketingNav />{children}<MarketingFooter /></CartProvider></LanguageProvider></body></html>;
+  return <html lang={detectedLocale === "bn" ? "bn-BD" : "en"} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className="antialiased"><LanguageProvider detectedLocale={detectedLocale}><CartProvider><MarketingNav />{children}<MarketingFooter /></CartProvider></LanguageProvider><SpeedInsights /></body></html>;
 }
