@@ -21,7 +21,8 @@ export function getMetaConfig() {
     const publicAgentUrl = clean(process.env.PUBLIC_AGENT_URL).replace(/\/$/, '');
     const dashboardUrl = clean(process.env.DASHBOARD_URL).replace(/\/$/, '');
     const redirectUri = clean(process.env.FB_OAUTH_REDIRECT_URI) || (publicAgentUrl ? `${publicAgentUrl}/facebook/oauth/callback` : '');
-    return { appId, appSecret, verifyToken, graphVersion, publicAgentUrl, dashboardUrl, redirectUri };
+    const configId = clean(process.env.FB_CONFIG_ID || process.env.FACEBOOK_CONFIG_ID);
+    return { appId, appSecret, verifyToken, graphVersion, publicAgentUrl, dashboardUrl, redirectUri, configId };
 }
 
 export function assertMetaOAuthConfigured() {

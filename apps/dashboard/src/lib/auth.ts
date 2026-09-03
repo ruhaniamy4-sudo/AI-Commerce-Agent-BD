@@ -64,7 +64,19 @@ const providers: NextAuthOptions['providers'] = [CredentialsProvider({
 })];
 
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) providers.push(GoogleProvider({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET }));
-if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) providers.push(FacebookProvider({ clientId: process.env.FACEBOOK_APP_ID, clientSecret: process.env.FACEBOOK_APP_SECRET }));
+if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
+    providers.push(FacebookProvider({
+        clientId: process.env.FACEBOOK_APP_ID,
+        clientSecret: process.env.FACEBOOK_APP_SECRET,
+        ...(process.env.FACEBOOK_CONFIG_ID ? {
+            authorization: {
+                params: {
+                    config_id: process.env.FACEBOOK_CONFIG_ID,
+                },
+            },
+        } : {}),
+    }));
+}
 
 export const authOptions: NextAuthOptions = {
     providers, pages: { signIn: '/login' }, session: { strategy: 'jwt', maxAge: MERCHANT_SESSION_MAX_AGE_SECONDS },

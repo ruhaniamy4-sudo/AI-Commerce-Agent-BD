@@ -41,7 +41,11 @@ export async function beginMetaConnection(businessId: string, userId: string, in
     url.searchParams.set('client_id', config.appId);
     url.searchParams.set('redirect_uri', config.redirectUri);
     url.searchParams.set('state', state);
-    url.searchParams.set('scope', scope);
+    if (config.configId) {
+        url.searchParams.set('config_id', config.configId);
+    } else {
+        url.searchParams.set('scope', scope);
+    }
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('auth_type', 'rerequest');
     return { authorizationUrl: url.toString(), expiresAt };
