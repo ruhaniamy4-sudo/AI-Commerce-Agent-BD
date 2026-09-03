@@ -12,7 +12,10 @@ import { getDeterministicResponse } from './deterministic-response.service';
 import { detectConversationLanguage, shouldHandoffToHuman } from './conversation-intelligence.service';
 import { evaluateBusinessAIAccess } from './business-ai-access.service';
 import { recordConversationTurn } from './turn-metrics.service';
-import { persistConversationImage } from './media-storage.service';
+import { classifyLightweightIntent } from './turn-routing.service';
+import { computeSalesSignals } from './sales-intelligence.service';
+import { Conversation } from '../models/Conversation';
+
 
 export interface ChatTurnInput {
     businessId: string;
@@ -36,9 +39,7 @@ export async function processChatTurn(input: ChatTurnInput) {
     const processingToken = claim.processingToken;
     try {
     const conversation = await ensureConversation(input.businessId, convId);
-    const imageMedia = input.imageUrl ? await persistConversationImage({ businessId: input.businessId, url: input.imageUrl, source: source === 'test' ? 'TEST_AI' : 'WEB_CHAT', conversationId: convId, messageId: eventIdentifier }) : undefined;
-    const stableImageUrl = imageMedia?.secureUrl;
-    await saveMessage(input.businessId, convId, 'user', input.message || '', stableImageUrl, { messageId: eventIdentifier, platform: source, media: imageMedia });
+    await saveMessage(input.businessId, convId, 'user', input.message || '', input.imageUrl, { messageId: eventIdentifier, platform: source });
     const entitlement = await evaluateBusinessAIAccess(input.businessId);
     if (!entitlement.allowed) {
         const body = { conversationId: convId, messageId: eventIdentifier, reply: null, aiAccess: entitlement.reason };
@@ -60,7 +61,7 @@ export async function processChatTurn(input: ChatTurnInput) {
     const handoff = input.message ? shouldHandoffToHuman(input.message) : { required: false };
     if (handoff.required) {
         const language = detectConversationLanguage(input.message || '');
-        const message_text = language === 'bn' ? 'একজন মানব প্রতিনিধি এই কথোপকথনটি চালিয়ে যাবেন।' : language === 'banglish' || language === 'mixed' ? 'একজন human agent এই conversationটা continue করবেন।' : 'A human agent will continue this conversation.';
+        const message_text = language === 'bn' ? 'একজন মানব প্রতিনিধি এই কথোপকথনটি চালিয়ে যাবেন।' : language === 'banglish' || language === 'mixed' ? 'একজন human agent এই conversationটা continue করবেন।' : 'A human agent will continue this conversation.';
         const response = { message_text, action: 'handoff' as const, action_payload: { reason: handoff.reason } };
         await executeAgentAction({ businessId: input.businessId, conversationId: convId, psid: conversation?.psid, response, eventIdentifier });
         response.message_text = message_text;
@@ -69,21 +70,35 @@ export async function processChatTurn(input: ChatTurnInput) {
         await completeInboundEvent(eventIdentifier, processingToken, body);
         return { status: 200, body };
     }
+
+    // ── Sales signals: pure synchronous, zero LLM call, zero DB call ──────────
+    const messageText = input.message || '';
+    const routedIntent = classifyLightweightIntent(messageText);
+    const currentSalesStage = (conversation as any).salesStage;
+    const hasActiveProduct = Boolean((conversation as any)?.metadata?.entityState?.activeProductId);
+    const salesSignals = computeSalesSignals(messageText, routedIntent, currentSalesStage, hasActiveProduct);
+    // ──────────────────────────────────────────────────────────────────────────
+
     const deterministicResult = input.message ? await getDeterministicResponse(input.businessId, input.message, { psid: conversation?.psid, conversationId: convId }) : null;
     if (deterministicResult) {
         const deterministicReply = typeof deterministicResult === 'string' ? deterministicResult : deterministicResult.message_text;
         const products = typeof deterministicResult === 'string' ? [] : deterministicResult.suggested_products || [];
+        // Persist salesStage alongside the existing turn metrics — single combined write
         await Promise.all([
             saveMessage(input.businessId, convId, 'assistant', deterministicReply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source, products }),
             recordConversationTurn(input.businessId, convId, 'zero_llm', typeof deterministicResult === 'string' ? undefined : deterministicResult.memory),
+            Conversation.updateOne(
+                { businessId: input.businessId, conversationId: convId },
+                { $set: { salesStage: salesSignals.salesStage, 'metadata.salesIntelligence': { intentScore: salesSignals.intentScore, nextBestAction: salesSignals.nextBestAction, updatedAt: new Date() } } },
+            ),
         ]);
-        const body = { conversationId: convId, messageId: eventIdentifier, reply: deterministicReply, products, deterministic: true, llmCalls: 0 };
+        const body = { conversationId: convId, messageId: eventIdentifier, reply: deterministicReply, products, deterministic: true, llmCalls: 0, salesStage: salesSignals.salesStage };
         await completeInboundEvent(eventIdentifier, processingToken, body);
         return { status: 200, body };
     }
-    if (stableImageUrl) {
+    if (input.imageUrl) {
         try {
-            const imageResult = await invokeIfAIActive(convId, () => handleImageInput(input.businessId, convId, stableImageUrl, eventIdentifier, imageMedia));
+            const imageResult = await invokeIfAIActive(convId, () => handleImageInput(input.businessId, convId, input.imageUrl!, eventIdentifier));
             if (!imageResult) {
                 const body = { conversationId: convId, messageId: eventIdentifier, reply: null, controller: 'HUMAN_ACTIVE' };
                 await completeInboundEvent(eventIdentifier, processingToken, body);
@@ -94,8 +109,12 @@ export async function processChatTurn(input: ChatTurnInput) {
             await Promise.all([
                 saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source }),
                 recordConversationTurn(input.businessId, convId, 'zero_llm', products.length ? { activeProductId: products[0].id, recentProductIds: products.map((product: any) => product.id) } : undefined),
+                Conversation.updateOne(
+                    { businessId: input.businessId, conversationId: convId },
+                    { $set: { salesStage: salesSignals.salesStage, 'metadata.salesIntelligence': { intentScore: salesSignals.intentScore, nextBestAction: salesSignals.nextBestAction, updatedAt: new Date() } } },
+                ),
             ]);
-            const body = { conversationId: convId, messageId: eventIdentifier, reply, products, deterministic: true, llmCalls: 0, nonGenerationAiCalls: 2 };
+            const body = { conversationId: convId, messageId: eventIdentifier, reply, products, deterministic: true, llmCalls: 0, nonGenerationAiCalls: 2, salesStage: salesSignals.salesStage };
             await completeInboundEvent(eventIdentifier, processingToken, body);
             return { status: 200, body };
         } catch (error) {
@@ -120,8 +139,23 @@ export async function processChatTurn(input: ChatTurnInput) {
     await executeAgentAction({ businessId: input.businessId, conversationId: convId, psid: conversation?.psid, response: agentResponse, eventIdentifier });
     const reply = agentResponse.message_text;
     if (reply) await saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source, products: agentResponse.suggested_products || [] });
-    await recordConversationTurn(input.businessId, convId, 'llm_assisted');
-    const body = { conversationId: convId, messageId: eventIdentifier, reply, products: agentResponse.suggested_products || [], deterministic: false, llmCalls: 1 };
+
+    // Persist salesStage on the LLM path (agent.ts already wrote it, but we sync here if agent was skipped via checkpoint)
+    const isOrderAction = agentResponse.action === 'create_order';
+    const conversionUpdate: Record<string, unknown> = {
+        salesStage: isOrderAction ? 'ORDERED' : salesSignals.salesStage,
+        'metadata.salesIntelligence': { intentScore: salesSignals.intentScore, nextBestAction: salesSignals.nextBestAction, updatedAt: new Date() },
+    };
+    if (isOrderAction) {
+        conversionUpdate['conversionOutcome.convertedAt'] = new Date();
+        conversionUpdate['conversionOutcome.conversionType'] = 'AI_ONLY';
+        if (agentResponse.action_payload?.orderId) conversionUpdate['conversionOutcome.orderId'] = agentResponse.action_payload.orderId;
+    }
+    await Promise.all([
+        recordConversationTurn(input.businessId, convId, 'llm_assisted'),
+        Conversation.updateOne({ businessId: input.businessId, conversationId: convId }, { $set: conversionUpdate }),
+    ]);
+    const body = { conversationId: convId, messageId: eventIdentifier, reply, products: agentResponse.suggested_products || [], deterministic: false, llmCalls: 1, salesStage: isOrderAction ? 'ORDERED' : salesSignals.salesStage };
     await completeInboundEvent(eventIdentifier, processingToken, body);
     return { status: 200, body };
     } catch (error) {
@@ -129,3 +163,4 @@ export async function processChatTurn(input: ChatTurnInput) {
         throw error;
     }
 }
+

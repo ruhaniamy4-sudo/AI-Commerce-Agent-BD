@@ -1,7 +1,21 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import { BUSINESS_TYPES, BusinessType } from '../services/adaptive-training.service';
 
+/** Compact per-tenant sales style profile. All fields optional; no migration needed. */
+export interface ISalesPlaybook {
+    replyLengthPreference?: 'short' | 'balanced' | 'detailed';
+    languageStyle?: 'formal' | 'casual' | 'mixed';
+    addressingStyle?: 'apu' | 'bhai' | 'neutral';
+    greetingStyle?: 'warm' | 'brief' | 'none';
+    ctaStyle?: 'soft' | 'direct' | 'none';
+    persistenceLevel?: 'low' | 'medium' | 'high';
+    crossSellTendency?: 'low' | 'medium' | 'high';
+    commonObjectionResponses?: string[]; // max 3, ≤150 chars each
+    preferredClosingPattern?: string;   // max 200 chars
+}
+
 export interface IBusiness extends Document {
+
     name: string;
     slug: string;
     status: 'active' | 'suspended';
@@ -50,6 +64,8 @@ export interface IBusiness extends Document {
         needsReview: number;
         importPreference: 'in_stock_only' | 'all' | 'ask_during_review';
     };
+    /** Compact tenant-scoped sales profile. Optional; stored on the Business document. */
+    salesPlaybook?: ISalesPlaybook;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -106,9 +122,22 @@ const BusinessSchema = new Schema<IBusiness>({
         needsReview: { type: Number, default: 0 },
         importPreference: { type: String, enum: ['in_stock_only', 'all', 'ask_during_review'], default: 'ask_during_review' },
     },
+    // Compact tenant-scoped sales playbook — all fields optional, no migration needed
+    salesPlaybook: {
+        replyLengthPreference: { type: String, enum: ['short', 'balanced', 'detailed'] },
+        languageStyle: { type: String, enum: ['formal', 'casual', 'mixed'] },
+        addressingStyle: { type: String, enum: ['apu', 'bhai', 'neutral'] },
+        greetingStyle: { type: String, enum: ['warm', 'brief', 'none'] },
+        ctaStyle: { type: String, enum: ['soft', 'direct', 'none'] },
+        persistenceLevel: { type: String, enum: ['low', 'medium', 'high'] },
+        crossSellTendency: { type: String, enum: ['low', 'medium', 'high'] },
+        commonObjectionResponses: [{ type: String, maxlength: 150 }],
+        preferredClosingPattern: { type: String, maxlength: 200 },
+    },
 }, { timestamps: true });
 
 BusinessSchema.index({ status: 1, createdAt: -1 });
 BusinessSchema.index({ 'aiAccess.status': 1, createdAt: -1 });
 
 export const Business = mongoose.model<IBusiness>('Business', BusinessSchema);
+

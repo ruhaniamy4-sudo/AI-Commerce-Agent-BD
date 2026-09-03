@@ -11,6 +11,27 @@ export type ConversationIntent =
     | 'unknown';
 export type ConversationControlMode = 'AI_ACTIVE' | 'HUMAN_ACTIVE';
 
+/**
+ * Sales pipeline stage for this conversation.
+ * Derived deterministically from intent signals — no LLM call.
+ */
+export type SalesStage =
+    | 'NEW'
+    | 'DISCOVERY'
+    | 'INTERESTED'
+    | 'OBJECTION'
+    | 'READY_TO_BUY'
+    | 'ORDERED'
+    | 'LOST';
+
+/** Lightweight conversion outcome — populated only when the conversation converts or is lost. */
+export interface IConversionOutcome {
+    convertedAt?: Date;
+    conversionType?: 'AI_ONLY' | 'AI_ASSISTED' | 'HUMAN';
+    orderId?: string;
+    lostReason?: string;
+}
+
 export interface IConversation extends Document {
     businessId: mongoose.Types.ObjectId;
     conversationId: string; // Unique conversation ID
@@ -39,6 +60,10 @@ export interface IConversation extends Document {
     currentIntent?: ConversationIntent;
     metadata: Record<string, any>; // For storing cart, preferences, etc.
 
+    // Sales Pipeline — deterministic, no LLM call
+    salesStage?: SalesStage;
+    conversionOutcome?: IConversionOutcome;
+
     // Denormalized Metrics (for performance)
     messageCount: number;
     lastMessageAt?: Date;
@@ -53,16 +78,12 @@ export interface IConversation extends Document {
         features?: string[];
         matchedProducts?: string[];
         expiresAt: Date;
-        media?: {
-            provider: 'cloudinary'; providerAssetId: string; secureUrl: string; resourceType: 'image';
-            mimeType?: string; size?: number; width?: number; height?: number; source: string;
-            originalUrl?: string; createdAt: Date; retention: 'persistent'|'temporary'; expiresAt?: Date; retentionStatus: 'active'|'deleted';
-        };
     };
 
     createdAt: Date;
     updatedAt: Date;
 }
+
 
 const ConversationSchema = new Schema(
     {
@@ -114,6 +135,22 @@ const ConversationSchema = new Schema(
         },
         metadata: { type: Schema.Types.Mixed, default: {} },
 
+        // Sales Pipeline — deterministic, no LLM call required
+        salesStage: {
+            type: String,
+            enum: ['NEW', 'DISCOVERY', 'INTERESTED', 'OBJECTION', 'READY_TO_BUY', 'ORDERED', 'LOST'],
+            index: true,
+        },
+        conversionOutcome: {
+            type: {
+                convertedAt: Date,
+                conversionType: { type: String, enum: ['AI_ONLY', 'AI_ASSISTED', 'HUMAN'] },
+                orderId: String,
+                lostReason: String,
+            },
+            required: false,
+        },
+
         messageCount: { type: Number, default: 0 },
         lastMessageAt: { type: Date },
         lastMessagePreview: { type: String, maxlength: 200 },
@@ -128,12 +165,6 @@ const ConversationSchema = new Schema(
                 features: [String],
                 matchedProducts: [String],
                 expiresAt: Date,
-                media: {
-                    provider: { type: String, enum: ['cloudinary'] }, providerAssetId: String, secureUrl: String,
-                    resourceType: { type: String, enum: ['image'] }, mimeType: String, size: Number, width: Number, height: Number,
-                    source: String, originalUrl: String, createdAt: Date, retention: { type: String, enum: ['persistent', 'temporary'] },
-                    expiresAt: Date, retentionStatus: { type: String, enum: ['active', 'deleted'] },
-                },
             },
             required: false,
         },
@@ -153,5 +184,8 @@ ConversationSchema.index({ businessId: 1, needsHumanHandoff: 1, status: 1 });
 ConversationSchema.index({ businessId: 1, controlMode: 1, lastMessageAt: -1 });
 ConversationSchema.index({ businessId: 1, psid: 1 });
 ConversationSchema.index({ businessId: 1, platformPageId: 1, psid: 1 });
+// Sales pipeline analytics index
+ConversationSchema.index({ businessId: 1, salesStage: 1, lastMessageAt: -1 });
 
 export const Conversation = mongoose.model<IConversation>('Conversation', ConversationSchema);
+

@@ -13,7 +13,8 @@ import { Business } from '../models/Business';
 import { Conversation } from '../models/Conversation';
 import { buildConversationInstructions, guardResponseText } from '../services/conversation-intelligence.service';
 import { classifyLightweightIntent, extractLightweightMemory } from '../services/turn-routing.service';
-import { normalizeAssistantResponse } from '../services/assistant-response.service';
+import { computeSalesSignals, buildSalesContextSnippet } from '../services/sales-intelligence.service';
+
 
 dotenv.config();
 
@@ -61,14 +62,39 @@ async function callModel(state: AgentState) {
 
     // 3. Construct the tenant-specific prompt without creating a separate agent.
     const [business, conversation] = await Promise.all([
-        Business.findById(businessId).select('name businessType businessSubType customBusinessType preferredLanguage brandVoice').lean(),
-        Conversation.findOne({ businessId, conversationId: state.conversationId }).select('platform metadata').lean(),
+        Business.findById(businessId).select('name businessType businessSubType customBusinessType preferredLanguage brandVoice salesPlaybook').lean(),
+        Conversation.findOne({ businessId, conversationId: state.conversationId }).select('platform metadata salesStage').lean(),
     ]);
-    const intelligence = buildConversationInstructions({ business: business || {}, customerText: userQuery, history: state.messages, channel: conversation?.platform, preferredLanguage: conversation?.metadata?.entityState?.preferredLanguage });
+    const intelligence = buildConversationInstructions({ business: business || {}, customerText: userQuery, history: state.messages, channel: conversation?.platform });
     const entityMemory = extractLightweightMemory(userQuery);
-    entityMemory.preferredLanguage = intelligence.language;
-    await Conversation.updateOne({ businessId, conversationId: state.conversationId }, { $set: { 'metadata.conversationIntelligence': { stage: intelligence.stage, language: intelligence.language, rememberedPreferences: intelligence.memory, leadFields: intelligence.leadFields, updatedAt: new Date() }, ...Object.fromEntries(Object.entries(entityMemory).map(([key, value]) => [`metadata.entityState.${key}`, value])) } });
-    const fullSystemPrompt = `${SYSTEM_PROMPT}${intelligence.prompt}${contextStr !== '{}' ? `\nCONTEXT:\n${contextStr}` : ''}\nNever make a catalog-wide negative claim from limited context. Ask for the product or model name when canonical lookup is inconclusive.`;
+
+    // Compute sales signals — pure synchronous, zero LLM call, zero DB call
+    const currentSalesStage = conversation?.salesStage;
+    const hasActiveProduct = Boolean(conversation?.metadata?.entityState?.activeProductId);
+    const salesSignals = computeSalesSignals(userQuery, routedIntent, currentSalesStage, hasActiveProduct);
+    const salesSnippet = buildSalesContextSnippet(salesSignals, business?.salesPlaybook ?? undefined);
+
+    // Persist conversationIntelligence + salesStage in a single combined updateOne (no extra DB round-trip)
+    await Conversation.updateOne({ businessId, conversationId: state.conversationId }, {
+        $set: {
+            'metadata.conversationIntelligence': {
+                stage: intelligence.stage,
+                language: intelligence.language,
+                rememberedPreferences: intelligence.memory,
+                leadFields: intelligence.leadFields,
+                updatedAt: new Date(),
+            },
+            salesStage: salesSignals.salesStage,
+            'metadata.salesIntelligence': {
+                intentScore: salesSignals.intentScore,
+                nextBestAction: salesSignals.nextBestAction,
+                updatedAt: new Date(),
+            },
+            ...Object.fromEntries(Object.entries(entityMemory).map(([key, value]) => [`metadata.entityState.${key}`, value])),
+        },
+    });
+    const fullSystemPrompt = `${SYSTEM_PROMPT}${intelligence.prompt}\n${salesSnippet}${contextStr !== '{}' ? `\nCONTEXT:\n${contextStr}` : ''}`;
+
 
     // 4. Call Model
     // We send the full history, but with the updated system prompt at the start
@@ -99,9 +125,12 @@ async function callModel(state: AgentState) {
         // Usage accounting must not discard a successful provider response and trigger a costly retry.
         console.error('Failed to record AI usage:', error);
     }
-    const parsed = normalizeAssistantResponse(response.content);
-    parsed.message_text = guardResponseText(parsed.message_text, contextStr);
-    const guardedResponse: BaseMessage = new AIMessage({ content: JSON.stringify(parsed), response_metadata: response.response_metadata, usage_metadata: response.usage_metadata });
+    let guardedResponse: BaseMessage = response;
+    try {
+        const parsed = JSON.parse(String(response.content).replace(/```json/g, '').replace(/```/g, '').trim());
+        parsed.message_text = guardResponseText(String(parsed.message_text || ''), contextStr);
+        guardedResponse = new AIMessage({ content: JSON.stringify(parsed), response_metadata: response.response_metadata, usage_metadata: response.usage_metadata });
+    } catch { /* parseAgentResponse retains its existing safe fallback */ }
     return { messages: [guardedResponse] };
 }
 
