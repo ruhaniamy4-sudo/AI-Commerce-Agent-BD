@@ -41,7 +41,7 @@ async function refreshAgentSession(token: JWT): Promise<JWT> {
     }
 }
 
-const apiBaseUrl = process.env.AGENT_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
+const apiBaseUrl = process.env.AGENT_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 const providers: NextAuthOptions['providers'] = [CredentialsProvider({
     name: 'Email and password',
     credentials: { email: { label: 'Email', type: 'email' }, password: { label: 'Password', type: 'password' }, businessId: { label: 'Business ID', type: 'text' } },

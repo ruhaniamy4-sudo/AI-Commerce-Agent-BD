@@ -10,8 +10,7 @@ const endpoints: Record<string, string> = {
 export async function POST(request: Request, { params }: { params: { action: string } }) {
     const endpoint = endpoints[params.action];
     if (!endpoint) return NextResponse.json({ error: 'Unknown authentication action' }, { status: 404 });
-    const apiBase = process.env.AGENT_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
-    if (!apiBase) return NextResponse.json({ error: 'Agent API is not configured' }, { status: 503 });
+    const apiBase = process.env.AGENT_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
     try {
         const response = await fetch(`${apiBase}${endpoint}`, {
             method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(await request.json()), cache: 'no-store',

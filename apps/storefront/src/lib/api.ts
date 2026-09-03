@@ -1,6 +1,6 @@
 import { PaginatedResponse, Product } from './types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 const BUSINESS_CHANNEL_ID = process.env.NEXT_PUBLIC_BUSINESS_CHANNEL_ID || 'storefront';
 const CATALOG_URL = `${API_BASE_URL}/public/${encodeURIComponent(BUSINESS_CHANNEL_ID)}`;
 

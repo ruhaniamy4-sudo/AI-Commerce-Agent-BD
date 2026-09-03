@@ -58,8 +58,10 @@ app.use((req, res, next) => {
 
 morgan.token('safe-path', (req) => new URL(req.url || '/', 'http://local').pathname);
 app.use(morgan(':method :safe-path :status :res[content-length] - :response-time ms'));
-const configuredOrigins = (process.env.CORS_ORIGINS || '')
-    .split(',')
+const configuredOrigins = [
+    ...(process.env.CORS_ORIGINS || '').split(','),
+    process.env.DASHBOARD_URL || '',
+]
     .map((origin) => origin.trim())
     .filter(Boolean);
 const allowedOrigins = configuredOrigins.length > 0

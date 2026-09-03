@@ -3,7 +3,9 @@ import { getSession } from 'next-auth/react';
 import type { Session } from 'next-auth';
 
 const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.AGENT_API_BASE_URL ||
+    'http://localhost:4000';
 
 export class ApiError extends Error {
     constructor(
