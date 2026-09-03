@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ['@edutechs/shared'],
   reactStrictMode: true,
   // Keep `next build` from replacing assets used by a concurrently running
   // development server. Both commands otherwise share `.next`.
