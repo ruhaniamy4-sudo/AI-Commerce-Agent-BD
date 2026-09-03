@@ -61,7 +61,7 @@ export function validateConfiguration(env: Environment = process.env): ConfigChe
         { name: ai.provider === 'groq' ? 'GROQ_API_KEY' : 'OPENAI_API_KEY', category: 'core', configured: ai.configured },
         { name: 'REDIS_URL', category: 'feature', feature: 'queues', configured: Boolean(getRedisConfig(env)) },
         { name: 'EMAIL_DELIVERY', category: 'feature', feature: 'authentication-email', configured: getEmailConfiguration(env).configured && Boolean(env.DASHBOARD_URL) },
-        { name: 'FB_APP_SECRET', category: 'feature', feature: 'facebook', configured: Boolean((env.FB_APP_ID || env.FACEBOOK_APP_ID) && env.FB_APP_SECRET && env.FB_VERIFY_TOKEN && env.FACEBOOK_CREDENTIALS_ENCRYPTION_KEY && env.PUBLIC_AGENT_URL && env.DASHBOARD_URL) },
+        { name: 'FB_APP_SECRET', category: 'feature', feature: 'facebook', configured: Boolean((env.FB_APP_ID || env.FACEBOOK_APP_ID) && (env.FB_APP_SECRET || env.FACEBOOK_APP_SECRET) && (env.FB_VERIFY_TOKEN || env.FACEBOOK_VERIFY_TOKEN) && env.FACEBOOK_CREDENTIALS_ENCRYPTION_KEY && env.PUBLIC_AGENT_URL && env.DASHBOARD_URL) },
         { name: 'COURIER_CREDENTIALS_ENCRYPTION_KEY', category: 'feature', feature: 'steadfast', configured: Boolean(env.COURIER_CREDENTIALS_ENCRYPTION_KEY) },
         { name: 'CLOUDINARY', category: 'optional', feature: 'uploads', configured: Boolean(env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET) },
         { name: 'GOOGLE_OAUTH', category: 'optional', feature: 'google', configured: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) },
@@ -77,7 +77,7 @@ export function getRuntimeStatus(env: Environment = process.env) {
         aiConfigured: ai.configured,
         redisConfigured: Boolean(getRedisConfig(env)),
         emailConfigured: getEmailConfiguration(env).configured && Boolean(env.DASHBOARD_URL),
-        facebookConfigured: Boolean((env.FB_APP_ID || env.FACEBOOK_APP_ID) && env.FB_APP_SECRET && env.FB_VERIFY_TOKEN && env.FACEBOOK_CREDENTIALS_ENCRYPTION_KEY && env.PUBLIC_AGENT_URL && env.DASHBOARD_URL),
+        facebookConfigured: Boolean((env.FB_APP_ID || env.FACEBOOK_APP_ID) && (env.FB_APP_SECRET || env.FACEBOOK_APP_SECRET) && (env.FB_VERIFY_TOKEN || env.FACEBOOK_VERIFY_TOKEN) && env.FACEBOOK_CREDENTIALS_ENCRYPTION_KEY && env.PUBLIC_AGENT_URL && env.DASHBOARD_URL),
         steadfastEncryptionConfigured: Boolean(env.COURIER_CREDENTIALS_ENCRYPTION_KEY),
     };
 }

@@ -15,8 +15,8 @@ export const META_MESSAGING_WEBHOOK_FIELDS = ['messages', 'messaging_postbacks']
 
 export function getMetaConfig() {
     const appId = clean(process.env.FB_APP_ID || process.env.FACEBOOK_APP_ID);
-    const appSecret = clean(process.env.FB_APP_SECRET);
-    const verifyToken = clean(process.env.FB_VERIFY_TOKEN);
+    const appSecret = clean(process.env.FB_APP_SECRET || process.env.FACEBOOK_APP_SECRET);
+    const verifyToken = clean(process.env.FB_VERIFY_TOKEN || process.env.FACEBOOK_VERIFY_TOKEN);
     const graphVersion = clean(process.env.FB_GRAPH_API_VERSION) || DEFAULT_GRAPH_VERSION;
     const publicAgentUrl = clean(process.env.PUBLIC_AGENT_URL).replace(/\/$/, '');
     const dashboardUrl = clean(process.env.DASHBOARD_URL).replace(/\/$/, '');
