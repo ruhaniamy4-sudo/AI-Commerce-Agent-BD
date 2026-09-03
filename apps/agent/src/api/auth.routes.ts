@@ -138,15 +138,30 @@ router.post('/oauth/exchange', limited, async (req, res) => {
     const supplied = String(req.headers['x-oauth-internal-secret'] || '');
     const validSecret = configured.length >= 32 && supplied.length === configured.length &&
         crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(configured));
-    if (!validSecret) return res.status(401).json({ error: 'OAuth exchange is not authorized' });
+    if (!validSecret) {
+        console.warn('[AUTH_DIAGNOSTIC] oauth/exchange rejected: secret mismatch or unconfigured', {
+            configuredLength: configured.length,
+            suppliedLength: supplied.length,
+            reasonCode: 'unauthorized_secret',
+        });
+        return res.status(401).json({ error: 'OAuth exchange is not authorized' });
+    }
     const provider = req.body?.provider as 'google' | 'facebook';
     const accountId = String(req.body?.accountId || '').trim();
     const email = normalizeEmail(req.body?.email);
-    const name = String(req.body?.name || '').trim();
-    if (!['google', 'facebook'].includes(provider) || !accountId || !emailPattern.test(email) || !name) {
+    const rawName = String(req.body?.name || '').trim();
+    const name = rawName || (emailPattern.test(email) ? email.split('@')[0] : 'Merchant');
+    if (!['google', 'facebook'].includes(provider) || !accountId || !emailPattern.test(email)) {
+        console.warn('[AUTH_DIAGNOSTIC] oauth/exchange rejected: invalid identity payload', {
+            provider,
+            accountIdPresent: Boolean(accountId),
+            emailValid: emailPattern.test(email),
+            reasonCode: 'invalid_identity',
+        });
         return res.status(400).json({ error: 'Valid OAuth identity is required' });
     }
     let user = await User.findOne({ providerAccounts: { $elemMatch: { provider, accountId } } });
+    const providerAccountMatched = Boolean(user);
     if (!user) {
         user = await User.findOneAndUpdate(
             { email },
@@ -154,20 +169,50 @@ router.post('/oauth/exchange', limited, async (req, res) => {
             { upsert: true, new: true, runValidators: true }
         );
     }
-    if (!user || user.status !== 'active') return res.status(403).json({ error: 'Account is unavailable' });
-    if (!user.emailVerifiedAt) {
-        const verifiedAt = new Date();
+    if (!user || user.status !== 'active') {
+        console.warn('[AUTH_DIAGNOSTIC] oauth/exchange rejected: account unavailable', {
+            provider,
+            userFound: Boolean(user),
+            userStatus: user?.status,
+            reasonCode: 'account_unavailable',
+        });
+        return res.status(403).json({ error: 'Account is unavailable' });
+    }
+    if (!user.emailVerified || !user.emailVerifiedAt) {
+        const verifiedAt = user.emailVerifiedAt || new Date();
         await User.updateOne(
-            { _id: user._id, emailVerifiedAt: null },
-            { $set: { emailVerified: true, emailVerifiedAt: verifiedAt, emailVerificationMethod: 'oauth' } }
+            { _id: user._id },
+            { $set: { emailVerified: true, emailVerifiedAt: verifiedAt, emailVerificationMethod: user.emailVerificationMethod || 'oauth' } }
         );
         user.emailVerified = true;
         user.emailVerifiedAt = verifiedAt;
-        user.emailVerificationMethod = 'oauth';
+        user.emailVerificationMethod = user.emailVerificationMethod || 'oauth';
     }
     const result = await sessionForUser(user, requestMetadata(req));
-    if ('conflict' in result) return res.status(409).json({ error: 'Choose a business using email sign in' });
-    if ('forbidden' in result) return res.status(403).json({ error: 'Business is not active' });
+    if ('conflict' in result) {
+        console.warn('[AUTH_DIAGNOSTIC] oauth/exchange rejected: multiple memberships', {
+            provider,
+            reasonCode: 'multi_business_conflict',
+        });
+        return res.status(409).json({ error: 'Choose a business using email sign in' });
+    }
+    if ('forbidden' in result) {
+        console.warn('[AUTH_DIAGNOSTIC] oauth/exchange rejected: business not active', {
+            provider,
+            reasonCode: 'business_inactive',
+        });
+        return res.status(403).json({ error: 'Business is not active' });
+    }
+    console.log('[AUTH_DIAGNOSTIC] oauth/exchange approved:', {
+        provider,
+        emailPresent: true,
+        userFound: true,
+        providerAccountMatched,
+        userStatus: user.status,
+        needsOnboarding: Boolean('needsOnboarding' in result && result.needsOnboarding),
+        businessPresent: Boolean('business' in result && (result as any).business?.id),
+        authorizationDecision: 'approved',
+    });
     return res.json(result);
 });
 

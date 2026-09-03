@@ -19,7 +19,7 @@ export class ApiError extends Error {
 }
 
 export function shouldRetryQuery(failureCount: number, error: unknown) {
-    return !(error instanceof ApiError && error.status === 401) && failureCount < 2;
+    return !(error instanceof ApiError && (error.status === 401 || error.status === 403)) && failureCount < 2;
 }
 
 const axiosInstance: AxiosInstance = axios.create({

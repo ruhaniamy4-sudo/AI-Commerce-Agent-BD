@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -10,6 +10,19 @@ import { OAuthButtons } from '@/components/oauth-buttons';
 import { PASSWORD_MIN_LENGTH } from '@edutechs/shared';
 export default function LoginPage() {
     const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [businessId, setBusinessId] = useState(''); const [error, setError] = useState(''); const [loading, setLoading] = useState(false); const router = useRouter();
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const err = params.get('error');
+            if (err === 'AccessDenied') {
+                setError('Access denied. You do not have permission to sign in, or the account/business is unavailable.');
+            } else if (err) {
+                setError('Sign in failed. Please try again or sign in with your email.');
+            }
+        }
+    }, []);
+
     async function submit(event: React.FormEvent) { event.preventDefault(); setLoading(true); setError(''); const result = await signIn('credentials', { redirect: false, email, password, businessId });
         if (result?.error) setError('Invalid email or password.'); else { router.push('/'); router.refresh(); } setLoading(false); }
     return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4"><Card className="w-full max-w-md"><CardHeader><CardTitle className="text-3xl">Welcome to SellPilot</CardTitle><p className="text-sm text-muted-foreground">Sign in to your merchant workspace.</p></CardHeader>

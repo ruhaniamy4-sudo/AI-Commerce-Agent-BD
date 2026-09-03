@@ -57,6 +57,7 @@ describe('shared Agent API authentication', () => {
 
         expect(dispatchEvent).toHaveBeenCalledTimes(1);
         expect(shouldRetryQuery(0, new ApiError('expired', 401))).toBe(false);
+        expect(shouldRetryQuery(0, new ApiError('forbidden', 403))).toBe(false);
         expect(shouldRetryQuery(0, new ApiError('temporary', 503))).toBe(true);
         expect(shouldRetryQuery(2, new ApiError('temporary', 503))).toBe(false);
     });

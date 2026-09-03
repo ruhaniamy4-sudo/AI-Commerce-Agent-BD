@@ -156,4 +156,141 @@ describe('merchant account and business onboarding', () => {
             { $set: { emailVerified: true, emailVerifiedAt: expect.any(Date), emailVerificationMethod: 'email_link' } }
         );
     });
+
+    describe('OAuth exchange (Google & Facebook)', () => {
+        const oauthSecret = 'test-oauth-internal-secret-at-least-thirty-two-chars';
+
+        beforeEach(() => {
+            process.env.OAUTH_INTERNAL_SECRET = oauthSecret;
+        });
+
+        it('rejects exchange when x-oauth-internal-secret header is missing or incorrect', async () => {
+            await request(app)
+                .post('/auth/oauth/exchange')
+                .send({ provider: 'google', accountId: 'g-123', email: 'merchant@example.com', name: 'Merchant' })
+                .expect(401, { error: 'OAuth exchange is not authorized' });
+
+            await request(app)
+                .post('/auth/oauth/exchange')
+                .set('x-oauth-internal-secret', 'wrong-secret-that-does-not-match-at-all-32')
+                .send({ provider: 'google', accountId: 'g-123', email: 'merchant@example.com', name: 'Merchant' })
+                .expect(401, { error: 'OAuth exchange is not authorized' });
+        });
+
+        it('authorizes a valid Google merchant with active business and returns merchant session', async () => {
+            const user = { _id: userId, name: 'Merchant', email: 'merchant@example.com', status: 'active', emailVerified: true };
+            vi.spyOn(User, 'findOne').mockResolvedValue(user as any);
+            vi.spyOn(BusinessMember, 'find').mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                    lean: vi.fn().mockResolvedValue([{ _id: membershipId, businessId, role: 'Owner', status: 'active' }]),
+                }),
+            } as any);
+            vi.spyOn(Business, 'findOne').mockReturnValue({
+                lean: vi.fn().mockResolvedValue({ _id: businessId, name: 'My Store', slug: 'my-store', status: 'active' }),
+            } as any);
+
+            const res = await request(app)
+                .post('/auth/oauth/exchange')
+                .set('x-oauth-internal-secret', oauthSecret)
+                .send({ provider: 'google', accountId: 'g-123', email: 'merchant@example.com', name: 'Merchant' })
+                .expect(200);
+
+            expect(res.body.needsOnboarding).toBe(false);
+            expect(res.body.accessToken).toBeTruthy();
+            expect(res.body.business).toMatchObject({ id: businessId.toString(), name: 'My Store' });
+            expect(res.body.role).toBe('Owner');
+        });
+
+        it('authorizes a valid Facebook merchant and gracefully falls back to email prefix if name is omitted', async () => {
+            const user = { _id: userId, name: 'fbuser', email: 'fbuser@example.com', status: 'active', emailVerified: true };
+            vi.spyOn(User, 'findOne').mockResolvedValue(user as any);
+            vi.spyOn(BusinessMember, 'find').mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                    lean: vi.fn().mockResolvedValue([{ _id: membershipId, businessId, role: 'Owner', status: 'active' }]),
+                }),
+            } as any);
+            vi.spyOn(Business, 'findOne').mockReturnValue({
+                lean: vi.fn().mockResolvedValue({ _id: businessId, name: 'FB Shop', slug: 'fb-shop', status: 'active' }),
+            } as any);
+
+            const res = await request(app)
+                .post('/auth/oauth/exchange')
+                .set('x-oauth-internal-secret', oauthSecret)
+                .send({ provider: 'facebook', accountId: 'fb-456', email: 'fbuser@example.com' })
+                .expect(200);
+
+            expect(res.body.needsOnboarding).toBe(false);
+            expect(res.body.accessToken).toBeTruthy();
+            expect(res.body.role).toBe('Owner');
+        });
+
+        it('returns account session requiring onboarding when user has no business membership', async () => {
+            const user = { _id: userId, name: 'New OAuth User', email: 'new@example.com', status: 'active', emailVerified: true };
+            vi.spyOn(User, 'findOne').mockResolvedValue(user as any);
+            vi.spyOn(BusinessMember, 'find').mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                    lean: vi.fn().mockResolvedValue([]),
+                }),
+            } as any);
+
+            const res = await request(app)
+                .post('/auth/oauth/exchange')
+                .set('x-oauth-internal-secret', oauthSecret)
+                .send({ provider: 'google', accountId: 'g-999', email: 'new@example.com', name: 'New OAuth User' })
+                .expect(200);
+
+            expect(res.body.needsOnboarding).toBe(true);
+            expect(res.body.accountToken).toBeTruthy();
+            expect(res.body.accessToken).toBeUndefined();
+        });
+
+        it('rejects exchange when user account is suspended/disabled', async () => {
+            const user = { _id: userId, name: 'Suspended', email: 'suspended@example.com', status: 'disabled', emailVerified: true };
+            vi.spyOn(User, 'findOne').mockResolvedValue(user as any);
+
+            await request(app)
+                .post('/auth/oauth/exchange')
+                .set('x-oauth-internal-secret', oauthSecret)
+                .send({ provider: 'google', accountId: 'g-suspended', email: 'suspended@example.com', name: 'Suspended' })
+                .expect(403, { error: 'Account is unavailable' });
+        });
+
+        it('rejects exchange when business account is not active', async () => {
+            const user = { _id: userId, name: 'Merchant', email: 'merchant@example.com', status: 'active', emailVerified: true };
+            vi.spyOn(User, 'findOne').mockResolvedValue(user as any);
+            vi.spyOn(BusinessMember, 'find').mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                    lean: vi.fn().mockResolvedValue([{ _id: membershipId, businessId, role: 'Owner', status: 'active' }]),
+                }),
+            } as any);
+            vi.spyOn(Business, 'findOne').mockReturnValue({
+                lean: vi.fn().mockResolvedValue(null),
+            } as any);
+
+            await request(app)
+                .post('/auth/oauth/exchange')
+                .set('x-oauth-internal-secret', oauthSecret)
+                .send({ provider: 'google', accountId: 'g-biz-inactive', email: 'merchant@example.com', name: 'Merchant' })
+                .expect(403, { error: 'Business is not active' });
+        });
+
+        it('rejects exchange with 409 when user belongs to multiple businesses', async () => {
+            const user = { _id: userId, name: 'Multi', email: 'multi@example.com', status: 'active', emailVerified: true };
+            vi.spyOn(User, 'findOne').mockResolvedValue(user as any);
+            vi.spyOn(BusinessMember, 'find').mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                    lean: vi.fn().mockResolvedValue([
+                        { _id: membershipId, businessId, role: 'Owner', status: 'active' },
+                        { _id: new mongoose.Types.ObjectId(), businessId: new mongoose.Types.ObjectId(), role: 'Staff', status: 'active' },
+                    ]),
+                }),
+            } as any);
+
+            await request(app)
+                .post('/auth/oauth/exchange')
+                .set('x-oauth-internal-secret', oauthSecret)
+                .send({ provider: 'google', accountId: 'g-multi', email: 'multi@example.com', name: 'Multi' })
+                .expect(409, { error: 'Choose a business using email sign in' });
+        });
+    });
 });

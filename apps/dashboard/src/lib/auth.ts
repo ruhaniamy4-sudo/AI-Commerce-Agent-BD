@@ -68,33 +68,85 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
     providers.push(FacebookProvider({
         clientId: process.env.FACEBOOK_APP_ID,
         clientSecret: process.env.FACEBOOK_APP_SECRET,
-        ...(process.env.FACEBOOK_CONFIG_ID ? {
-            authorization: {
-                params: {
-                    config_id: process.env.FACEBOOK_CONFIG_ID,
-                },
-            },
-        } : {}),
     }));
 }
 
 export const authOptions: NextAuthOptions = {
-    providers, pages: { signIn: '/login' }, session: { strategy: 'jwt', maxAge: MERCHANT_SESSION_MAX_AGE_SECONDS },
+    providers, pages: { signIn: '/login', error: '/login' }, session: { strategy: 'jwt', maxAge: MERCHANT_SESSION_MAX_AGE_SECONDS },
     callbacks: {
         async signIn({ user, account }) {
             if (account?.provider === 'credentials') return true;
-            if (!apiBaseUrl || !process.env.OAUTH_INTERNAL_SECRET || !account?.providerAccountId || !user.email || !user.name) return false;
-            const response = await fetch(`${apiBaseUrl}/auth/oauth/exchange`, {
-                method: 'POST', headers: { 'content-type': 'application/json', 'x-oauth-internal-secret': process.env.OAUTH_INTERNAL_SECRET },
-                body: JSON.stringify({ provider: account.provider, accountId: account.providerAccountId, email: user.email, name: user.name }),
-            });
-            if (!response.ok) return false;
-            const result = await response.json() as AgentSession;
-            Object.assign(user, { id: result.user.id, accessToken: result.accessToken, accountToken: result.accountToken,
-                refreshToken: result.refreshToken, accessTokenExpiresAt: result.accessTokenExpiresAt, refreshTokenExpiresAt: result.refreshTokenExpiresAt,
-                needsOnboarding: result.needsOnboarding, businessId: result.business?.id, businessName: result.business?.name,
-                onboardingComplete: result.business?.onboardingComplete, role: result.role });
-            return true;
+            const provider = account?.provider;
+            const accountId = account?.providerAccountId;
+            const email = user?.email;
+            const name = user?.name?.trim() || (email ? email.split('@')[0] : 'Merchant');
+
+            const hasSecret = Boolean(process.env.OAUTH_INTERNAL_SECRET && process.env.OAUTH_INTERNAL_SECRET.length >= 32);
+            if (!apiBaseUrl || !hasSecret || !accountId || !email) {
+                console.warn('[AUTH_DIAGNOSTIC] signIn rejected pre-check:', {
+                    provider,
+                    emailPresent: Boolean(email),
+                    namePresent: Boolean(name),
+                    accountIdPresent: Boolean(accountId),
+                    apiBaseUrlConfigured: Boolean(apiBaseUrl),
+                    secretConfigured: hasSecret,
+                    reason: 'missing_prerequisites',
+                });
+                return false;
+            }
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/auth/oauth/exchange`, {
+                    method: 'POST',
+                    headers: {
+                        'content-type': 'application/json',
+                        'x-oauth-internal-secret': process.env.OAUTH_INTERNAL_SECRET!,
+                    },
+                    body: JSON.stringify({ provider, accountId, email, name }),
+                });
+
+                if (!response.ok) {
+                    let errData: { error?: string } | null = null;
+                    try { errData = await response.json() as { error?: string }; } catch {}
+                    console.warn('[AUTH_DIAGNOSTIC] signIn exchange rejected by agent:', {
+                        provider,
+                        status: response.status,
+                        statusText: response.statusText,
+                        reason: errData?.error || 'exchange_not_ok',
+                    });
+                    return false;
+                }
+
+                const result = await response.json() as AgentSession;
+                console.log('[AUTH_DIAGNOSTIC] signIn exchange approved:', {
+                    provider,
+                    needsOnboarding: result.needsOnboarding,
+                    businessPresent: Boolean(result.business?.id),
+                    role: result.role,
+                });
+
+                Object.assign(user, {
+                    id: result.user.id,
+                    accessToken: result.accessToken,
+                    accountToken: result.accountToken,
+                    refreshToken: result.refreshToken,
+                    accessTokenExpiresAt: result.accessTokenExpiresAt,
+                    refreshTokenExpiresAt: result.refreshTokenExpiresAt,
+                    needsOnboarding: result.needsOnboarding,
+                    businessId: result.business?.id,
+                    businessName: result.business?.name,
+                    onboardingComplete: result.business?.onboardingComplete,
+                    role: result.role,
+                });
+                return true;
+            } catch (error: unknown) {
+                const message = error instanceof Error ? error.message : 'fetch_failed';
+                console.error('[AUTH_DIAGNOSTIC] signIn exchange network error:', {
+                    provider,
+                    error: message,
+                });
+                return false;
+            }
         },
         async jwt({ token, user, trigger, session }) {
             if (user) Object.assign(token, { accessToken: user.accessToken, accountToken: user.accountToken,
