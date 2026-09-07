@@ -281,6 +281,7 @@ export async function syncCourierDelivery(params: {
             update.$push = { statusHistory: { status: 'delivered', timestamp: now, note: 'Steadfast confirmed delivery' } };
         }
         const updated = await Order.findOneAndUpdate({ _id: order._id }, update, { new: true });
+        if(updated){try{const {recordCustomerEvent}=await import('../intelligence/event-store');const {orderEvents}=await import('../intelligence/order-events');for(const event of orderEvents(updated))await recordCustomerEvent(event);}catch{console.warn('Courier timeline projection pending reconciliation');}}
         return { courier: serializeOrderCourier(updated?.courier), orderStatus: updated?.status };
     } catch (error) {
         const safe = safeCourierError(error);
