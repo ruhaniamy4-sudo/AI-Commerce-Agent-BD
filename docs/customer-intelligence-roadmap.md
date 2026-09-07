@@ -21,3 +21,4 @@ Validation strategy: phase-specific unit/API tests plus backend typecheck. Front
 ### Checkpoints
 
 - Phase 0: audit complete. Existing Test AI and conversation-control regression tests and backend typecheck used as baseline. No implementation changes in this phase.
+- Phase 1: added tenant-scoped, indexed, deduplicated event ledger, timestamp/payload validation, sandbox exclusion, anonymous retention and authenticated customer timeline API. Event contract tests cover identity, browser privilege boundaries and sandbox exclusion. Existing application bootstrap changes are preserved in the integration commit.
