@@ -28,6 +28,7 @@ import intelligenceRoutes from './api/intelligence.routes';
 import whatsappRoutes, {whatsappPublicRouter} from './api/whatsapp.routes';
 import courierIntelligenceRoutes from './api/courier-intelligence.routes';
 import intelligenceIntegrationRoutes from './api/intelligence-integrations.routes';
+import paymentIntelligenceRoutes,{paymentPublicRouter} from './api/payment-intelligence.routes';
 import dashboardRoutes from './api/dashboard.routes';
 import trainingRoutes from './api/training.routes';
 import { authenticatePlatformAdmin } from './auth/middleware';
@@ -113,6 +114,8 @@ app.use('/api', authenticate, productsRoutes, ordersRoutes, customersRoutes, aiU
 app.use('/api', authenticate, billingRoutes);
 app.use('/api', authenticate, intelligenceRoutes);
 app.use('/api', authenticate, intelligenceIntegrationRoutes);
+app.use('/api', authenticate, paymentIntelligenceRoutes);
+app.use('/payment-events',paymentPublicRouter);
 app.use('/api', authenticate, whatsappRoutes);
 app.use('/whatsapp', whatsappPublicRouter);
 app.use('/courier-events', courierIntelligenceRoutes);
