@@ -1,11 +1,17 @@
 import type { Metadata } from "next";
+import { Manrope, DM_Sans, Noto_Sans_Bengali } from "next/font/google";
 import "./globals.css";
+import "./trial.css";
 import { CartProvider } from "@/context/cart-context";
-import { MarketingNav } from "@/components/marketing-nav";
-import { MarketingFooter } from "@/components/marketing";
+import { LayoutChrome } from "@/components/layout-chrome";
 import { LanguageProvider, type Locale } from "@/context/language-context";
 import { BRAND } from "@/lib/marketing-config";
 import { headers } from "next/headers";
+import {CustomerTracker} from '@/components/customer-tracker';
+
+const displayFont = Manrope({ subsets: ["latin"], variable: "--font-display", display: "swap" });
+const bodyFont = DM_Sans({ subsets: ["latin"], variable: "--font-body", display: "swap" });
+const bengaliFont = Noto_Sans_Bengali({ subsets: ["bengali"], variable: "--font-bengali", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(BRAND.siteUrl),
@@ -27,5 +33,5 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const requestHeaders = await headers();
   const country = (requestHeaders.get("x-vercel-ip-country") || requestHeaders.get("cf-ipcountry") || "").toUpperCase();
   const detectedLocale: Locale = country === "BD" ? "bn" : "en";
-  return <html lang={detectedLocale === "bn" ? "bn-BD" : "en"} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className="antialiased"><LanguageProvider detectedLocale={detectedLocale}><CartProvider><MarketingNav />{children}<MarketingFooter /></CartProvider></LanguageProvider></body></html>;
+  return <html lang={detectedLocale === "bn" ? "bn-BD" : "en"} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className={`${displayFont.variable} ${bodyFont.variable} ${bengaliFont.variable}`}><LanguageProvider detectedLocale={detectedLocale}><CartProvider><CustomerTracker/><LayoutChrome>{children}</LayoutChrome></CartProvider></LanguageProvider></body></html>;
 }

@@ -1,118 +1,233 @@
-"use client"
-import { useCart } from '@/context/cart-context';
-import { Minus, Plus, Trash2 } from 'lucide-react';
-import Image from 'next/image';
-import Link from 'next/link';
-import { useState } from 'react';
+"use client";
 
-interface CustomerData { fullName: string; phone: string; address: string }
+import { useCart } from "@/context/cart-context";
+import {
+  CheckoutResult,
+  getStoreSettings,
+  StoreSettings,
+  submitCheckout,
+} from "@/lib/api";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Minus,
+  Plus,
+  ShieldCheck,
+  ShoppingBag,
+  Trash2,
+  Truck,
+} from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import {trackCustomer} from '@/lib/tracking';
 
-const CustomerForm = ({ onSubmit }: { onSubmit: (data: CustomerData) => void }) => {
-    const [data, setData] = useState({ fullName: '', phone: '', address: '' });
-    return (
-        <form onSubmit={(e) => { e.preventDefault(); onSubmit(data); }} className="space-y-4">
-            <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-                <input required className="w-full p-2 border rounded-md" value={data.fullName} onChange={e => setData({ ...data, fullName: e.target.value })} />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
-                <input required className="w-full p-2 border rounded-md" value={data.phone} onChange={e => setData({ ...data, phone: e.target.value })} />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Shipping Address</label>
-                <textarea required className="w-full p-2 border rounded-md" value={data.address} onChange={e => setData({ ...data, address: e.target.value })} />
-            </div>
-            <button type="submit" disabled className="w-full bg-slate-400 text-white py-3 rounded-lg font-bold cursor-not-allowed">
-                Checkout Temporarily Unavailable
-            </button>
-        </form>
-    );
-};
+interface CustomerData {
+  fullName: string;
+  phone: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  zone: string;
+  paymentMethod: string;
+  customerNote: string;
+}
 
 export default function CartPage() {
-    const { items, removeFromCart, updateQuantity, total } = useCart();
-    const [step, setStep] = useState<'cart' | 'checkout'>('cart');
+  const { items, removeFromCart, updateQuantity, clearCart, total } = useCart();
+  const [step, setStep] = useState<"cart" | "checkout" | "complete">("cart");
+  useEffect(()=>{if(step==='checkout')void trackCustomer('checkout_started');},[step]);
+  const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const [form, setForm] = useState<CustomerData>({
+    fullName: "",
+    phone: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "Dhaka",
+    zone: "",
+    paymentMethod: "Cash on Delivery",
+    customerNote: "",
+  });
+  const [result, setResult] = useState<CheckoutResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-    const handleCheckout = async (formData: CustomerData) => {
-        void formData;
-        // Milestone 1 deliberately disables checkout instead of claiming a fake order succeeded.
-    };
+  useEffect(() => {
+    getStoreSettings()
+      .then((value) => {
+        setSettings(value);
+        setForm((current) => ({
+          ...current,
+          paymentMethod: value.paymentMethods[0] || "Cash on Delivery",
+        }));
+      })
+      .catch(() => undefined);
+  }, []);
+  const deliveryFee = useMemo(
+    () =>
+      /dhaka|ঢাকা/i.test(form.city)
+        ? (settings?.deliveryFees.insideDhaka ?? 80)
+        : (settings?.deliveryFees.outsideDhaka ?? 130),
+    [form.city, settings],
+  );
 
-    return (
-        <div className="min-h-screen bg-slate-50 py-12">
-            <div className="container mx-auto px-6">
-                <h1 className="text-3xl font-bold mb-8">{step === 'cart' ? 'Shopping Cart' : 'Checkout'}</h1>
+  async function placeOrder(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const order = await submitCheckout(
+        {
+          customer: { fullName: form.fullName, phone: form.phone },
+          shippingAddress: {
+            addressLine1: form.addressLine1,
+            ...(form.addressLine2 ? { addressLine2: form.addressLine2 } : {}),
+            city: form.city,
+            ...(form.zone ? { zone: form.zone } : {}),
+          },
+          paymentMethod: form.paymentMethod,
+          customerNote: form.customerNote,
+          items: items.map((item) => ({
+            productId: String(item._id),
+            quantity: item.quantity,
+          })),
+        },
+        crypto.randomUUID(),
+      );
+      setResult(order);
+      clearCart();
+      setStep("complete");
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Could not place the order",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
-                {items.length === 0 ? (
-                    <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-300">
-                        <p className="text-slate-500 mb-4">Your cart is empty.</p>
-                        <Link href="/shop" className="inline-block bg-slate-900 text-white px-6 py-2 rounded-full text-sm font-medium">Start Shopping</Link>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-                        <div className="lg:col-span-2 space-y-4">
-                            {step === 'cart' ? (
-                                <>
-                                    {items.map(item => (
-                                        <div key={item._id} className="bg-white p-4 rounded-xl flex items-center gap-4">
-                                            <div className="relative w-20 h-20 bg-slate-100 rounded-lg overflow-hidden shrink-0">
-                                                {item.images[0] && <Image src={item.images[0]} alt={item.name} fill className="object-cover" />}
-                                            </div>
-                                            <div className="flex-1">
-                                                <h3 className="font-bold text-slate-900">{item.name}</h3>
-                                                <p className="text-sm text-slate-500">৳{item.basePrice}</p>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <button onClick={() => updateQuantity(item._id, -1)} className="p-1 hover:bg-slate-100 rounded"><Minus className="w-4 h-4" /></button>
-                                                <span className="font-medium w-6 text-center">{item.quantity}</span>
-                                                <button onClick={() => updateQuantity(item._id, 1)} className="p-1 hover:bg-slate-100 rounded"><Plus className="w-4 h-4" /></button>
-                                            </div>
-                                            <button onClick={() => removeFromCart(item._id)} className="text-red-500 p-2 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4" /></button>
-                                        </div>
-                                    ))}
-                                </>
-                            ) : (
-                                <div className="bg-white p-6 rounded-xl">
-                                    <h2 className="text-xl font-bold mb-4">Shipping Details</h2>
-                                    <CustomerForm onSubmit={handleCheckout} />
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="lg:col-span-1">
-                            <div className="bg-white p-6 rounded-xl sticky top-24">
-                                <h2 className="text-xl font-bold mb-4">Summary</h2>
-                                <div className="flex justify-between mb-2 text-slate-600">
-                                    <span>Subtotal</span>
-                                    <span>৳{total}</span>
-                                </div>
-                                <div className="flex justify-between mb-4 text-slate-600">
-                                    <span>Shipping</span>
-                                    <span>Failed to calculate</span>{/* Placeholder */}
-                                </div>
-                                <div className="flex justify-between pt-4 border-t font-bold text-lg mb-6">
-                                    <span>Total</span>
-                                    <span>৳{total}</span>
-                                </div>
-                                {step === 'cart' && (
-                                    <button onClick={() => setStep('checkout')} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
-                                        Proceed to Checkout
-                                    </button>
-                                )}
-                            {step === 'checkout' && (
-                                    <>
-                                        <p className="text-sm text-amber-700 mb-3">Online checkout is not yet connected. Your cart has not been submitted.</p>
-                                        <button onClick={() => setStep('cart')} className="w-full mt-4 text-slate-500 hover:text-slate-800 text-sm">
-                                            Back to Cart
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+if(step==="complete"&&result)return <main className="sp-dark sp-section min-h-[70vh]"><section className="sp-wrap max-w-3xl"><span className="sp-icon"><CheckCircle2/></span><p className="sp-eyebrow mt-8">Order confirmed</p><h1 className="text-4xl mt-5">Thank you. We have your order.</h1><p className="sp-copy mt-5">Your order has been saved. The merchant can now process it.</p><dl className="sp-glass p-7 mt-8 grid gap-6 sm:grid-cols-2">{[["Order number",result.orderNumber],["Total","৳"+result.total.toLocaleString()],["Payment",result.paymentMethod],["Status",result.status]].map(([label,value])=><div key={label}><dt className="sp-note">{label}</dt><dd className="text-base mt-2 capitalize">{value}</dd></div>)}</dl><Link className="sp-button sp-button-primary mt-8" href="/shop">Continue shopping</Link></section></main>;
+return <main className="sp-light sp-section min-h-[75vh]"><div className="sp-wrap"><header className="flex flex-wrap items-end justify-between gap-6 mb-10"><div><p className="sp-eyebrow">Your order</p><h1 className="text-4xl mt-4">{step==="cart"?"A few good choices.":"Where should we send it?"}</h1><p className="sp-copy !text-sm mt-4">Review your items, delivery details, and payment before confirming.</p></div><Link href="/shop" className="text-xs text-[#7954bd] flex gap-2 items-center"><ArrowLeft size={14}/>Continue shopping</Link></header><ol className="flex items-center gap-8 mb-8 text-xs text-[#9290a4]"><li className={step==="cart"?"text-[#7852bd]":""}>01 · Your bag</li><li className={step==="checkout"?"text-[#7852bd]":""}>02 · Delivery & payment</li><li>03 · Confirmation</li></ol>{!items.length?<div className="sp-surface py-16 text-center px-5"><ShoppingBag className="mx-auto text-[#a79abe]" size={35}/><h2 className="text-2xl mt-6">Your bag is waiting.</h2><p className="sp-copy mx-auto !text-sm mt-3">Find something you love in the collection.</p><Link className="sp-button sp-button-primary mt-6" href="/shop">Explore products</Link></div>:<div className="grid gap-8 lg:grid-cols-[1.5fr_.8fr]"><section>{step==="cart"?<div className="sp-surface divide-y divide-[#e5e1ec]">{items.map(item=><article key={String(item._id)} className="p-5 sm:p-7 flex flex-wrap items-center gap-5"><div className="relative w-20 h-24 rounded-lg bg-[#eeebf2] overflow-hidden shrink-0">{item.images[0]?<Image src={item.images[0]} alt={item.name} fill className="object-contain"/>:<ShoppingBag className="m-auto mt-8 text-[#a294b8]"/>}</div><div className="flex-1 min-w-[120px]"><h2 className="text-base">{item.name}</h2><p className="text-xs text-[#818096] mt-2">৳{item.basePrice.toLocaleString()} each</p><div className="inline-flex items-center border rounded-lg mt-4"><button className="p-2" aria-label={`Decrease ${item.name} quantity`} onClick={()=>updateQuantity(String(item._id),-1)}><Minus size={13}/></button><span className="text-xs w-7 text-center">{item.quantity}</span><button className="p-2" aria-label={`Increase ${item.name} quantity`} onClick={()=>updateQuantity(String(item._id),1)}><Plus size={13}/></button></div></div><div className="text-right"><strong className="text-sm">৳{(item.quantity*item.basePrice).toLocaleString()}</strong><button className="block ml-auto mt-4 text-[#a28d9b] p-2" aria-label={`Remove ${item.name}`} onClick={()=>removeFromCart(String(item._id))}><Trash2 size={15}/></button></div></article>)}</div>:                <form
+                  id="checkout-form"
+                  onSubmit={placeOrder}
+                  className="sp-surface grid gap-5 p-6 sm:grid-cols-2 sm:p-8"
+                >
+                  {error && (
+                    <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 sm:col-span-2">
+                      {error}
+                    </p>
+                  )}
+                  <Field label="Full name">
+                    <input
+                      required
+                      minLength={2}
+                      autoComplete="name"
+                      value={form.fullName}
+                      onChange={(e) =>
+                        setForm({ ...form, fullName: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="Bangladesh mobile number">
+                    <input
+                      required
+                      inputMode="tel"
+                      autoComplete="tel"
+                      placeholder="01XXXXXXXXX"
+                      value={form.phone}
+                      onChange={(e) =>
+                        setForm({ ...form, phone: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="Address" className="sm:col-span-2">
+                    <input
+                      required
+                      minLength={5}
+                      autoComplete="street-address"
+                      value={form.addressLine1}
+                      onChange={(e) =>
+                        setForm({ ...form, addressLine1: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="Apartment or landmark"
+                    className="sm:col-span-2"
+                  >
+                    <input
+                      value={form.addressLine2}
+                      onChange={(e) =>
+                        setForm({ ...form, addressLine2: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="City">
+                    <input
+                      required
+                      minLength={2}
+                      autoComplete="address-level2"
+                      value={form.city}
+                      onChange={(e) =>
+                        setForm({ ...form, city: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="Area / zone">
+                    <input
+                      autoComplete="address-level3"
+                      value={form.zone}
+                      onChange={(e) =>
+                        setForm({ ...form, zone: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="Payment method" className="sm:col-span-2">
+                    <select
+                      value={form.paymentMethod}
+                      onChange={(e) =>
+                        setForm({ ...form, paymentMethod: e.target.value })
+                      }
+                    >
+                      {(settings?.paymentMethods || ["Cash on Delivery"]).map(
+                        (method) => (
+                          <option key={method}>{method}</option>
+                        ),
+                      )}
+                    </select>
+                  </Field>
+                  <Field
+                    label="Order note (optional)"
+                    className="sm:col-span-2"
+                  >
+                    <textarea
+                      rows={3}
+                      maxLength={500}
+                      value={form.customerNote}
+                      onChange={(e) =>
+                        setForm({ ...form, customerNote: e.target.value })
+                      }
+                    />
+                  </Field>
+                </form>}</section><aside><div className="sp-dark rounded-2xl p-7 sticky top-28"><p className="sp-eyebrow">The details</p><h2 className="text-2xl mt-5">Order summary</h2><dl className="space-y-4 mt-8 text-sm">{[["Subtotal",total],["Delivery estimate",deliveryFee],["Total",total+deliveryFee]].map(([label,value])=><div key={label} className="flex justify-between gap-4"><dt className="text-[#a6a5bc]">{label}</dt><dd>৳{Number(value).toLocaleString()}</dd></div>)}</dl><p className="sp-note mt-6 pt-5 border-t border-white/10 flex gap-2"><ShieldCheck size={16}/>Stock and final prices are checked when you confirm.</p>{step==="cart"?<button className="sp-button sp-button-primary w-full mt-7" onClick={()=>setStep("checkout")}>Continue to delivery</button>:<><button className="sp-button sp-button-primary w-full mt-7" form="checkout-form" type="submit" disabled={busy||settings?.storeEnabled===false}>{busy?"Confirming…":"Confirm order"}</button><button className="sp-button sp-button-secondary w-full mt-3" onClick={()=>setStep("cart")} disabled={busy}>Back to your bag</button></>}<p className="sp-note mt-5 flex gap-2"><Truck size={15}/>{settings?.deliveryPolicy||"Delivery charges depend on your location."}</p></div></aside></div>}</div></main>;
+}
+function Field({
+  label,
+  className = "",
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label
+      className={`space-y-2 text-sm font-semibold text-[var(--ink)] ${className}`}
+    >
+      <span>{label}</span>
+      <div className="[&_input]:h-12 [&_input]:w-full [&_input]:rounded-xl [&_input]:border [&_input]:border-[var(--line)] [&_input]:bg-[var(--surface)] [&_input]:px-4 [&_select]:h-12 [&_select]:w-full [&_select]:rounded-xl [&_select]:border [&_select]:border-[var(--line)] [&_select]:bg-[var(--surface)] [&_select]:px-4 [&_textarea]:w-full [&_textarea]:rounded-xl [&_textarea]:border [&_textarea]:border-[var(--line)] [&_textarea]:bg-[var(--surface)] [&_textarea]:p-4">
+        {children}
+      </div>
+    </label>
+  );
 }
