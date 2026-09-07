@@ -103,7 +103,7 @@ export async function saveMessage(
     role: 'user' | 'assistant',
     content: string,
     imageUrl?: string,
-    options?: { messageId?: string; platform?: string; products?: unknown[]; media?: StoredMediaReference }
+    options?: { messageId?: string; platform?: string; products?: unknown[]; intent?: string; source?: 'ai' | 'human'; media?: StoredMediaReference }
 ) {
     assertTenantBusinessId(businessId, 'memory.saveMessage');
     const messageData: any = {
@@ -113,7 +113,9 @@ export async function saveMessage(
         metadata: options?.messageId ? {
             messageId: options.messageId,
             platform: options.platform,
+            ...(options.source ? { source: options.source } : {}),
             ...(options.products?.length ? { products: options.products } : {}),
+            ...(options.intent ? { intent: options.intent } : {}),
         } : undefined,
     };
 
@@ -160,5 +162,8 @@ export async function saveMessage(
         { new: true }
     );
     if (conversation) await maybeUpdateConversationSummary(businessId, conversationId);
+    // Projection is replayable; an analytics failure must not resend a customer reply.
+    try { await (await import('../intelligence/reconcile')).projectConversation(conversationId); }
+    catch { console.warn('Customer timeline projection pending reconciliation'); }
     return savedMessage;
 }
