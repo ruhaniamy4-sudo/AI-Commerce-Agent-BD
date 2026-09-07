@@ -4,7 +4,8 @@ import {requireTenantContext} from '../tenancy/context';
 import {IntelligenceIntegration} from '../models/IntelligenceIntegration';
 import {encryptMetaAccessToken} from '../services/meta-credentials.service';
 const router=Router();
-export const integrationCapabilities={pathao:{supported:true,fields:['webhookSecret']},redx:{supported:false,fields:[]},sslcommerz:{supported:true,fields:['storeId','storePassword']},stripe:{supported:true,fields:['secretKey']},bkash:{supported:false,fields:[]},nagad:{supported:false,fields:[]}};
+export const integrationCapabilities={pathao:{supported:true,fields:['webhookSecret']},redx:{supported:true,fields:['accessToken']},sslcommerz:{supported:true,fields:['storeId','storePassword']},stripe:{supported:true,fields:['secretKey','webhookSecret']},bkash:{supported:false,fields:[],via:'sslcommerz'},nagad:{supported:false,fields:[],via:'sslcommerz'}};
+router.post('/intelligence/courier/redx/sync',requireAdministrator,async(req,res)=>{try{res.json(await (await import('../intelligence/redx')).syncRedx(String(req.body?.orderId||''),String(req.body?.reference||'')));}catch{res.status(422).json({error:'RedX verification failed; confirm the tracking reference and merchant order match'});}});
 router.get('/intelligence/integrations',requireAdministrator,async(_req,res)=>{
  const rows=await IntelligenceIntegration.find({businessId:requireTenantContext().businessId}).select('provider enabled').lean();
  res.json({data:Object.entries(integrationCapabilities).map(([provider,capability])=>({provider,...capability,integrationId:String(rows.find(r=>r.provider===provider)?._id||''),configured:rows.some(r=>r.provider===provider&&r.enabled)}))});

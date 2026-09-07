@@ -10,3 +10,4 @@ it('does not treat pending Stripe payments as success and requires order binding
  expect(()=>stripeEvidence({id:'pi_1',metadata:{}})).toThrow();
  expect(stripeEvidence({id:'pi_1',metadata:{sellpilot_order_number:'SP1'},amount:149000,currency:'bdt',status:'requires_action'})).toMatchObject({amount:1490,status:'pending',live:false});
 });
+it('preserves bKash and Nagad wallet identity from verified aggregator receipts',()=>{for(const wallet of ['bkash','nagad'])expect(sslEvidence({status:'VALID',tran_id:'o1',val_id:'v1',amount:10,currency:'BDT',card_type:wallet.toUpperCase()},true).paymentMethod).toBe(wallet);});

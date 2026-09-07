@@ -1,0 +1,20 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const mocks=vi.hoisted(()=>({post:vi.fn(),claim:vi.fn(),update:vi.fn()}));
+vi.mock('axios',()=>({default:{post:mocks.post}}));
+vi.mock('../models/BusinessChannel',()=>({BusinessChannel:{findOne:()=>({select:async()=>({encryptedAccessToken:'encrypted'})})}}));
+vi.mock('../models/Customer',()=>({Customer:{findOne:async()=>({_id:'customer',optedOut:true})}}));
+vi.mock('../models/Conversation',()=>({Conversation:{findOneAndUpdate:async()=>({}),findOne:async()=>({controlMode:'AI_ACTIVE'})}}));
+vi.mock('../models/WebhookEvent',()=>({WebhookEvent:{updateOne:mocks.update,findOneAndUpdate:mocks.claim}}));
+vi.mock('../tenancy/context',()=>({requireTenantContext:()=>({businessId:'tenant'})}));
+vi.mock('../services/meta-credentials.service',()=>({decryptMetaAccessToken:()=> 'token'}));
+vi.mock('../services/chat-turn.service',()=>({processChatTurn:async()=>({body:{reply:'Available'}})}));
+import {processWhatsAppMessage} from './whatsapp';
+const inbound={businessId:'tenant',phoneNumberId:'123',from:'8801712345678',id:'wamid-1',text:'Available?',name:'Customer'};
+beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('META_GRAPH_API_VERSION','v24.0');mocks.update.mockResolvedValue({});});
+it('delivers replies for analytics opted-out customers using a separate transport reservation',async()=>{
+ mocks.claim.mockResolvedValue({_id:'reservation'});mocks.post.mockResolvedValue({data:{messages:[{id:'sent-1'}]}});
+ await processWhatsAppMessage(inbound);
+ expect(mocks.post).toHaveBeenCalledOnce();expect(mocks.update).toHaveBeenLastCalledWith({_id:'reservation'},{$set:expect.objectContaining({'payload.delivery':'sent',processed:true})});
+});
+it('does not resend a claimed or uncertain outbound message',async()=>{mocks.claim.mockResolvedValue(null);await processWhatsAppMessage(inbound);expect(mocks.post).not.toHaveBeenCalled();});
+it('retains uncertain sends for operator reconciliation',async()=>{mocks.claim.mockResolvedValue({_id:'reservation'});mocks.post.mockRejectedValue(new Error('timeout'));await expect(processWhatsAppMessage(inbound)).rejects.toThrow('requires reconciliation');expect(mocks.update).toHaveBeenLastCalledWith({_id:'reservation'},{$set:{'payload.delivery':'uncertain'}});});

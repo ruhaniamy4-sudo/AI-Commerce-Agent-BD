@@ -16,7 +16,7 @@ export function scoreCustomer(events:any[],orders:any[]=[],now=new Date()){
  add(recent.some(e=>e.type==='cart_added'),'Added a product to cart',12,'website');
  add(recent.some(e=>e.type==='checkout_started'),'Started checkout',15,'website');
  const trust=paymentTrust(evidence);const delivery=deliveryEvidence(evidence);
- const completed=orders.filter(o=>['delivered','completed'].includes(o.status));
+ const completed=orders.filter(o=>['delivered','completed'].includes(o.status)&&o.paymentStatus!=='refunded');
  const spend=completed.reduce((sum,o)=>sum+Math.max(0,Number(o.total)||0),0);
  add(completed.length>0,'Previous completed order',8,'orders');
  const purchaseIntent=recent.length?Math.min(100,signals.reduce((sum,s)=>sum+s.weight,0)):null;

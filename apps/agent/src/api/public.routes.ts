@@ -199,7 +199,8 @@ router.post(
         customerNote,
         idempotencyKey,
       });
-      await linkVisit(req.body?.visitToken, String(order.customerId), String(order._id));
+      try { await linkVisit(req.body?.visitToken, String(order.customerId), String(order._id)); }
+      catch { console.warn('Checkout saved; visitor attribution needs reconciliation'); }
       res.status(201).json({
         orderNumber: order.orderNumber,
         status: order.status,

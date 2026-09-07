@@ -86,7 +86,7 @@ app.use(cors({
 app.use(express.json({
     limit: '256kb',
     verify(req, _res, buffer) {
-        if (req.url?.startsWith('/facebook') || req.url?.startsWith('/whatsapp')) {
+        if (req.url?.startsWith('/facebook') || req.url?.startsWith('/whatsapp') || req.url?.startsWith('/payment-events/stripe')) {
             (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
         }
     },

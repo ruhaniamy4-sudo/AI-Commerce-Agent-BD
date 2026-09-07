@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { BarChart3, Bot, Box, CheckCircle2, ChevronLeft, ChevronRight, CircleHelp, FileText, Headphones, Home, Loader2, MessageCircle, MoreHorizontal, Package, Search, Send, Settings, ShoppingBag, Sparkles, UserRound, Users, WandSparkles, X } from "lucide-react"
+import { BarChart3, Bot, Box, CheckCircle2, ChevronLeft, ChevronRight, CircleHelp, FileText, Headphones, Home, Loader2, MessageCircle, MoreHorizontal, Package, Search, Send, Settings, ShoppingBag, Sparkles, UserRound, Users, X } from "lucide-react"
 import { conversationsApi, knowledgeApi, ordersApi, productsApi } from "@/lib/api"
 import type { Conversation, Message, Product } from "@/types"
 import { customerFacingText } from "@/lib/assistant-response"
@@ -48,5 +48,3 @@ function getMessageIntent(messages:Message[]){for(let i=messages.length-1;i>=0;i
 function countFor(items:Conversation[],filter:Filter){if(filter==="all")return items.length;if(filter==="ai")return items.filter(i=>i.controlMode==="AI_ACTIVE").length;if(filter==="human")return items.filter(i=>i.controlMode==="HUMAN_ACTIVE").length;return items.filter(i=>i.needsHumanHandoff).length}const filterOrder:Filter[]=["ai","human","handoff","all"];function previousFilter(value:Filter){return filterOrder[(filterOrder.indexOf(value)+3)%4]}function nextFilter(value:Filter){return filterOrder[(filterOrder.indexOf(value)+1)%4]}
 function filterCustomerConversations(items:Conversation[]){return items.filter(item=>item.platform!=="manual"&&!item.conversationId.startsWith("test_"))}
 function LiveIntelligence({conversation}:{conversation:Conversation;messages:Message[];products:Array<Record<string,unknown>>;intent:string}){return <CustomerIntelligencePanel conversationId={String(conversation._id)}/>}
-function deriveLiveSignals(messages:Message[]){const text=messages.filter(message=>message.role==="user").map(message=>message.content.toLowerCase()).join(" ");return [[/price|koto|dam/,"Asked product price"],[/available|ache|ase|stock/,"Checked availability"],[/delivery|charge|shipping/,"Asked about delivery"],[/cod|cash on delivery|bkash|nagad|payment/,"Checked payment options"],[/order|korte chai|buy|confirm/,"Requested an order"],[/return|refund|warranty/,"Checked a business policy"]].filter(([pattern])=>(pattern as RegExp).test(text)).map(([,label])=>label as string)}
-function hasKnowledgeEvidence(messages:Message[]){return messages.some(message=>message.role==="assistant"&&(Boolean(message.metadata?.knowledgeUsed)||Boolean(message.metadata?.sources)||Boolean(message.metadata?.rag)))}

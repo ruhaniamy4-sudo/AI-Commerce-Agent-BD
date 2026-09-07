@@ -20,8 +20,9 @@ export async function verifyCustomerPayment(provider:string,reference:string){
  assertPaymentMatches(evidence,order,live);
  // Sandbox receipts are visible for testing but never counted as verified customer trust.
  const type=evidence.status==='paid'?'payment_completed':evidence.status==='failed'?'payment_failed':evidence.status==='refunded'?'payment_refunded':'payment_created';
- await recordCustomerEvent({type,source:provider,externalId:evidence.reference,customerId:String(order.customerId),orderId:String(order._id),verified:live,data:{amount:evidence.amount,currency:evidence.currency,environment:live?'live':'sandbox',refundedAmount:evidence.refundedAmount}});
+ await recordCustomerEvent({type,source:provider,externalId:evidence.reference,customerId:String(order.customerId),orderId:String(order._id),verified:live,data:{amount:evidence.amount,currency:evidence.currency,paymentMethod:evidence.paymentMethod,environment:live?'live':'sandbox',refundedAmount:evidence.refundedAmount}});
  if(live&&evidence.status==='paid')await Order.updateOne({_id:order._id,paymentStatus:{$nin:['paid','refunded']}},{$set:{paymentStatus:'paid'}});
  if(live&&evidence.status==='refunded')await Order.updateOne({_id:order._id,paymentStatus:'paid'},{$set:{paymentStatus:'refunded'}});
+ await (await import('./customer-intelligence')).refreshCustomerIntelligence(String(order.customerId));
  return {status:evidence.status,verified:live,orderNumber:order.orderNumber};
 }

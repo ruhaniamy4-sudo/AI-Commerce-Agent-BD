@@ -8,6 +8,7 @@ import { LanguageProvider, type Locale } from "@/context/language-context";
 import { BRAND } from "@/lib/marketing-config";
 import { headers } from "next/headers";
 import {CustomerTracker} from '@/components/customer-tracker';
+import {Suspense} from 'react';
 
 const displayFont = Manrope({ subsets: ["latin"], variable: "--font-display", display: "swap" });
 const bodyFont = DM_Sans({ subsets: ["latin"], variable: "--font-body", display: "swap" });
@@ -33,5 +34,5 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const requestHeaders = await headers();
   const country = (requestHeaders.get("x-vercel-ip-country") || requestHeaders.get("cf-ipcountry") || "").toUpperCase();
   const detectedLocale: Locale = country === "BD" ? "bn" : "en";
-  return <html lang={detectedLocale === "bn" ? "bn-BD" : "en"} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className={`${displayFont.variable} ${bodyFont.variable} ${bengaliFont.variable}`}><LanguageProvider detectedLocale={detectedLocale}><CartProvider><CustomerTracker/><LayoutChrome>{children}</LayoutChrome></CartProvider></LanguageProvider></body></html>;
+  return <html lang={detectedLocale === "bn" ? "bn-BD" : "en"} suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body className={`${displayFont.variable} ${bodyFont.variable} ${bengaliFont.variable}`}><LanguageProvider detectedLocale={detectedLocale}><CartProvider><Suspense fallback={null}><CustomerTracker/></Suspense><LayoutChrome>{children}</LayoutChrome></CartProvider></LanguageProvider></body></html>;
 }

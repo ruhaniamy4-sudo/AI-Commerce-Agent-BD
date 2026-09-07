@@ -8,7 +8,7 @@ const router=Router();
 router.use(authRateLimit({limit:120,windowMs:60000}));
 router.post('/session',async(req,res)=>{
   const existing=await findVisit(req.body?.token);
-  if(existing){existing.lastSeenAt=new Date();await existing.save();return res.json({token:req.body.token});}
+  if(existing){if(!existing.lastSeenAt||Date.now()-existing.lastSeenAt.getTime()>30*60000){existing.sessionId=crypto.randomUUID();existing.checkoutAt=undefined;existing.purchasedAt=undefined;await recordCustomerEvent({type:'session_started',source:'website',externalId:existing.sessionId,visitorId:existing.visitorId,sessionId:existing.sessionId,customerId:existing.customerId?.toString()});}existing.lastSeenAt=new Date();await existing.save();return res.json({token:req.body.token});}
   const token=crypto.randomBytes(32).toString('hex');const visitorId=crypto.randomUUID();const sessionId=crypto.randomUUID();
   await CustomerVisit.create({tokenHash:hashVisit(token),visitorId,sessionId,lastSeenAt:new Date(),expiresAt:new Date(Date.now()+90*86400000)});
   for(const type of ['visitor_started','session_started'] as const)await recordCustomerEvent({type,source:'website',externalId:sessionId,visitorId,sessionId});

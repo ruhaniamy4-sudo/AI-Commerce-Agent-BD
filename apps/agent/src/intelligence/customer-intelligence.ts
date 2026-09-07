@@ -5,9 +5,10 @@ import {requireTenantContext} from '../tenancy/context';
 import {reconcileCustomerMessages,reconcileCustomerOrders} from './reconcile';
 import {scoreCustomer} from './scoring';
 import {updateCustomerActions} from './automation';
+import {CustomerAction} from '../models/CustomerAction';
 export async function refreshCustomerIntelligence(customerId:string){
  const customer=await Customer.findById(customerId).lean();if(!customer)return null;
- if(customer.optedOut)return {customer:{id:String(customer._id),name:customer.name},intelligence:null,optedOut:true};
+ if(customer.optedOut){await CustomerIntelligence.deleteOne({customerId});await CustomerAction.deleteMany({customerId});return {customer:{id:String(customer._id),name:customer.name},intelligence:null,optedOut:true};}
  await reconcileCustomerMessages(customerId);const orders=await reconcileCustomerOrders(customerId);
  const events=await CustomerEvent.find({customerId}).sort({occurredAt:1}).lean();
  const intelligence=scoreCustomer(events,orders);
