@@ -60,5 +60,10 @@ export const setupWorker = () => {
     courierWorker.on('failed', (job, error) => console.error(`Courier status job ${job?.id} failed: ${error.message}`));
     courierWorker.on('error', (error) => console.error(`Courier worker connection error: ${error.message}`));
     console.log('BullMQ workers are listening');
+    const intelligenceQueue=new Queue('customer-intelligence',{connection});
+    void intelligenceQueue.add('sweep',{}, {repeat:{every:300000},jobId:'customer-intelligence-sweep',removeOnComplete:10,removeOnFail:20}).catch(()=>console.error('Could not register intelligence sweep'));
+    const intelligenceWorker=new Worker('customer-intelligence',async()=>{await (await import('../intelligence/automation-worker')).processIntelligenceSweep();},{connection,concurrency:1});
+    intelligenceWorker.on('error',()=>console.error('Intelligence worker connection error'));
+    intelligenceWorker.on('failed',()=>console.error('Intelligence sweep failed'));
     return { webhookWorker: worker, courierWorker };
 };
