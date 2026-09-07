@@ -85,6 +85,11 @@ export function classifyProductImageSource(value?: string | null): ProductImageS
 }
 
 export interface Product extends TenantEntity {
+  aiSellingStatus?: 'active' | 'limited' | 'disabled';
+  aiSellingReason?: string;
+  salePrice?: number;
+  aiKnowledge?: Array<{question:string;answer:string}>;
+  totalSold?: number;
   _id: ID;
   name: string;
   slug: string;
@@ -179,6 +184,13 @@ export interface Conversation extends TenantEntity {
   status: 'active' | 'archived' | 'resolved' | 'spam';
   assignedTo?: string;
   currentIntent?: ConversationIntent;
+  salesStage?: 'NEW' | 'DISCOVERY' | 'INTERESTED' | 'READY_TO_BUY' | 'OBJECTION' | 'ORDERED' | 'LOST';
+  conversionOutcome?: {
+    convertedAt?: string;
+    conversionType?: 'AI_ONLY' | 'AI_ASSISTED' | 'HUMAN';
+    orderId?: ID;
+    lostReason?: string;
+  };
   metadata: Record<string, unknown>;
   messageCount: number;
   lastMessageAt?: string;

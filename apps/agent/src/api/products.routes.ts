@@ -8,13 +8,28 @@ import { requireTenantContext, tenantDocument } from '../tenancy/context';
 import { mirrorExternalProductImages } from '../services/ingestion/external-image.service';
 import { cleanupDetachedProductMedia } from '../services/media-storage.service';
 
+import {productSoldCounts,productSalesReport} from '../services/product-sales.service';
 const router = Router();
+router.get('/products/:id/sales',async(req,res)=>{
+ if(!mongoose.isValidObjectId(req.params.id))return res.status(400).json({error:'Invalid product ID'});
+ if(!await Product.exists({_id:req.params.id}))return res.status(404).json({error:'Product not found'});
+ const period=['daily','weekly','monthly'].includes(String(req.query.period))?String(req.query.period):'daily';
+ res.json(await productSalesReport(String(req.params.id),period as 'daily'|'weekly'|'monthly'));
+});
+router.patch('/products/:id/ai-selling',requireAdministrator,async(req,res)=>{
+ const {status,reason}=req.body;
+ if(!mongoose.isValidObjectId(req.params.id)||!['active','limited','disabled'].includes(status))return res.status(400).json({error:'Invalid product or selling status'});
+ if(status==='disabled'&&!['Out of Stock','Temporarily unavailable','Discontinued'].includes(reason))return res.status(400).json({error:'Choose a reason for disabling AI selling'});
+ const product=await Product.findByIdAndUpdate(req.params.id,{$set:{aiSellingStatus:status,aiSellingReason:status==='disabled'?reason:''}},{new:true,runValidators:true});
+ if(!product)return res.status(404).json({error:'Product not found'});
+ res.json(product);
+});
 
 // Get all products with filtering and pagination
 router.get('/products', async (req, res) => {
     try {
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 20;
+        const page = Math.max(1,parseInt(req.query.page as string) || 1);
+        const limit = Math.min(100,Math.max(1,parseInt(req.query.limit as string) || 20));
         const search = req.query.search as string;
         const categoryId = req.query.categoryId as string;
         const minPrice = parseFloat(req.query.minPrice as string);
@@ -23,7 +38,8 @@ router.get('/products', async (req, res) => {
         const isFeatured = req.query.isFeatured as string;
         const skip = (page - 1) * limit;
 
-        const query: any = { isActive: true };
+        const query: any = req.query.includeInactive==='true'?{}:{ isActive: true };
+        if(['active','limited','disabled'].includes(String(req.query.aiSellingStatus)))query.aiSellingStatus=req.query.aiSellingStatus==='active'?{$nin:['limited','disabled']}:req.query.aiSellingStatus;
 
         if (search) {
             query.$text = { $search: search };
@@ -53,8 +69,9 @@ router.get('/products', async (req, res) => {
             Product.countDocuments(query),
         ]);
 
+        const counts=await productSoldCounts(products.map(p=>p._id));
         res.json({
-            data: products,
+            data: products.map(p=>({...p,totalSold:counts.find(c=>String(c._id)===String(p._id))?.units||0})),
             pagination: {
                 page,
                 limit,
@@ -76,8 +93,8 @@ router.get('/products/:identifier', async (req, res) => {
         // Determine if identifier is ID or Slug
         const isObjectId = mongoose.Types.ObjectId.isValid(identifier);
         const query = isObjectId
-            ? { _id: identifier, isActive: true }
-            : { slug: identifier, isActive: true };
+            ? { _id: identifier }
+            : { slug: identifier };
 
         const product = await Product.findOne(query).populate('categoryId', 'name slug');
 
@@ -147,11 +164,12 @@ router.post('/products', requireAdministrator, async (req, res) => {
 router.patch('/products/:id', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
-        const { businessId: _ignoredBusinessId, intelligence: _ignoredIntelligence, ...updates } = req.body;
+        const { businessId: _ignoredBusinessId, intelligence: _ignoredIntelligence, aiSellingStatus: _status, aiSellingReason: _reason, ...updates } = req.body;
         if (updates.categoryId && !(await Category.exists({ _id: updates.categoryId, isActive: true }))) {
             return res.status(400).json({ error: 'Category does not belong to this business' });
         }
 
+        if(updates.aiKnowledge && (!Array.isArray(updates.aiKnowledge)||updates.aiKnowledge.length>30||updates.aiKnowledge.some((a:any)=>typeof a.question!=='string'||!a.question.trim()||typeof a.answer!=='string'||!a.answer.trim())))return res.status(400).json({error:'Provide up to 30 complete product questions and answers'});
         const product = await Product.findById(id);
 
         if (!product) {

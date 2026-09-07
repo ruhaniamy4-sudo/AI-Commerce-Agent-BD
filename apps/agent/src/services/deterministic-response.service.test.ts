@@ -22,6 +22,16 @@ const conversation = (state: Record<string, unknown> = {}) => vi.spyOn(Conversat
 describe('zero-LLM canonical fast paths', () => {
     afterEach(() => vi.restoreAllMocks());
 
+    it('does not recommend a disabled product and explains unavailability',async()=>{
+        conversation();vi.spyOn(Product,'find').mockReturnValue({select:()=>({limit:()=>({lean:async()=>[{...product,aiSellingStatus:'disabled'}]})})} as never);
+        const result:any=await tenant(()=>getDeterministicResponse(businessId,'Zeblaze Vibe 7 Pro stock?',{conversationId:'c',language:'en'} as any));
+        expect(result.suggested_products).toBeUndefined();expect(result.message_text).toMatch(/unavailable|পাওয়া যাচ্ছে না/);
+    });
+    it('requires stock evidence for a limited product',async()=>{
+        conversation();vi.spyOn(Product,'find').mockReturnValue({select:()=>({limit:()=>({lean:async()=>[{...product,aiSellingStatus:'limited',stock:null}]})})} as never);
+        const result:any=await tenant(()=>getDeterministicResponse(businessId,'Zeblaze Vibe 7 Pro stock?',{conversationId:'c'}));
+        expect(result.suggested_products[0].availability).toBe('unknown');
+    });
     it('answers an exact product price from the tenant Product query', async () => {
         conversation();
         vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([product]) }) }) } as never);

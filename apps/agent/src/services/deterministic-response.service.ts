@@ -32,7 +32,7 @@ function card(product: any, text = ''): CompactProductCard {
     const variant = sku
         ? (product.variants || []).find((item: any) => String(item.sku).toLowerCase() === sku.toLowerCase())
         : color ? (product.variants || []).find((item: any) => String(item.name).toLowerCase().includes(color)) : undefined;
-    const availability = variant ? (variant.availability || (typeof variant.stock === 'number' ? (variant.stock > 0 ? 'in_stock' : 'out_of_stock') : 'unknown')) : (product.availability || (typeof product.stock === 'number' ? (product.stock > 0 ? 'in_stock' : 'out_of_stock') : 'unknown'));
+    const availability = product.aiSellingStatus==='limited' ? (typeof (variant?variant.stock:product.stock)==='number'?((variant?variant.stock:product.stock)>0?'in_stock':'out_of_stock'):'unknown') : variant ? (variant.availability || (typeof variant.stock === 'number' ? (variant.stock > 0 ? 'in_stock' : 'out_of_stock') : 'unknown')) : (product.availability || (typeof product.stock === 'number' ? (product.stock > 0 ? 'in_stock' : 'out_of_stock') : 'unknown'));
     const currency = String(variant?.currency || product.currency || 'BDT').toUpperCase();
     return { id: String(product._id), sku: variant?.sku || product.variants?.[0]?.sku, name: product.name, price: product.salePrice ?? variant?.price ?? product.basePrice, currency, salePrice: product.salePrice, availability, stock: variant ? variant.stock : product.stock, image: variant?.images?.[0] || product.images?.[0], relevantVariant: variant ? { id: variant.variantId, name: variant.name, price: product.salePrice ?? variant.price, currency, availability, stock: variant.stock, image: variant.images?.[0] } : undefined };
 }
@@ -63,14 +63,14 @@ async function findProducts(businessId: string, text: string, activeProductId?: 
     const intent = classifyLightweightIntent(text);
     const sku = requestedSku(text);
     if (sku) {
-        const exactSkuProduct = await Product.findOne({ businessId, isActive: true, merchantConfirmed: { $ne: false }, $or: [{ slug: sku.toLowerCase() }, { 'variants.sku': sku }] }).select('name basePrice salePrice currency stock availability variants images').lean();
+        const exactSkuProduct = await Product.findOne({ businessId, isActive: true, merchantConfirmed: { $ne: false }, $or: [{ slug: sku.toLowerCase() }, { 'variants.sku': sku }] }).select('aiSellingStatus aiKnowledge name basePrice salePrice currency stock availability variants images').lean();
         if (exactSkuProduct) return [exactSkuProduct];
     }
     if (activeProductId && (followupWords.test(text.trim()) || ['PRODUCT_IMAGE','PRODUCT_STOCK','PRODUCT_VARIANT'].includes(intent))) {
-        const active = await Product.findOne({ _id: activeProductId, businessId, isActive: true, merchantConfirmed: { $ne: false } }).select('name basePrice salePrice currency stock availability variants images').lean();
+        const active = await Product.findOne({ _id: activeProductId, businessId, isActive: true, merchantConfirmed: { $ne: false } }).select('aiSellingStatus aiKnowledge name basePrice salePrice currency stock availability variants images').lean();
         if (active) return [active];
     }
-    if (intent === 'PRODUCT_COMPARE' && recentProductIds.length) return Product.find({ businessId, _id: { $in: recentProductIds.slice(0, 4) }, isActive: true }).select('name basePrice salePrice currency stock availability variants images specs brand').limit(4).lean();
+    if (intent === 'PRODUCT_COMPARE' && recentProductIds.length) return Product.find({ businessId, _id: { $in: recentProductIds.slice(0, 4) }, isActive: true }).select('aiSellingStatus aiKnowledge name basePrice salePrice currency stock availability variants images specs brand').limit(4).lean();
     const terms = parseSearchTerms(text); if (!terms.length) return [];
     const max = extractBudget(text);
     const searchFilter = { $and: terms.slice(0, 5).map((term) => {
@@ -83,7 +83,7 @@ async function findProducts(businessId: string, text: string, activeProductId?: 
         ] };
     }) };
     const priceFilter = { $or: [{ salePrice: { $lte: max } }, { salePrice: null, basePrice: { $lte: max } }] };
-    return Product.find({ businessId, isActive: true, merchantConfirmed: { $ne: false }, ...(max !== undefined ? { $and: [searchFilter, priceFilter] } : searchFilter) }).select('name basePrice salePrice currency stock availability variants images specs brand').limit(4).lean();
+    return Product.find({ businessId, isActive: true, merchantConfirmed: { $ne: false }, ...(max !== undefined ? { $and: [searchFilter, priceFilter] } : searchFilter) }).select('aiSellingStatus aiKnowledge name basePrice salePrice currency stock availability variants images specs brand').limit(4).lean();
 }
 
 async function stableBusinessFact(businessId: string, text: string, language: string, existingBusiness?: any) {
@@ -139,7 +139,9 @@ export async function getDeterministicResponse(businessId: string, text: string,
     }
     if (intent === 'BUSINESS_FACT') { const fact = await stableBusinessFact(businessId, text, language); if (fact) return { message_text: fact, intent, memory: lightweightMemory }; }
     if (!['GENERAL_CONVERSATION','KNOWLEDGE','HUMAN_HANDOFF','ORDER_STATUS','BUSINESS_FACT'].includes(intent)) {
-        const products = await findProducts(businessId, text, entity.activeProductId, entity.recentProductIds || []); const cards = products.map((item) => card(item, text)).slice(0, intent === 'PRODUCT_COMPARE' ? 4 : 3);
+        const products = await findProducts(businessId, text, entity.activeProductId, entity.recentProductIds || []);
+        if(products.length===1 && products[0].aiSellingStatus==='disabled')return {message_text:language==='en'?'Sorry, this product is currently unavailable. I can help you find other available products.':'দুঃখিত, এই পণ্যটি বর্তমানে পাওয়া যাচ্ছে না। অন্য উপলব্ধ পণ্য খুঁজে পেতে সাহায্য করতে পারি।',intent,memory:lightweightMemory};
+        const cards = products.filter(item=>item.aiSellingStatus!=='disabled').map((item) => card(item, text)).slice(0, intent === 'PRODUCT_COMPARE' ? 4 : 3);
         const exact = cards.length === 1 || Boolean(entity.activeProductId && String(cards[0]?.id) === String(entity.activeProductId));
         if (cards.length && (intent === 'PRODUCT_SEARCH' || (exact && ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_IMAGE','PRODUCT_VARIANT'].includes(intent)))) return { message_text: productText(intent, cards, language, text), suggested_products: cards, intent, memory: { ...lightweightMemory, activeProductId: cards.length === 1 ? cards[0].id : entity.activeProductId, recentProductIds: cards.map((item) => item.id) } };
         if (cards.length && ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_IMAGE','PRODUCT_VARIANT'].includes(intent)) return { message_text: language === 'en' ? 'I found a few possible matches. Which product do you mean?' : 'কয়েকটি match পেয়েছি। কোন product-টি জানতে চান?', suggested_products: cards, intent, memory: { ...lightweightMemory, recentProductIds: cards.map((item) => item.id) } };

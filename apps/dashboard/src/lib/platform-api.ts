@@ -25,6 +25,13 @@ export interface Trend {
   _id: string;
   value: number;
 }
+export interface SubscriptionPlan {
+  _id: string; name: string; slug: string; description: string;
+  monthlyPrice: number; annualPrice: number; currency: string; trialDays: number;
+  limits: { messages: number; tokens: number; teamMembers: number; channels: number };
+  features: string[]; enabled: boolean; featured: boolean; sortOrder: number;
+}
+export interface PlatformSetting { _id: string; key: string; value: unknown; category: string; description?: string; updatedAt: string }
 export interface PlatformOverview {
   period: { name: string; from: string; to: string };
   businesses: {
@@ -307,6 +314,9 @@ export const platformApi = {
     request<Paginated<Subscription>>(
       `subscriptions?search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}&page=${page}`,
     ),
+  plans: () => request<SubscriptionPlan[]>("plans"),
+  createPlan: (payload: Omit<SubscriptionPlan, "_id">) => request<SubscriptionPlan>("plans", { method: "POST", body: JSON.stringify(payload) }),
+  updatePlan: (id: string, payload: Omit<SubscriptionPlan, "_id">) => request<SubscriptionPlan>(`plans/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   setSubscription: (businessId: string, payload: Record<string, unknown>) =>
     request<Subscription>(`businesses/${businessId}/subscription`, {
       method: "PUT",
@@ -335,4 +345,7 @@ export const platformApi = {
       `audit?search=${encodeURIComponent(search)}&action=${encodeURIComponent(action)}&page=${page}`,
     ),
   me: () => request<{ id: string; name: string; email: string }>("me"),
+  activity: () => request<{merchantActivity:Array<{_id:string;businessName?:string;userName?:string;userEmail?:string;lastSeenAt:string}>;events:Array<{_id:string;action:string;reason:string;businessName?:string;createdAt:string}>}>("activity"),
+  settings: () => request<PlatformSetting[]>("settings"),
+  updateSetting: (key:string,payload:{value:unknown;category:string;description?:string}) => request<PlatformSetting>(`settings/${encodeURIComponent(key)}`, {method:"PUT",body:JSON.stringify(payload)}),
 };

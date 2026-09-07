@@ -1,0 +1,8 @@
+import type {ReactNode} from "react";
+import {ChevronLeft,ChevronRight,Search,Inbox} from "lucide-react";
+import {Button} from "@/components/ui/button";
+import {Input} from "@/components/ui/input";
+export function WorkspacePanel({title,description,actions,children}:{title?:string;description?:string;actions?:ReactNode;children:ReactNode}){return <section className="work-panel">{(title||actions)&&<header><div>{title&&<h2>{title}</h2>}{description&&<p>{description}</p>}</div>{actions&&<div className="work-panel-tools">{actions}</div>}</header>}{children}</section>;}
+export function WorkspaceSearch({value,onChange,placeholder="Search…"}:{value:string;onChange:(value:string)=>void;placeholder?:string}){return <div className="work-search"><Search size={15}/><Input aria-label={placeholder} placeholder={placeholder} value={value} onChange={e=>onChange(e.target.value)}/></div>;}
+export function WorkspaceEmpty({title,copy,action}:{title:string;copy:string;action?:ReactNode}){return <div className="work-empty"><span><Inbox size={24}/></span><h2>{title}</h2><p>{copy}</p>{action}</div>;}
+export function WorkspacePagination({page,totalPages,onChange,total}:{page:number;totalPages:number;onChange:(page:number)=>void;total?:number}){return <footer className="work-pagination"><p>{total!==undefined?`${total} results · `:""}Page {page} of {Math.max(1,totalPages)}</p><div><Button variant="outline" size="sm" disabled={page<=1} onClick={()=>onChange(page-1)} aria-label="Previous page"><ChevronLeft size={14}/></Button><Button variant="outline" size="sm" disabled={page>=totalPages} onClick={()=>onChange(page+1)} aria-label="Next page"><ChevronRight size={14}/></Button></div></footer>;}

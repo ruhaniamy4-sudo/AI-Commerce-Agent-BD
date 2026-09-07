@@ -45,6 +45,8 @@ const MessageSchema = new Schema(
             isDeleted: { type: Boolean, default: false },
             isEdited: { type: Boolean, default: false },
             isForwarded: { type: Boolean, default: false },
+            products: { type: [Schema.Types.Mixed], default: undefined },
+            intent: { type: String, trim: true },
         },
     },
     { timestamps: true }

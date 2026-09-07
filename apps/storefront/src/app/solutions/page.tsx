@@ -1,25 +1,6 @@
-import type { Metadata } from "next";
-import type { LucideIcon } from "lucide-react";
-import {
-  ArrowRight,
-  Building2,
-  Headphones,
-  MessagesSquare,
-  PackageCheck,
-  ShoppingBag,
-  Store,
-  UsersRound,
-} from "lucide-react";
-import Link from "next/link";
-import { FinalCTA, PageHero } from "@/components/marketing";
-import { Reveal } from "@/components/reveal";
-
-export const metadata: Metadata = {
-  title: "Solutions",
-  description:
-    "See how SellPilot supports Facebook sellers, ecommerce teams, customer support, and multi-brand operations in Bangladesh.",
-};
-
+import type {LucideIcon} from "lucide-react";
+import {MessagesSquare,ShoppingBag,Headphones,Building2,Check} from "lucide-react";
+import {PageHero,FinalCTA} from "@/components/marketing";
 const solutions: Array<{
   id: string;
   eyebrow: string;
@@ -95,103 +76,7 @@ const solutions: Array<{
   },
 ];
 
-export default function SolutionsPage() {
-  return (
-    <main>
-      <PageHero
-        eyebrow="Designed around real operations"
-        title="A clearer path from customer question to commerce action."
-        copy="SellPilot meets Bangladesh businesses where selling already happens, then adds the context, control, and isolation needed to operate with confidence."
-      />
-      {solutions.map((solution, index) => {
-        const Icon = solution.icon;
-        return (
-          <Reveal key={solution.id}>
-            <section
-              id={solution.id}
-              className={`scroll-mt-24 py-20 sm:py-28 ${index % 2 ? "bg-[var(--page-soft)]" : ""}`}
-            >
-              <div className="site-container grid items-center gap-12 lg:grid-cols-2">
-                <div className={index % 2 ? "lg:order-2" : ""}>
-                  <div className="icon-tile">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <p className="section-kicker mt-6">{solution.eyebrow}</p>
-                  <h2 className="mt-4 text-3xl font-semibold tracking-[-.045em] text-[var(--ink)] sm:text-4xl">
-                    {solution.title}
-                  </h2>
-                  <p className="mt-5 max-w-xl text-lg leading-8 text-[var(--muted)]">
-                    {solution.copy}
-                  </p>
-                  <div className="mt-8 space-y-3">
-                    {solution.steps.map((step, stepIndex) => (
-                      <div
-                        key={step}
-                        className="flex items-center gap-3 text-sm font-semibold text-[var(--ink)]"
-                      >
-                        <span className="grid h-7 w-7 place-items-center rounded-full bg-blue-500/10 text-[10px] font-bold text-blue-600 dark:text-blue-400">
-                          0{stepIndex + 1}
-                        </span>
-                        {step}
-                      </div>
-                    ))}
-                  </div>
-                  <Link
-                    href="/demo"
-                    className="mt-8 inline-flex items-center gap-2 text-sm font-bold text-blue-600 dark:text-blue-400"
-                  >
-                    Explore this workflow <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-                <div
-                  className={`surface-card p-5 sm:p-7 ${index % 2 ? "lg:order-1" : ""}`}
-                >
-                  <div className="flex items-center justify-between border-b border-[var(--line)] pb-4">
-                    <div className="flex items-center gap-3">
-                      <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500 text-white">
-                        <Store className="h-4 w-4" />
-                      </span>
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--ink)]">
-                          Commerce inbox
-                        </p>
-                        <p className="text-[10px] text-[var(--muted)]">
-                          Correct workspace resolved
-                        </p>
-                      </div>
-                    </div>
-                    <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                      AI active
-                    </span>
-                  </div>
-                  <div className="space-y-4 py-8">
-                    <div className="ml-auto max-w-[82%] rounded-2xl rounded-br-sm bg-blue-600 p-4 text-sm text-white">
-                      {solution.conversation[0]}
-                    </div>
-                    <div className="max-w-[88%] rounded-2xl rounded-bl-sm bg-[var(--page-soft)] p-4 text-sm leading-6 text-[var(--ink)]">
-                      {solution.conversation[1]}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl border border-[var(--line)] p-3 text-xs text-[var(--muted)]">
-                      <PackageCheck className="mb-2 h-4 w-4 text-cyan-500" />
-                      Backend checked
-                    </div>
-                    <div className="rounded-xl border border-[var(--line)] p-3 text-xs text-[var(--muted)]">
-                      <UsersRound className="mb-2 h-4 w-4 text-violet-500" />
-                      Team visible
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </Reveal>
-        );
-      })}
-      <FinalCTA
-        title="Start with the workflow that matters most."
-        copy="Tell us where conversations slow your team down. We’ll map a focused early-access rollout around your operation."
-      />
-    </main>
-  );
-}
+
+export default function Page(){return <main className="reset-public"><PageHero eyebrow="Made for your operation" title="Different businesses. One connected way to work." copy="Start with the workflow that matters most. Keep your customer context and your team connected as you grow."/>{solutions.map((s,i)=><section id={s.id} key={s.id} className={`sp-section ${i%2===0?"sp-light":"sp-dark"}`}><div className="sp-wrap grid gap-10 lg:grid-cols-[.9fr_1.1fr] items-center"><div><span className="sp-eyebrow">{s.eyebrow}</span><h2 className="sp-heading mt-5">{s.title}</h2><p className="sp-copy mt-5">{s.copy}</p></div><article className={`p-7 sm:p-10 ${i%2===0?"sp-surface":"sp-glass"}`}><span className="sp-icon"><s.icon/></span><p className="sp-note mt-5 mb-5">Illustrative conversation</p><p className="rounded-xl p-4 bg-[#8054f612] text-sm">{s.conversation[0]}</p><p className="mt-3 text-sm leading-7">{s.conversation[1]}</p><ul className="mt-7 pt-6 border-t border-[#8883a525] space-y-3">{s.steps.map(step=><li className="flex gap-3 items-center text-xs" key={step}><Check size={14} className="text-violet-500"/>{step}</li>)}</ul></article></div></section>)}<FinalCTA/></main>;}
+import type { Metadata } from "next";
+export const metadata: Metadata = { title: "Commerce Solutions", description: "See how SellPilot supports online stores, service teams, and growing businesses." };

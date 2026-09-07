@@ -1,11 +1,10 @@
 'use client';
 
+import {WorkspaceSearch,WorkspacePagination} from '@/components/layout/workspace-surface';
+import {ProductWorkspace} from '@/components/products/product-workspace';
 import { PageHeader } from '@/components/layout/page-header';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import {
-    CardContent,
-} from '@/components/ui/card';
+
 import {
     Dialog,
     DialogContent,
@@ -15,52 +14,46 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
+
 import { productsApi, categoriesApi } from '@/lib/api';
 import { Product, ProductVariant } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     Loader2,
-    Package,
+    SlidersHorizontal,
     Plus,
-    Search,
     Trash2,
-    Edit,
-    AlertTriangle,
+
     Layers,
     ListChecks,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { ImageUpload } from '@/components/ui/image-upload';
-import { SafeProductImage } from '@/components/ui/safe-product-image';
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
-import { formatCurrency, stockLabel } from '@/lib/currency';
+
 
 export default function ProductsPage() {
     const queryClient = useQueryClient();
     const [searchQuery, setSearchQuery] = useState('');
-    const [page] = useState(1);
-    const limit = 10;
+    const [page,setPage] = useState(1);
+    const limit = 12;
+    const [filtersOpen,setFiltersOpen]=useState(false);
+    const [statusFilter,setStatusFilter]=useState('');
+    const [categoryFilter,setCategoryFilter]=useState('');
 
     // Dialog States
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [activeTab, setActiveTab] = useState('general');
 
-    const { data: response, isLoading } = useQuery({
-        queryKey: ['products', page, searchQuery],
-        queryFn: () => productsApi.getAll({ page, limit, search: searchQuery }),
+    const { data: response, isLoading, isError } = useQuery({
+        queryKey: ['products', page, searchQuery,statusFilter,categoryFilter],
+        queryFn: () => productsApi.getAll({ page, limit, search: searchQuery,aiSellingStatus:statusFilter,categoryId:categoryFilter,includeInactive:'true' }),
     });
 
     const { data: categories } = useQuery({
@@ -212,7 +205,7 @@ export default function ProductsPage() {
             currency: product.currency || 'BDT',
             stock: product.stock,
             images: product.images || [],
-            categoryId: product.categoryId,
+            categoryId: typeof product.categoryId==='object'?(product.categoryId as unknown as {_id:string})._id:product.categoryId,
             variants: product.variants || [],
             specs: product.specs || {},
             isActive: product.isActive,
@@ -224,139 +217,16 @@ export default function ProductsPage() {
         setIsDialogOpen(true);
     };
 
-    if (isLoading) return <div className="flex h-[80vh] items-center justify-center"><Loader2 className="animate-spin text-primary h-12 w-12" /></div>;
-
-    return (
-        <div className="flex flex-col h-full min-h-[90vh]">
-            <PageHeader
-                title="Product Inventory"
-                description="Manage your store's products and stock."
-                actions={
-                    <div className="flex gap-2"><Button asChild variant="outline"><Link href="/categories"><Layers className="mr-2 h-4 w-4"/>Categories</Link></Button><Button onClick={() => setIsDialogOpen(true)} className="flex items-center gap-2 bg-primary hover:bg-violet-600 text-white rounded-xl px-6 py-6 shadow-xl shadow-primary/20 transition-all hover:scale-[1.05] active:scale-95 text-sm font-bold">
-                        <Plus className="h-5 w-5" /> Add Product
-                    </Button></div>
-                }
-            />
-
-            <div className="py-8">
-                <div className="glass-card rounded-3xl overflow-hidden border-border shadow-premium">
-                    <div className="p-8 border-b border-border bg-muted/5">
-                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                            <div className="space-y-1">
-                                <h2 className="text-2xl font-black text-foreground tracking-tight">Product List</h2>
-                                <p className="text-sm text-muted-foreground font-medium">{pagination?.total || 0} products in catalog</p>
-                            </div>
-                            <div className="relative w-full md:w-96 group">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                <Input
-                                    placeholder="Search products..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="pl-12 h-14 bg-muted/10 border-border rounded-2xl focus:bg-muted/20 transition-all shadow-inner text-foreground placeholder:text-muted-foreground/50"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                    <CardContent className="p-0">
-                        {products.length > 0 ? (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="bg-muted/10 hover:bg-muted/10 border-b border-border">
-                                        <TableHead className="font-bold py-5 pl-8 text-muted-foreground uppercase text-[10px] tracking-widest">Product Info</TableHead>
-                                        <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Pricing</TableHead>
-                                        <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Stock</TableHead>
-                                        <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Status</TableHead>
-                                        <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest text-right pr-8">Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {products.map((p) => (
-                                        <TableRow key={p._id} className="group border-b border-border hover:bg-muted/5 transition-colors">
-                                            <TableCell className="py-6 pl-8">
-                                                <div className="flex items-center gap-5">
-                                                    <div className="h-14 w-14 rounded-2xl bg-white/5 overflow-hidden flex items-center justify-center border border-white/10 shadow-lg group-hover:scale-110 transition-transform">
-                                                        {p.images?.[0] ? (
-                                                            <SafeProductImage src={p.images[0]} alt={p.name} />
-                                                        ) : (
-                                                            <Package className="h-6 w-6 text-muted-foreground/30" />
-                                                        )}
-                                                    </div>
-                                                    <div className="flex flex-col min-w-0">
-                                                        <span className="font-bold  w-[300px] text-foreground text-base truncate">{p.name}</span>
-                                                        <span className="text-[10px] text-primary font-bold uppercase tracking-widest mt-0.5">{categories?.find(c => c._id === p.categoryId)?.name || 'General Access'}</span>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="py-6">
-                                                <span className="font-black text-foreground text-lg tracking-tight">{formatCurrency(p.basePrice, p.currency)}</span>
-                                            </TableCell>
-                                            <TableCell className="py-6">
-                                                <div className="flex flex-col gap-1">
-                                                    <div className={cn(
-                                                        "font-bold text-sm",
-                                                        typeof p.stock === 'number' && p.stock <= (p.lowStockThreshold || 5) ? "text-rose-400" : "text-foreground"
-                                                    )}>
-                                                        {stockLabel(p)}
-                                                        {typeof p.stock === 'number' && p.stock <= (p.lowStockThreshold || 5) && (
-                                                            <AlertTriangle className="h-3 w-3 inline ml-1 animate-pulse" />
-                                                        )}
-                                                    </div>
-                                                    <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter">{p.variants?.length || 0} variants</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="py-6">
-                                                <div className={cn(
-                                                    "inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
-                                                    p.isActive
-                                                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                                                        : "bg-muted text-muted-foreground border-border"
-                                                )}>
-                                                    <div className={cn("h-1.5 w-1.5 rounded-full", p.isActive ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground")} />
-                                                    {p.isActive ? 'Active' : 'Draft'}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="py-6 text-right pr-8">
-                                                <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
-                                                    <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-10 w-10 bg-secondary/50 border border-border text-foreground hover:text-primary hover:bg-secondary rounded-xl transition-all">
-                                                        <Edit className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" className="h-10 w-10 bg-secondary/50 border border-border text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all" onClick={() => {
-                                                        if (confirm('Are you sure you want to delete this product?')) deleteMutation.mutate(p._id);
-                                                    }}>
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        ) : (
-                            <div className="py-32 text-center space-y-6">
-                                <div className="h-24 w-24 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-white/10 shadow-2xl relative overflow-hidden group">
-                                    <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    <Package className="h-12 w-12 text-muted-foreground relative z-10" />
-                                </div>
-                                <div className="space-y-2">
-                                    <h3 className="text-xl font-bold text-foreground">Your catalog is empty</h3>
-                                    <p className="text-sm text-muted-foreground max-w-xs mx-auto">Start building your high-performance product inventory to enable AI grounding.</p>
-                                </div>
-                                <Button variant="outline" onClick={() => setIsDialogOpen(true)} className="rounded-2xl border-border bg-secondary/50 text-foreground hover:bg-primary hover:text-white hover:border-primary transition-all px-8 h-12">
-                                    <Plus className="h-5 w-5 mr-2" /> Add first product
-                                </Button>
-                            </div>
-                        )}
-                    </CardContent>
-                </div>
-            </div>
-
-            <Dialog open={isDialogOpen} onOpenChange={(open) => !open && resetForm()}>
-                <DialogContent className="max-w-4xl p-0 overflow-hidden border-border shadow-2xl rounded-3xl bg-background text-foreground">
+return (<div><PageHeader title="Products" description="Manage your products, inventory and control what your AI agent can sell." actions={<><WorkspaceSearch value={searchQuery} onChange={v=>{setSearchQuery(v);setPage(1);}} placeholder="Search products"/><Button variant="outline" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={15} className="mr-2"/>Filter</Button><Button onClick={()=>{resetForm();setIsDialogOpen(true);}}><Plus size={15} className="mr-2"/>Add Product</Button></>}/>
+{filtersOpen&&<div className="product-filters"><select aria-label="Filter by AI selling status" value={statusFilter} onChange={e=>{setStatusFilter(e.target.value);setPage(1);}}><option value="">All selling states</option><option value="active">Active</option><option value="limited">Limited</option><option value="disabled">Disabled</option></select><select aria-label="Filter by category" value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setPage(1);}}><option value="">All categories</option>{categories?.map(c=><option key={c._id} value={c._id}>{c.name}</option>)}</select><Button variant="ghost" onClick={()=>{setStatusFilter('');setCategoryFilter('');setPage(1);}}>Reset filters</Button><Button asChild variant="ghost"><Link href="/categories"><Layers size={14} className="mr-2"/>Manage Categories</Link></Button></div>}
+<div className="flex justify-between mb-4 text-xs text-muted-foreground"><span>{pagination?.total||0} products in your catalog</span><span>Inventory & AI selling control</span></div><ProductWorkspace products={products} loading={isLoading} error={isError} onAdd={()=>{resetForm();setIsDialogOpen(true);}} onEdit={openEdit} onDelete={id=>deleteMutation.mutate(id)}/><WorkspacePagination page={page} totalPages={pagination?.totalPages||1} onChange={setPage}/>
+<Dialog open={isDialogOpen} onOpenChange={(open) => {setIsDialogOpen(open);if(!open)resetForm();}}>
+                <DialogContent className="max-w-4xl p-0 overflow-hidden border-border shadow-2xl rounded-xl bg-background text-foreground">
                     <form onSubmit={handleSubmit} className="flex flex-col max-h-[90vh]">
-                        <DialogHeader className="p-8 bg-muted/5 border-b border-border">
+                        <DialogHeader className="p-6 bg-muted/5 border-b border-border">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <DialogTitle className="text-3xl font-black text-foreground tracking-tight">
+                                    <DialogTitle className="text-2xl font-semibold text-foreground tracking-tight">
                                         {editingProduct ? 'Edit Product' : 'Add Product'}
                                     </DialogTitle>
                                     <DialogDescription className="text-muted-foreground font-medium mt-1">
@@ -373,25 +243,25 @@ export default function ProductsPage() {
 
                         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
                             <div className="px-8 bg-secondary/20 border-b border-border">
-                                <TabsList className="h-16 bg-transparent gap-8 p-0">
-                                    <TabsTrigger value="general" className="relative h-16 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary font-bold px-0 transition-all text-sm uppercase tracking-widest">
+                                <TabsList className="h-12 bg-transparent gap-6 p-0">
+                                    <TabsTrigger value="general" className="relative h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary font-bold px-0 transition-all text-sm tracking-normal">
                                         General Info
                                     </TabsTrigger>
-                                    <TabsTrigger value="variants" className="relative h-16 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary font-bold px-0 transition-all text-sm uppercase tracking-widest">
+                                    <TabsTrigger value="variants" className="relative h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary font-bold px-0 transition-all text-sm tracking-normal">
                                         Variants
                                     </TabsTrigger>
-                                    <TabsTrigger value="specs" className="relative h-16 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary font-bold px-0 transition-all text-sm uppercase tracking-widest">
+                                    <TabsTrigger value="specs" className="relative h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary font-bold px-0 transition-all text-sm tracking-normal">
                                         Specifications
                                     </TabsTrigger>
-                                    <TabsTrigger value="settings" className="relative h-16 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary font-bold px-0 transition-all text-sm uppercase tracking-widest">
+                                    <TabsTrigger value="settings" className="relative h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary font-bold px-0 transition-all text-sm tracking-normal">
                                         Settings
                                     </TabsTrigger>
                                 </TabsList>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-8 scrollbar-hide">
+                            <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
                                 <TabsContent value="general" className="m-0 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-6">
                                             <div className="space-y-3">
                                                 <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Product Name</Label>
@@ -399,7 +269,7 @@ export default function ProductsPage() {
                                                     value={formData.name}
                                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                                     required
-                                                    className="h-14 bg-muted/30 border-border focus:bg-muted/50 rounded-2xl shadow-inner transition-all text-foreground placeholder:text-muted-foreground/60 px-6 font-medium"
+                                                    className="h-11 bg-muted/30 border-border focus:bg-muted/50 rounded-2xl  transition-all text-foreground placeholder:text-muted-foreground/60 px-6 font-medium"
                                                     placeholder="e.g. Wireless Gaming Headset"
                                                 />
                                             </div>
@@ -409,7 +279,7 @@ export default function ProductsPage() {
                                                     value={formData.categoryId}
                                                     onValueChange={val => setFormData({ ...formData, categoryId: val })}
                                                 >
-                                                    <SelectTrigger className="h-14 bg-white/[0.03] border-white/10 rounded-2xl focus:bg-white/[0.06] transition-all px-6">
+                                                    <SelectTrigger className="h-11 bg-white/[0.03] border-white/10 rounded-2xl focus:bg-white/[0.06] transition-all px-6">
                                                         <SelectValue placeholder="Select Category" />
                                                     </SelectTrigger>
                                                     <SelectContent className="rounded-2xl bg-popover border-border text-popover-foreground shadow-2xl">
@@ -426,14 +296,14 @@ export default function ProductsPage() {
                                                 value={formData.description}
                                                 onChange={e => setFormData({ ...formData, description: e.target.value })}
                                                 required
-                                                className="h-[156px] bg-muted/30 border-border focus:bg-muted/50 rounded-2xl shadow-inner p-6 transition-all resize-none text-foreground placeholder:text-muted-foreground/60 leading-relaxed font-medium"
+                                                className="h-[156px] bg-muted/30 border-border focus:bg-muted/50 rounded-2xl  p-6 transition-all resize-none text-foreground placeholder:text-muted-foreground/60 leading-relaxed font-medium"
                                                 placeholder="Enter a detailed description of the product..."
                                             />
                                         </div>
                                     </div>
                                     <div className="space-y-4">
                                         <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Product Images</Label>
-                                        <div className="bg-white/[0.02] border border-white/5 p-6 rounded-3xl">
+                                        <div className="bg-white/[0.02] border border-white/5 p-6 rounded-xl">
                                             <ImageUpload
                                                 value={formData.images || []}
                                                 onChange={(urls) => setFormData({ ...formData, images: urls })}
@@ -449,7 +319,7 @@ export default function ProductsPage() {
                                             <h4 className="text-xl font-bold text-foreground tracking-tight">Product Variants</h4>
                                             <p className="text-sm text-muted-foreground mt-1">Manage multiple versions for size, color, or bundle variations.</p>
                                         </div>
-                                        <Button type="button" onClick={addVariant} variant="outline" className="h-12 rounded-2xl border-dashed border-white/10 bg-white/[0.02] hover:bg-white/[0.05] text-muted-foreground hover:text-primary transition-all px-6 font-bold text-xs uppercase tracking-widest">
+                                        <Button type="button" onClick={addVariant} variant="outline" className="h-12 rounded-2xl border-dashed border-white/10 bg-white/[0.02] hover:bg-white/[0.05] text-muted-foreground hover:text-primary transition-all px-6 font-bold text-xs tracking-normal">
                                             <Plus className="h-4 w-4 mr-2" /> Add Variant
                                         </Button>
                                     </div>
@@ -460,7 +330,7 @@ export default function ProductsPage() {
                                                 <div key={variant.variantId} className="bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden group hover:bg-white/[0.03] transition-colors p-6">
                                                     <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
                                                         <div className="md:col-span-4 space-y-2">
-                                                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Identifier</Label>
+                                                            <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Identifier</Label>
                                                             <Input
                                                                 value={variant.name}
                                                                 onChange={e => updateVariant(index, { name: e.target.value })}
@@ -469,7 +339,7 @@ export default function ProductsPage() {
                                                             />
                                                         </div>
                                                         <div className="md:col-span-2 space-y-2">
-                                                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Price</Label>
+                                                            <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Price</Label>
                                                             <Input
                                                                 type="number"
                                                                 value={variant.price}
@@ -478,7 +348,7 @@ export default function ProductsPage() {
                                                             />
                                                         </div>
                                                         <div className="md:col-span-2 space-y-2">
-                                                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Stock</Label>
+                                                            <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Stock</Label>
                                                             <Input
                                                                 type="number"
                                                                 value={variant.stock ?? ''}
@@ -487,7 +357,7 @@ export default function ProductsPage() {
                                                             />
                                                         </div>
                                                         <div className="md:col-span-3 space-y-2">
-                                                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">SKU</Label>
+                                                            <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">SKU</Label>
                                                             <Input
                                                                 value={variant.sku}
                                                                 onChange={e => updateVariant(index, { sku: e.target.value })}
@@ -505,7 +375,7 @@ export default function ProductsPage() {
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="p-20 text-center bg-white/[0.01] rounded-3xl border border-dashed border-white/5">
+                                        <div className="p-20 text-center bg-white/[0.01] rounded-xl border border-dashed border-white/5">
                                             <Layers className="h-12 w-12 text-muted-foreground/20 mx-auto mb-4" />
                                             <p className="text-muted-foreground font-bold tracking-tight">No product variants defined. Base parameters will apply.</p>
                                         </div>
@@ -522,15 +392,15 @@ export default function ProductsPage() {
 
                                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 p-6 bg-white/[0.02] rounded-2xl border border-white/5">
                                         <div className="md:col-span-5 space-y-2">
-                                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Spec Name</Label>
+                                            <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Spec Name</Label>
                                             <Input value={specKey} onChange={e => setSpecKey(e.target.value)} placeholder="e.g. Color" className="h-12 bg-white/5 border-white/10 rounded-xl" />
                                         </div>
                                         <div className="md:col-span-5 space-y-2">
-                                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Spec Value</Label>
+                                            <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Spec Value</Label>
                                             <Input value={specValue} onChange={e => setSpecValue(e.target.value)} placeholder="e.g. Blue" className="h-12 bg-white/5 border-white/10 rounded-xl" />
                                         </div>
                                         <div className="md:col-span-2 pt-6">
-                                            <Button type="button" onClick={addSpec} className="w-full h-12 rounded-xl bg-primary text-white font-black text-xs uppercase tracking-widest hover:bg-violet-600 transition-all shadow-lg shadow-primary/20">Add</Button>
+                                            <Button type="button" onClick={addSpec} className="w-full h-12 rounded-xl bg-primary text-white font-black text-xs tracking-normal hover:bg-violet-600 transition-all shadow-lg shadow-primary/20">Add</Button>
                                         </div>
                                     </div>
 
@@ -549,9 +419,9 @@ export default function ProductsPage() {
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="p-20 text-center bg-white/[0.01] rounded-3xl border border-dashed border-white/5">
+                                        <div className="p-20 text-center bg-white/[0.01] rounded-xl border border-dashed border-white/5">
                                             <ListChecks className="h-12 w-12 text-muted-foreground/20 mx-auto mb-4" />
-                                            <p className="text-muted-foreground font-bold tracking-tight">Technical specification matrix is currently empty.</p>
+                                            <p className="font-bold tracking-tight text-muted-foreground">No technical specifications have been added yet.</p>
                                         </div>
                                     )}
                                 </TabsContent>
@@ -563,16 +433,16 @@ export default function ProductsPage() {
                                                 <h5 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/50 border-l-2 border-primary pl-4">Pricing & Stock</h5>
                                                 <div className="grid gap-6 sm:grid-cols-3">
                                                     <div className="space-y-3">
-                                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Base Price</Label>
-                                                        <Input type="number" value={formData.basePrice} onChange={e => setFormData({ ...formData, basePrice: Number(e.target.value) })} className="h-14 bg-white/[0.03] border-white/10 rounded-2xl" />
+                                                        <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Base Price</Label>
+                                                        <Input type="number" value={formData.basePrice} onChange={e => setFormData({ ...formData, basePrice: Number(e.target.value) })} className="h-11 bg-white/[0.03] border-white/10 rounded-2xl" />
                                                     </div>
                                                     <div className="space-y-3">
-                                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Currency</Label>
-                                                        <Select value={formData.currency || 'BDT'} onValueChange={currency => setFormData({ ...formData, currency })}><SelectTrigger className="h-14 rounded-2xl"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="BDT">BDT (৳)</SelectItem><SelectItem value="USD">USD ($)</SelectItem><SelectItem value="EUR">EUR (€)</SelectItem><SelectItem value="GBP">GBP (£)</SelectItem><SelectItem value="INR">INR (₹)</SelectItem></SelectContent></Select>
+                                                        <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Currency</Label>
+                                                        <Select value={formData.currency || 'BDT'} onValueChange={currency => setFormData({ ...formData, currency })}><SelectTrigger className="h-11 rounded-2xl"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="BDT">BDT (৳)</SelectItem><SelectItem value="USD">USD ($)</SelectItem><SelectItem value="EUR">EUR (€)</SelectItem><SelectItem value="GBP">GBP (£)</SelectItem><SelectItem value="INR">INR (₹)</SelectItem></SelectContent></Select>
                                                     </div>
                                                     <div className="space-y-3">
-                                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Total Stock</Label>
-                                                        <Input type="number" value={formData.stock ?? ''} onChange={e => setFormData({ ...formData, stock: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Leave blank if unknown" className="h-14 bg-white/[0.03] border-white/10 rounded-2xl" />
+                                                        <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Total Stock</Label>
+                                                        <Input type="number" value={formData.stock ?? ''} onChange={e => setFormData({ ...formData, stock: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Leave blank if unknown" className="h-11 bg-white/[0.03] border-white/10 rounded-2xl" />
                                                     </div>
                                                 </div>
                                             </div>
@@ -580,8 +450,8 @@ export default function ProductsPage() {
                                             <div className="space-y-6">
                                                 <h5 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/50 border-l-2 border-primary pl-4">Alerts</h5>
                                                 <div className="space-y-3">
-                                                    <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Low Stock Threshold</Label>
-                                                    <Input type="number" value={formData.lowStockThreshold} onChange={e => setFormData({ ...formData, lowStockThreshold: Number(e.target.value) })} className="h-14 bg-white/[0.03] border-white/10 rounded-2xl" />
+                                                    <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Low Stock Threshold</Label>
+                                                    <Input type="number" value={formData.lowStockThreshold} onChange={e => setFormData({ ...formData, lowStockThreshold: Number(e.target.value) })} className="h-11 bg-white/[0.03] border-white/10 rounded-2xl" />
                                                 </div>
                                             </div>
                                         </div>
@@ -614,8 +484,8 @@ export default function ProductsPage() {
                                                 </div>
 
                                                 <div className="space-y-3 pt-4">
-                                                    <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Warranty (Months)</Label>
-                                                    <Input type="number" value={formData.warrantyMonths} onChange={e => setFormData({ ...formData, warrantyMonths: Number(e.target.value) })} className="h-14 bg-white/[0.03] border-white/10 rounded-2xl" />
+                                                    <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Warranty (Months)</Label>
+                                                    <Input type="number" value={formData.warrantyMonths} onChange={e => setFormData({ ...formData, warrantyMonths: Number(e.target.value) })} className="h-11 bg-white/[0.03] border-white/10 rounded-2xl" />
                                                 </div>
                                             </div>
                                         </div>
@@ -624,11 +494,11 @@ export default function ProductsPage() {
                             </div>
                         </Tabs>
 
-                        <div className="p-8 bg-muted/20 border-t border-border flex justify-between items-center">
+                        {(createMutation.isError||updateMutation.isError)&&<p role="alert" className="px-6 text-sm text-destructive">Could not save product. Check required fields, category and administrator access.</p>}<div className="p-6 bg-muted/20 border-t border-border flex justify-between items-center">
                             <Button type="button" variant="ghost" onClick={resetForm} className="text-muted-foreground/50 hover:text-foreground font-black uppercase text-[10px] tracking-[0.2em] transition-colors">Clear Form</Button>
                             <div className="flex gap-4">
-                                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="h-14 rounded-2xl border-border bg-transparent text-foreground px-8 font-bold hover:bg-accent">Cancel</Button>
-                                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="h-14 bg-primary text-primary-foreground rounded-2xl px-12 font-black uppercase tracking-widest shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50">
+                                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="h-11 rounded-2xl border-border bg-transparent text-foreground px-8 font-bold hover:bg-accent">Cancel</Button>
+                                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="h-11 bg-primary text-primary-foreground rounded-2xl px-12 font-black tracking-normal shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50">
                                     {(createMutation.isPending || updateMutation.isPending) ? (
                                         <Loader2 className="h-5 w-5 animate-spin" />
                                     ) : (

@@ -9,7 +9,11 @@ describe('Meta Page credential protection', () => {
         const encrypted = encryptMetaAccessToken(token);
         expect(encrypted).not.toContain(token);
         expect(decryptMetaAccessToken(encrypted)).toBe(token);
-        expect(() => decryptMetaAccessToken(`${encrypted.slice(0, -1)}x`)).toThrow('could not be decrypted');
+        const parts = encrypted.split('.');
+        const tampered = Buffer.from(parts[3], 'base64url');
+        tampered[0] ^= 1; // Always change a decoded byte, not a potentially identical encoding character.
+        parts[3] = tampered.toString('base64url');
+        expect(() => decryptMetaAccessToken(parts.join('.'))).toThrow('could not be decrypted');
     });
     it('redacts bearer, query, and EAA-shaped secrets', () => {
         const shapedToken = ['E', 'AA', 'abcdefghijklmnop'].join('');

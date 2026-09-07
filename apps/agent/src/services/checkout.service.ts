@@ -74,6 +74,7 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
                     : { 'variants.sku': item.sku };
                 const product = await Product.findOne(selector).session(session);
                 if (!product) throw new OrderCreationError('Product not found');
+                if(product.isActive===false || product.aiSellingStatus==='disabled') throw new OrderCreationError('Sorry, this product is currently unavailable. I can help you find other available products.');
 
                 const variant = item.variantId
                     ? product.variants.find((candidate) => candidate.variantId === item.variantId)
@@ -81,6 +82,8 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
                       ? product.variants.find((candidate) => candidate.sku === item.sku)
                       : undefined;
 
+                if((item.variantId || item.sku) && product.variants.length && !variant) throw new OrderCreationError('Product variant not found');
+                if(variant?.isActive===false) throw new OrderCreationError('Product variant is unavailable');
                 const unitPrice = variant?.price ?? product.basePrice;
                 const sku = variant?.sku || item.sku || product.slug;
                 const lineSubtotal = unitPrice * quantity;
@@ -88,7 +91,7 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
                 const stockUpdate = variant
                     ? await Product.findOneAndUpdate(
                           {
-                              _id: product._id,
+                              _id: product._id, isActive:{$ne:false}, aiSellingStatus:{$ne:'disabled'},
                               variants: {
                                   $elemMatch: {
                                       variantId: variant.variantId,
@@ -100,7 +103,7 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
                           { new: true, session }
                       )
                     : await Product.findOneAndUpdate(
-                          { _id: product._id, stock: { $gte: quantity } },
+                          { _id: product._id, isActive:{$ne:false}, aiSellingStatus:{$ne:'disabled'}, stock: { $gte: quantity } },
                           { $inc: { stock: -quantity } },
                           { new: true, session }
                       );

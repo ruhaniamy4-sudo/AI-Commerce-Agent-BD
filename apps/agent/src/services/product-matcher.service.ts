@@ -52,7 +52,7 @@ export async function matchProductsWithRAG(params: ProductMatchParams) {
 
         // Step 2: Fetch products with embeddings (active products only)
         const query: any = {
-            isActive: true,
+            isActive: true, aiSellingStatus: { $ne: 'disabled' },
             $or: [
                 { imageEmbedding: { $exists: true, $ne: [] } },
                 { imageEmbeddings: { $elemMatch: { embedding: { $exists: true, $ne: [] } } } },
@@ -154,7 +154,7 @@ export async function matchProductsWithImageContext(params: any) {
     } = params;
 
     try {
-        const query: any = { isActive: true };
+        const query: any = { isActive: true, aiSellingStatus: { $ne: 'disabled' } };
 
         // Combine search terms
         const searchTerms = [
@@ -188,7 +188,7 @@ export async function matchProductsWithImageContext(params: any) {
 
     } catch (error) {
         console.error('Error matching products:', error);
-        return await Product.find({ isActive: true })
+        return await Product.find({ isActive: true, aiSellingStatus: { $ne: 'disabled' } })
             .sort({ createdAt: -1 })
             .limit(limit)
             .lean();

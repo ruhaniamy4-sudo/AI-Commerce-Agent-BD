@@ -120,6 +120,12 @@ describe('order creation and stock safety', () => {
         expect(Customer.updateOne).not.toHaveBeenCalled();
     });
 
+    it('blocks disabled products before stock or order writes',async()=>{
+        vi.mocked(Product.findOne).mockReturnValue({session:vi.fn().mockResolvedValue({_id:productId,name:'Paused product',aiSellingStatus:'disabled',stock:5,variants:[]})} as never);
+        const update=vi.spyOn(Product,'findOneAndUpdate');
+        await expect(asTenant(()=>createOrderWithStock({businessId,customerId,items:[{productId,quantity:1}],shippingAddress:{}}))).rejects.toThrow('currently unavailable');
+        expect(update).not.toHaveBeenCalled();expect(Order.prototype.save).not.toHaveBeenCalled();
+    });
     it('returns the existing order for a repeated action without touching stock', async () => {
         const existingOrder = { _id: new mongoose.Types.ObjectId(), orderNumber: 'ORD-EXISTING' };
         vi.spyOn(Order, 'findOne').mockResolvedValue(existingOrder as never);

@@ -42,7 +42,7 @@ async function conversationPayload(req: AuthenticatedRequest, conversation: Inst
         messages: messages.map((message: any) => ({
             id: message._id, role: message.role, content: message.role === 'assistant' ? normalizeAssistantText(message.content) : String(message.content || ''), createdAt: message.createdAt,
             imageUrl: message.attachments?.find((attachment: any) => String(attachment.type || '').startsWith('image/'))?.url,
-            products: message.metadata?.products || [],
+            products: message.metadata?.products || [], intent: message.metadata?.intent,
         })),
         usage: {
             aiReplies: messages.filter((message: any) => message.role === 'assistant').length,
@@ -57,6 +57,12 @@ async function conversationPayload(req: AuthenticatedRequest, conversation: Inst
             totalTokens: usageRows.reduce((sum, row) => sum + (row.totalTokens || 0), 0),
             averageTokensPerReply: messages.filter((message: any) => message.role === 'assistant').length ? Math.round(usageRows.reduce((sum, row) => sum + (row.totalTokens || 0), 0) / messages.filter((message: any) => message.role === 'assistant').length) : 0,
             estimatedCost: usageRows.some((row) => row.estimatedCost === null) ? null : usageRows.reduce((sum, row) => sum + (row.estimatedCost || 0), 0),
+        },
+        context: {
+            salesStage: conversation.salesStage || 'DISCOVERY',
+            intentScore: conversation.metadata?.salesIntelligence?.intentScore || 0,
+            nextBestAction: conversation.metadata?.salesIntelligence?.nextBestAction || 'Ask a customer question',
+            knowledgeUsed: usageRows.some((row) => row.operationType === 'rag-assisted-chat'),
         },
     };
 }

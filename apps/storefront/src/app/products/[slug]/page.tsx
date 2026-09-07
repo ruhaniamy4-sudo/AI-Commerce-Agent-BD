@@ -1,5 +1,6 @@
 import { getProduct } from '@/lib/api';
-import { Check, Truck, Shield } from 'lucide-react';
+import { ArrowLeft, Shield } from 'lucide-react';
+import Link from 'next/link';
 import { AddToCartButton } from '@/components/add-to-cart';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
@@ -29,97 +30,34 @@ export default async function ProductPage({ params }: ProductPageProps) {
         notFound();
     }
 
-    return (
-        <div className="min-h-screen bg-slate-50 py-12">
-            <div className="container mx-auto px-6">
-                <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="grid grid-cols-1 lg:grid-cols-2">
-                        {/* Image Gallery */}
-                        <div className="p-8 bg-slate-100/50 border-b lg:border-b-0 lg:border-r border-slate-200 flex items-center justify-center">
-                            <div className="relative aspect-square w-full max-w-lg rounded-2xl overflow-hidden bg-white shadow-sm ring-1 ring-slate-900/5">
-                                {product.images[0] ? (
-                                    <Image
-                                        src={product.images[0]}
-                                        alt={product.name}
-                                        fill
-                                        className="object-cover"
-                                        priority
-                                    />
-                                ) : (
-                                    <div className="flex items-center justify-center w-full h-full text-slate-400">No Image</div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Details */}
-                        <div className="p-8 lg:p-12 flex flex-col">
-                            <div className="mb-auto">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold uppercase tracking-wider">
-                                        {product.isActive ? 'In Stock' : 'Unavailable'}
-                                    </span>
-                                    {product.isFeatured && (
-                                        <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold uppercase tracking-wider">
-                                            Featured
-                                        </span>
-                                    )}
-                                </div>
-                                <h1 className="text-3xl lg:text-4xl font-extrabold text-slate-900 mb-4">{product.name}</h1>
-
-                                <div className="flex items-baseline gap-4 mb-8">
-                                    <span className="text-4xl font-bold text-slate-900">৳{product.basePrice}</span>
-                                    {/* Placeholder for discount logic if we had distinct price fields */}
-                                </div>
-
-                                <div className="prose prose-slate mb-8 max-w-none text-slate-600">
-                                    <p>{product.description}</p>
-                                </div>
-
-                                <div className="space-y-4 mb-8">
-                                    <div className="flex items-center gap-3 text-sm text-slate-600">
-                                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                                            <Check className="w-4 h-4" />
-                                        </div>
-                                        <span>Official Warranty ({product.warrantyMonths} Months)</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-sm text-slate-600">
-                                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                                            <Truck className="w-4 h-4" />
-                                        </div>
-                                        <span>Fast Delivery within 3-5 days</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-sm text-slate-600">
-                                        <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
-                                            <Shield className="w-4 h-4" />
-                                        </div>
-                                        <span>{product.returnDays} Day Return Policy</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Actions */}
-                            <div className="mt-8 pt-8 border-t border-slate-100">
-                                <AddToCartButton product={product} className="w-full bg-slate-900 text-white rounded-xl py-4 font-bold text-lg hover:bg-blue-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 active:scale-95" />
-                            </div>
-                        </div>
+    const unavailable = product.stock === 0 || product.availability === 'out_of_stock';
+    const availability = unavailable ? 'Out of stock' : product.availability === 'preorder' ? 'Preorder' : product.stock != null && product.stock > 0 || product.availability === 'in_stock' ? 'In stock' : 'Availability on request';
+    const currency = product.currency || 'BDT';
+    const price = new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(product.basePrice);
+    return <main className="sp-light">
+        <div className="sp-wrap py-8 md:py-12">
+            <Link href="/shop" className="mb-8 inline-flex items-center gap-2 text-sm text-[#716880]"><ArrowLeft size={16} />Back to shop</Link>
+            <div className="grid gap-8 lg:grid-cols-2 lg:gap-16">
+                <section aria-label="Product images" className="min-w-0">
+                    <div className="relative aspect-square overflow-hidden rounded-3xl border border-[#e5e0ef] bg-white">
+                        {product.images[0] ? <Image src={product.images[0]} alt={product.name} fill sizes="(max-width: 1024px) 100vw, 50vw" className="object-contain p-8" priority /> : <div className="grid h-full place-items-center text-sm text-[#82788f]">No image available</div>}
                     </div>
-                </div>
-
-                {/* Specs Section */}
-                {Object.keys(product.specs || {}).length > 0 && (
-                    <div className="mt-12 max-w-4xl mx-auto">
-                        <h2 className="text-2xl font-bold text-slate-900 mb-6">Technical Specifications</h2>
-                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
-                            {Object.entries(product.specs).map(([key, value]) => (
-                                <div key={key} className="grid grid-cols-3 p-4">
-                                    <div className="col-span-1 font-medium text-slate-500">{key}</div>
-                                    <div className="col-span-2 text-slate-900">{String(value)}</div>
-                                </div>
-                            ))}
-                        </div>
+                    {product.images.length > 1 && <div className="mt-4 grid grid-cols-4 gap-3">{product.images.slice(1,5).map((src,index) => <div key={index} className="relative aspect-square overflow-hidden rounded-xl border border-[#e5e0ef] bg-white"><Image src={src} alt={`${product.name} · view ${index+2}`} fill sizes="150px" className="object-contain p-2" /></div>)}</div>}
+                </section>
+                <section className="py-2 lg:py-6">
+                    <p className="sp-eyebrow">Connected storefront</p>
+                    <h1 className="mt-4 break-words text-3xl font-semibold leading-tight tracking-tight md:text-4xl">{product.name}</h1>
+                    <div className="mt-5 flex flex-wrap gap-2"><span className="rounded-full bg-[#e9e2f4] px-3 py-1.5 text-xs text-[#624586]">{availability}</span>{product.isFeatured && <span className="rounded-full border border-[#e0d6ef] px-3 py-1.5 text-xs">Featured</span>}</div>
+                    <p className="my-7 text-3xl font-semibold tracking-tight">{price}</p>
+                    <p className="whitespace-pre-line text-sm leading-7 text-[#70677e]">{product.description}</p>
+                    <div className="mt-8 border-t border-[#e2dcec] pt-7">
+                        <AddToCartButton product={product} className="sp-button sp-button-primary w-full disabled:cursor-not-allowed disabled:opacity-40">{unavailable ? 'Out of stock' : 'Add to cart'}</AddToCartButton>
+                        <p className="mt-3 text-center text-xs leading-6 text-[#82788f]">Delivery and payment details are confirmed at checkout.</p>
                     </div>
-                )}
+                    {(product.warrantyMonths > 0 || (product.returnDays ?? 0) > 0) && <div className="mt-7 flex gap-3 rounded-2xl border border-[#e2dcec] p-5 text-sm text-[#70677e]"><Shield size={18} className="shrink-0 text-[#8054f6]" /><div>{product.warrantyMonths > 0 && <p>{product.warrantyMonths}-month warranty</p>}{(product.returnDays ?? 0) > 0 && <p className="mt-1">{product.returnDays}-day return period</p>}</div></div>}
+                </section>
             </div>
+            {Object.keys(product.specs || {}).length > 0 && <section className="mt-12 max-w-4xl pb-8"><p className="sp-eyebrow">The details</p><h2 className="mb-6 mt-3 text-2xl font-semibold">Specifications</h2><dl className="overflow-hidden rounded-2xl border border-[#e2dcec] bg-white">{Object.entries(product.specs).map(([key,value]) => <div key={key} className="grid gap-2 border-b border-[#eeeaf4] p-5 last:border-0 sm:grid-cols-[1fr_2fr]"><dt className="break-words text-sm text-[#82788f]">{key}</dt><dd className="break-words text-sm">{String(value)}</dd></div>)}</dl></section>}
         </div>
-    );
+    </main>;
 }

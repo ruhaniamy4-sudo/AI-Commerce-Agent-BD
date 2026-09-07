@@ -60,6 +60,7 @@ function productCandidateQuery(query: QueryIntelligence): Record<string, any> {
         ...(regexes.length ? [
             { name: { $in: regexes } },
             { description: { $in: regexes } },
+            { 'aiKnowledge.question': { $in: regexes } },
             { compatibilityTags: { $in: usefulTerms } },
             { 'variants.name': { $in: regexes } },
         ] : []),
@@ -72,7 +73,7 @@ function productCandidateQuery(query: QueryIntelligence): Record<string, any> {
             { salePrice: null, basePrice: { $lte: query.budgetMax } },
         ],
     });
-    return { isActive: true, ...(constraints.length ? { $and: constraints } : {}) };
+    return { isActive: true, aiSellingStatus: { $ne: 'disabled' }, ...(constraints.length ? { $and: constraints } : {}) };
 }
 
 function knowledgeCandidateQuery(query: QueryIntelligence): Record<string, any> {
@@ -113,7 +114,7 @@ export const retrieveContext = async (
         Knowledge.find(knowledgeCandidateQuery(query)).select('title content type knowledgeDomain sourcePriority isPinned merchantConfirmed +intelligence').limit(Math.max(topK * 3, 6)).lean(),
         Product.find(productCandidateQuery(query))
             .limit(Math.max(topK * 6, 12))
-            .select('name description basePrice salePrice stock availability brand specs variants compatibilityTags isFeatured +intelligence merchantConfirmed updatedAt')
+            .select('aiSellingStatus aiKnowledge name description basePrice salePrice stock availability brand specs variants compatibilityTags isFeatured +intelligence merchantConfirmed updatedAt')
             .lean(),
         Offering.find({ status: 'active', merchantConfirmed: { $ne: false }, ...(offeringTerms.length ? { $or: [{ name: { $in: offeringTerms } }, { description: { $in: offeringTerms } }, { category: { $in: offeringTerms } }] } : {}) })
             .limit(Math.max(topK * 3, 6)).lean(),
@@ -166,6 +167,9 @@ export const formatContextPack = (context: RAGContext): string => JSON.stringify
     },
     canonical_catalog_matches: context.catalogHits.map((product) => ({
         authority: 'CANONICAL_CURRENT_PRODUCT',
+        ai_selling_status: product.aiSellingStatus || 'active',
+        selling_instruction: product.aiSellingStatus==='limited'?'Verify live stock for the requested variant before confirming availability or accepting an order.':'Only accept orders after the stock check succeeds.',
+        approved_product_answers: (product.aiKnowledge || []).slice(0,6),
         match_kind: product._matchKind,
         name: refineDisplayText(product.name),
         description: refineDisplayText(product.description).slice(0, 240),
@@ -215,6 +219,6 @@ export function enforceContextBudget(serialized: string, maximumEstimatedTokens 
         value.canonical_offering_matches = (value.canonical_offering_matches || []).slice(0, 3).map((entry: any) => ({ ...entry, description: String(entry.description || '').slice(0, 180) }));
         const compact = JSON.stringify(value);
         if (Math.ceil(compact.length / 4) <= maximumEstimatedTokens) return compact;
-        return JSON.stringify({ query_understanding: value.query_understanding, canonical_catalog_matches: value.canonical_catalog_matches.map((entry: any) => ({ authority: entry.authority, name: entry.name, price: entry.price, sale_price: entry.sale_price, stock: entry.stock, availability: entry.availability, key_facts: entry.key_facts })), canonical_offering_matches: value.canonical_offering_matches, approved_knowledge: value.approved_knowledge, response_constraints: value.response_constraints });
+        return JSON.stringify({ query_understanding: value.query_understanding, canonical_catalog_matches: value.canonical_catalog_matches.map((entry: any) => ({ ai_selling_status:entry.ai_selling_status,selling_instruction:entry.selling_instruction,approved_product_answers:(entry.approved_product_answers||[]).slice(0,2),authority: entry.authority, name: entry.name, price: entry.price, sale_price: entry.sale_price, stock: entry.stock, availability: entry.availability, key_facts: entry.key_facts })), canonical_offering_matches: value.canonical_offering_matches, approved_knowledge: value.approved_knowledge, response_constraints: value.response_constraints });
     } catch { return '{}'; }
 }

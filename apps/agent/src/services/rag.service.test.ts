@@ -86,7 +86,7 @@ describe('targeted RAG limits', () => {
         noOfferings();
         vi.spyOn(Customer, 'findOne').mockReturnValue({ lean: vi.fn().mockResolvedValue(null) } as never);
         vi.spyOn(Knowledge, 'find').mockReturnValue(knowledgeResult([{ title: 'Old catalog note', content: 'Black shirt was 1200', type: 'GUIDE', merchantConfirmed: true }]) as never);
-        const product = { name: 'Black Shirt', description: 'Black cotton shirt', basePrice: 1490, stock: 2, availability: 'in_stock', specs: {}, variants: [], merchantConfirmed: true };
+        const product = { aiSellingStatus:'limited',aiKnowledge:[{question:'Material?',answer:'Cotton'}],name: 'Black Shirt', description: 'Black cotton shirt', basePrice: 1490, stock: 2, availability: 'in_stock', specs: {}, variants: [], merchantConfirmed: true };
         vi.spyOn(Product, 'find').mockReturnValue(productResult([{ ...product, intelligence: buildProductSearchProfile(product) }]) as never);
         const businessId = '507f1f77bcf86cd799439011';
         const result = await withTenantContext({ businessId, userId: 'u', membershipId: 'm', role: 'Staff' }, () =>
@@ -94,7 +94,7 @@ describe('targeted RAG limits', () => {
         );
         const packed = JSON.parse(formatContextPack(result));
         expect(packed.trust_order[0]).toBe('canonical_product_service_inventory');
-        expect(packed.canonical_catalog_matches[0]).toMatchObject({ price: 1490, stock: 2, authority: 'CANONICAL_CURRENT_PRODUCT' });
+        expect(packed.canonical_catalog_matches[0]).toMatchObject({ price: 1490, stock: 2, authority: 'CANONICAL_CURRENT_PRODUCT',ai_selling_status:'limited',approved_product_answers:[{question:'Material?',answer:'Cotton'}] });
     });
 
     it('retrieves budget-only discovery and labels a factual alternative when an exact attribute is unavailable', async () => {

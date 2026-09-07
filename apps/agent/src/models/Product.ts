@@ -49,6 +49,9 @@ export interface IProduct extends Document {
     metaDescription?: string;
     isActive: boolean;
     isFeatured: boolean;
+    aiSellingStatus: 'active' | 'limited' | 'disabled';
+    aiSellingReason?: string;
+    aiKnowledge: Array<{question:string;answer:string}>;
 
     // Inventory alerts
     lowStockThreshold: number;
@@ -150,6 +153,9 @@ const ProductSchema = new Schema(
         metaDescription: { type: String },
         isActive: { type: Boolean, default: true, index: true },
         isFeatured: { type: Boolean, default: false, index: true },
+        aiSellingStatus: {type:String,enum:['active','limited','disabled'],default:'active',index:true},
+        aiSellingReason: {type:String,enum:['Out of Stock','Temporarily unavailable','Discontinued','']},
+        aiKnowledge: [{question:{type:String,maxlength:300},answer:{type:String,maxlength:2000}}],
 
         lowStockThreshold: { type: Number, default: 10 },
         salePrice: { type: Number, min: 0 },

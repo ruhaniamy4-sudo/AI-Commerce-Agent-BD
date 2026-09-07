@@ -1,0 +1,165 @@
+@import "./hero.css";
+
+.fig-home {
+  overflow: clip;
+}
+.fig-home h1,
+.fig-home h2 {
+  text-wrap: balance;
+}
+.sales-scroll-story {
+  position: relative;
+  padding: 125px 0 130px;
+  text-align: center;
+  background:
+    radial-gradient(ellipse at 50% 100%, #30184142, transparent 70%), #090a16;
+  color: #e6dcef;
+}
+.sales-scroll-story .sales-eyebrow {
+  justify-content: center;
+  color: #a387bd;
+}
+.sales-scroll-story h2 {
+  max-width: 920px;
+  margin: 30px auto 27px;
+  font-size: clamp(36px, 4.3vw, 60px);
+  letter-spacing: -0.05em;
+  line-height: 1.16;
+}
+.sales-scroll-story h2 > span {
+  display: inline;
+}
+.sales-scroll-story .sp-wrap > p:last-child {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #95859f;
+}
+.fig-home .fig-capabilities {
+  padding-top: 35px;
+}
+.fig-home .fig-capability-grid {
+  border-radius: 16px;
+}
+.fig-home .fig-section-heading .fig-kicker {
+  font-size: 10px;
+}
+.fig-home .fig-capability-grid p,
+.fig-home .fig-journey-list p,
+.fig-home .fig-product-panel > p:not(.fig-kicker),
+.fig-home .fig-trust-points p {
+  font-size: 14px;
+}
+.fig-home .fig-journey-list h3 {
+  font-size: 21px;
+}
+.fig-home .fig-trust-points h3 {
+  font-size: 16px;
+}
+.fig-home .fig-trust-points {
+  gap: 15px;
+}
+.fig-home .fig-trust-points article {
+  padding: 23px;
+}
+.fig-home .fig-product-panel {
+  min-height: 545px;
+}
+.fig-home .fig-primary,
+.fig-home .fig-secondary,
+.fig-home .fig-text-link {
+  font-size: 12px;
+}
+.fig-home .fig-interactive > nav button {
+  font-size: 12px;
+  min-height: 44px;
+}
+.fig-home .fig-live-chat > p {
+  font-size: 13px;
+}
+.fig-home .fig-live-chat header b {
+  font-size: 13px;
+}
+.fig-home .fig-live-chat header small {
+  font-size: 10px;
+}
+.fig-home .fig-interactive-body > aside li {
+  font-size: 11px;
+}
+.fig-home .fig-interactive-body {
+  min-height: 485px;
+}
+.fig-home .fig-faq {
+  padding: 100px 0;
+}
+.fig-home .fig-faq .reset-faq h2 {
+  font-size: clamp(34px, 3.5vw, 48px);
+  max-width: 370px;
+  margin-bottom: 20px;
+}
+.fig-home .fig-faq .reset-faq > div > p:last-child {
+  color: #787080;
+  font-size: 14px;
+  max-width: 340px;
+}
+.fig-home .fig-faq summary {
+  align-items: center;
+  padding-block: 3px;
+}
+.fig-home .fig-faq summary svg {
+  transition: transform 0.3s;
+  flex-shrink: 0;
+}
+.fig-home .fig-faq details[open] summary svg {
+  transform: rotate(45deg);
+}
+
+.fig-home .fig-capabilities {
+  padding-top: 80px;
+  border-radius: 28px 28px 0 0;
+}
+@media (max-width: 600px) {
+  .sales-scroll-story {
+    padding: 80px 0;
+  }
+  .sales-scroll-story h2 {
+    margin-block: 24px;
+    font-size: 36px;
+    line-height: 1.18;
+  }
+  .sales-scroll-story .sp-wrap > p:last-child {
+    font-size: 13px;
+  }
+  .sales-scroll-story .sales-eyebrow {
+    font-size: 7px;
+  }
+  .fig-home .fig-capabilities {
+    padding-top: 65px;
+  }
+  .fig-home .fig-section-heading h2 {
+    font-size: 35px;
+  }
+  .fig-home .fig-capability-grid p,
+  .fig-home .fig-journey-list p,
+  .fig-home .fig-product-panel > p:not(.fig-kicker),
+  .fig-home .fig-trust-points p {
+    font-size: 13px;
+  }
+  .fig-home .fig-product-panel {
+    min-height: 505px;
+  }
+  .fig-home .fig-faq {
+    padding: 70px 0;
+  }
+  .fig-home .fig-interactive > nav button {
+    font-size: 10px;
+    padding-inline: 11px;
+  }
+  .fig-home .fig-live-chat > p {
+    font-size: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sales-scroll-story h2 > span {
+    opacity: 1 !important;
+  }
+}

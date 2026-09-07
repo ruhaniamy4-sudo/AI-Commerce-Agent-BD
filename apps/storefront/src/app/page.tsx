@@ -1,3 +1,4 @@
-import { HomeExperience } from "@/components/home-experience";
+import "./home.css";
+import { ChatAiHome } from "@/components/chat-ai-home";
 
-export default function HomePage() { return <HomeExperience />; }
+export default function HomePage() { return <ChatAiHome />; }
