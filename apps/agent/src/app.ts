@@ -25,6 +25,7 @@ import platformAuthRoutes from './api/platform-auth.routes';
 import platformAdminRoutes from './api/platform-admin.routes';
 import billingRoutes from './api/billing.routes';
 import intelligenceRoutes from './api/intelligence.routes';
+import whatsappRoutes, {whatsappPublicRouter} from './api/whatsapp.routes';
 import dashboardRoutes from './api/dashboard.routes';
 import trainingRoutes from './api/training.routes';
 import { authenticatePlatformAdmin } from './auth/middleware';
@@ -81,7 +82,7 @@ app.use(cors({
 app.use(express.json({
     limit: '256kb',
     verify(req, _res, buffer) {
-        if (req.url?.startsWith('/facebook')) {
+        if (req.url?.startsWith('/facebook') || req.url?.startsWith('/whatsapp')) {
             (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
         }
     },
@@ -109,6 +110,8 @@ app.use('/admin', authenticate, adminRoutes);
 app.use('/api', authenticate, productsRoutes, ordersRoutes, customersRoutes, aiUsageRoutes, courierRoutes);
 app.use('/api', authenticate, billingRoutes);
 app.use('/api', authenticate, intelligenceRoutes);
+app.use('/api', authenticate, whatsappRoutes);
+app.use('/whatsapp', whatsappPublicRouter);
 app.use('/api', authenticate, metaConnectionRoutes);
 app.use('/api', authenticate, dashboardRoutes);
 app.use('/api/training', authenticate, trainingRoutes);

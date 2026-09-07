@@ -5,7 +5,7 @@ const leaseMilliseconds = 5 * 60 * 1000;
 
 export async function registerInboundEvent(params: {
     eventId: string;
-    source: 'facebook' | 'web' | 'test';
+    source: 'facebook' | 'web' | 'test' | 'whatsapp';
     psid: string;
     payload: unknown;
 }) {

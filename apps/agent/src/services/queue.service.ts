@@ -36,7 +36,10 @@ export const setupWorker = () => {
     const connection = requireRedisConfig();
     const worker = new Worker('webhook-events', async (job) => {
         if (!job.data.businessId) throw new Error('Webhook job is missing businessId');
-        await withTenantContext({ businessId: job.data.businessId, userId: 'facebook-system', membershipId: 'facebook-system', role: 'Staff' }, () => processWebhookEvent(job.data));
+        await withTenantContext({ businessId: job.data.businessId, userId: 'channel-system', membershipId: 'channel-system', role: 'Staff' }, async () => {
+            if(job.name==='process-whatsapp-event')return (await import('../intelligence/whatsapp')).processWhatsAppMessage(job.data);
+            return processWebhookEvent(job.data);
+        });
     }, { connection });
     worker.on('completed', (job) => console.log(`Webhook job ${job.id} completed`));
     worker.on('failed', (job, error) => console.error(`Webhook job ${job?.id} failed: ${error.message}`));

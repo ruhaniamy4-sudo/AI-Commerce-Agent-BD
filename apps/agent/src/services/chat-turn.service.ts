@@ -32,7 +32,7 @@ export interface ChatTurnInput {
     conversationId?: string;
     imageUrl?: string;
     eventIdentifier?: string;
-    source?: 'web' | 'test';
+    source?: 'web' | 'test' | 'whatsapp';
 }
 
 export async function processChatTurn(input: ChatTurnInput) {
@@ -160,7 +160,7 @@ async function runProcessChatTurn(input: ChatTurnInput) {
     }
     await executeAgentAction({ businessId: input.businessId, conversationId: convId, psid: conversation?.psid, response: agentResponse, eventIdentifier });
     const reply = agentResponse.message_text;
-    if (reply) await saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source, products: agentResponse.suggested_products || [] });
+    if (reply) await saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source, products: agentResponse.suggested_products || [], intent: agentResponse.intent });
 
     // Persist salesStage on the LLM path (agent.ts already wrote it, but we sync here if agent was skipped via checkpoint)
     const isOrderAction = agentResponse.action === 'create_order';

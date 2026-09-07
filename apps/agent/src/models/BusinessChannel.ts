@@ -2,7 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IBusinessChannel extends Document {
     businessId: mongoose.Types.ObjectId;
-    platform: 'facebook' | 'web';
+    platform: 'facebook' | 'web' | 'whatsapp';
     externalId: string;
     name: string;
     status: 'active' | 'disabled';
@@ -25,7 +25,7 @@ export interface IBusinessChannel extends Document {
 
 const BusinessChannelSchema = new Schema<IBusinessChannel>({
     businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true },
-    platform: { type: String, enum: ['facebook', 'web'], required: true },
+    platform: { type: String, enum: ['facebook', 'web', 'whatsapp'], required: true },
     externalId: { type: String, required: true, trim: true },
     name: { type: String, required: true, trim: true },
     status: { type: String, enum: ['active', 'disabled'], default: 'active' },
