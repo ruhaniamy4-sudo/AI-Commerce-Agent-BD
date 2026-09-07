@@ -7,7 +7,7 @@ import {verifyCustomerPayment} from '../intelligence/payments';
 import {authRateLimit} from '../auth/rate-limit';
 const router=Router();
 router.post('/intelligence/payments/:provider/verify',requireAdministrator,authRateLimit({limit:20,windowMs:60000}),async(req,res)=>{
- try{res.json(await verifyCustomerPayment(req.params.provider,String(req.body?.reference||'')));}catch{res.status(422).json({error:'Provider verification failed; no unverified payment was applied'});}
+ try{res.json(await verifyCustomerPayment(String(req.params.provider),String(req.body?.reference||'')));}catch{res.status(422).json({error:'Provider verification failed; no unverified payment was applied'});}
 });
 export const paymentPublicRouter=Router();
 paymentPublicRouter.use(urlencoded({extended:false,limit:'32kb'}),authRateLimit({limit:30,windowMs:60000}));
