@@ -118,13 +118,6 @@ export const authOptions: NextAuthOptions = {
                 }
 
                 const result = await response.json() as AgentSession;
-                console.log('[AUTH_DIAGNOSTIC] signIn exchange approved:', {
-                    provider,
-                    needsOnboarding: result.needsOnboarding,
-                    businessPresent: Boolean(result.business?.id),
-                    role: result.role,
-                });
-
                 Object.assign(user, {
                     id: result.user.id,
                     accessToken: result.accessToken,

@@ -354,7 +354,6 @@ router.post("/oauth/exchange", limited, async (req, res) => {
   let user = await User.findOne({
     providerAccounts: { $elemMatch: { provider, accountId } },
   });
-  const providerAccountMatched = Boolean(user);
   if (!user) {
     user = await User.findOneAndUpdate(
       { email },
@@ -417,20 +416,6 @@ router.post("/oauth/exchange", limited, async (req, res) => {
     );
     return res.status(403).json({ error: "Business is not active" });
   }
-  console.log("[AUTH_DIAGNOSTIC] oauth/exchange approved:", {
-    provider,
-    emailPresent: true,
-    userFound: true,
-    providerAccountMatched,
-    userStatus: user.status,
-    needsOnboarding: Boolean(
-      "needsOnboarding" in result && result.needsOnboarding,
-    ),
-    businessPresent: Boolean(
-      "business" in result && (result as any).business?.id,
-    ),
-    authorizationDecision: "approved",
-  });
   return res.json(result);
 });
 

@@ -1,10 +1,10 @@
 'use client';
-import {ArrowDownRight,ArrowUpRight,MoreHorizontal} from 'lucide-react';
+import {ArrowDownRight,ArrowUpRight} from 'lucide-react';
 import {Area,AreaChart,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
 import {cn} from '@/lib/utils';
 export const money=(value?:number)=>`${Number(value||0).toLocaleString('en-US')} BDT`;
 export function PageHeading({eyebrow,title,copy,actions}:{eyebrow?:string;title:string;copy:string;actions?:React.ReactNode}){return <header className="platform-page-heading"><div>{eyebrow&&<p>{eyebrow}</p>}<h1>{title}</h1><span>{copy}</span></div>{actions&&<aside>{actions}</aside>}</header>}
-export function StatCard({label,value,change,detail,tone='violet'}:{label:string;value:string|number;change?:number|null;detail?:string;tone?:'violet'|'blue'|'green'|'amber'}){return <article className={cn('platform-stat',`tone-${tone}`)}><div><span>{label}</span><button><MoreHorizontal size={16}/></button></div><strong>{typeof value==='number'?value.toLocaleString():value}</strong><footer>{typeof change==='number'&&<em className={change>=0?'up':'down'}>{change>=0?<ArrowUpRight size={12}/>:<ArrowDownRight size={12}/>} {Math.abs(change).toFixed(1)}%</em>}<small>{detail}</small></footer></article>}
+export function StatCard({label,value,change,detail,tone='violet'}:{label:string;value:string|number;change?:number|null;detail?:string;tone?:'violet'|'blue'|'green'|'amber'}){return <article className={cn('platform-stat',`tone-${tone}`)}><div><span>{label}</span></div><strong>{typeof value==='number'?value.toLocaleString():value}</strong><footer>{typeof change==='number'&&<em className={change>=0?'up':'down'}>{change>=0?<ArrowUpRight size={12}/>:<ArrowDownRight size={12}/>} {Math.abs(change).toFixed(1)}%</em>}<small>{detail}</small></footer></article>}
 export function Panel({title,copy,action,children,className}:{title:string;copy?:string;action?:React.ReactNode;children:React.ReactNode;className?:string}){return <section className={cn('platform-panel',className)}><header><div><h2>{title}</h2>{copy&&<p>{copy}</p>}</div>{action}</header><div className="platform-panel-body">{children}</div></section>}
 export function Status({children,tone='neutral'}:{children:React.ReactNode;tone?:'success'|'warning'|'danger'|'info'|'neutral'}){return <span className={cn('platform-status',tone)}><i/>{children}</span>}
 export function Empty({children}:{children:React.ReactNode}){return <div className="platform-empty">{children}</div>}

@@ -15,7 +15,7 @@ import { MediaStorageError } from '../services/media-storage.service';
 const router = Router();
 
 async function findOwnedConversation(req: AuthenticatedRequest, conversationId?: string) {
-    const query: Record<string, unknown> = { platform: 'manual', status: 'active', 'metadata.testMode': true, 'metadata.ownerUserId': req.auth!.userId };
+    const query: Record<string, unknown> = { businessId: req.auth!.businessId, platform: 'manual', status: 'active', 'metadata.testMode': true, 'metadata.ownerUserId': req.auth!.userId };
     if (conversationId) query.conversationId = conversationId;
     return Conversation.findOne(query).sort({ updatedAt: -1 });
 }
@@ -76,7 +76,7 @@ router.get(TEST_AI_API.currentMessages, async (req: AuthenticatedRequest, res) =
 });
 
 router.post(TEST_AI_API.conversations, async (req: AuthenticatedRequest, res) => {
-    await Conversation.updateMany({ platform: 'manual', 'metadata.testMode': true, 'metadata.ownerUserId': req.auth!.userId, status: 'active' }, { $set: { status: 'archived' } });
+    await Conversation.updateMany({ businessId: req.auth!.businessId, platform: 'manual', 'metadata.testMode': true, 'metadata.ownerUserId': req.auth!.userId, status: 'active' }, { $set: { status: 'archived' } });
     const conversation = await createOwnedConversation(req);
     res.status(201).json(await conversationPayload(req, conversation));
 });

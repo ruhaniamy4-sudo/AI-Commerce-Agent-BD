@@ -42,7 +42,7 @@ describe('canonical tenant-safe Test AI routes', () => {
         const find = vi.spyOn(Conversation, 'findOne').mockReturnValue({ sort: vi.fn().mockResolvedValue(conversation) } as any);
         const response = await authenticated(request(app).get(endpoint(TEST_AI_API.currentConversation))).expect(200);
 
-        expect(find).toHaveBeenCalledWith(expect.objectContaining({ platform: 'manual', status: 'active', 'metadata.testMode': true, 'metadata.ownerUserId': userId.toString() }));
+        expect(find).toHaveBeenCalledWith(expect.objectContaining({ businessId: businessId.toString(), platform: 'manual', status: 'active', 'metadata.testMode': true, 'metadata.ownerUserId': userId.toString() }));
         expect(response.body.conversation.id).toBe('test-conversation');
     });
 
@@ -106,7 +106,7 @@ describe('canonical tenant-safe Test AI routes', () => {
         const response = await authenticated(request(app).post(endpoint(TEST_AI_API.conversations))).expect(201);
 
         expect(updateMany).toHaveBeenCalledWith(
-            expect.objectContaining({ platform: 'manual', status: 'active', 'metadata.ownerUserId': userId.toString() }),
+            expect.objectContaining({ businessId: businessId.toString(), platform: 'manual', status: 'active', 'metadata.ownerUserId': userId.toString() }),
             { $set: { status: 'archived' } }
         );
         expect(response.body.conversation.id).toBe('test-conversation');

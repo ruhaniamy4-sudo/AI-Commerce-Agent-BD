@@ -1,0 +1,20 @@
+/* Controlled product cleanup: shared typography and focused usability refinements. */
+body,h1,h2,h3,h4,.merchant-brand a,.work-metric>strong{font-family:var(--font-primary),var(--font-bengali),sans-serif}
+.auth-access-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 0 24px;padding:4px;border:1px solid #dedbea;border-radius:11px;background:#eeecf4}
+.auth-access-switch button{min-height:38px;border-radius:8px;color:#686a7e;font-size:12px;font-weight:650;transition:background .18s ease,color .18s ease,box-shadow .18s ease}
+.auth-access-switch button[aria-pressed=true]{background:#fff;color:#332650;box-shadow:0 4px 16px #31215114}
+.auth-access-note{margin:-12px 0 22px;padding:11px 12px;border-radius:9px;background:#f0ecfa;color:#66587d;font-size:11px;line-height:1.6}
+.platform-frame{font-family:var(--font-primary),var(--font-bengali),sans-serif}
+.platform-frame h1,.platform-frame h2,.platform-frame h3{font-weight:650;letter-spacing:-.02em}
+.platform-brand small,.platform-environment small,.platform-sidebar nav p,.platform-page-heading p{font-size:10px}
+.platform-sidebar nav a,.platform-logout,.platform-page-heading span,.platform-panel>header p{font-size:12px}
+.platform-panel>header h2{font-size:14px}
+.platform-data-table{font-size:12px}.platform-data-table th{font-size:10px}.platform-data-table strong{font-size:12px}.platform-data-table small{font-size:10px}
+.merchant-nav-children{margin:2px 0 6px 29px!important;padding-left:10px;border-left:1px solid #ffffff10}
+.merchant-nav-children a{min-height:30px!important;padding:5px 9px!important;font-size:11px!important}
+@media (prefers-reduced-motion:reduce){.auth-access-switch button{transition:none}}
+.test-empty>*{animation:test-welcome-in .32s ease-out both}.test-empty>h2{animation-delay:.04s}.test-empty>p{animation-delay:.08s}.test-empty>div{animation-delay:.12s}
+.jolly-chat>.jolly-message{animation:test-message-in .24s ease-out both}
+@keyframes test-welcome-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+@keyframes test-message-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.test-empty>*,.jolly-chat>.jolly-message{animation:none}}

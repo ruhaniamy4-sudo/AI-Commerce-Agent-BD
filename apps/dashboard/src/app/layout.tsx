@@ -1,10 +1,10 @@
 import type { Metadata } from "next"
-import { Manrope, DM_Sans, Noto_Sans_Bengali } from "next/font/google"
+import { Manrope, Noto_Sans_Bengali } from "next/font/google"
 import "./globals.css"
+import "./product-cleanup.css"
 import { Providers } from "@/components/providers"
 import { DashboardShell } from "@/components/layout/dashboard-shell"
-const displayFont = Manrope({ subsets: ["latin"], variable: "--font-display", display: "swap" });
-const bodyFont = DM_Sans({ subsets: ["latin"], variable: "--font-body", display: "swap" });
+const primaryFont = Manrope({ subsets: ["latin"], variable: "--font-primary", display: "swap" });
 const bengaliFont = Noto_Sans_Bengali({ subsets: ["bengali"], variable: "--font-bengali", display: "swap" });
 
 export const metadata: Metadata = {
@@ -19,7 +19,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${displayFont.variable} ${bodyFont.variable} ${bengaliFont.variable}`}>
+      <body className={`${primaryFont.variable} ${bengaliFont.variable}`}>
         <Providers>
           <DashboardShell>
             {children}
