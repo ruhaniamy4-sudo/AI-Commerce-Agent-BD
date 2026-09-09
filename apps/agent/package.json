@@ -6,7 +6,7 @@
     "scripts": {
         "dev": "cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node-dev --respawn --transpile-only src/server.ts",
         "prebuild": "tsc -p ../../packages/shared",
-        "build": "tsc",
+        "build": "tsc -p tsconfig.build.json",
         "typecheck": "tsc --noEmit",
         "test": "vitest run --exclude dist/**",
         "start": "node dist/src/server.js",

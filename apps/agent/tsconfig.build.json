@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/__tests__/**",
+    "src/scripts/validate-customer-intelligence.ts",
+    "src/scripts/validate-product-management.ts"
+  ]
+}
