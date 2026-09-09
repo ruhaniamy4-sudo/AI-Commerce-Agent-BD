@@ -195,11 +195,30 @@ export function buildProductSearchProfile(product: Record<string, any>): SearchP
     const materials = extractMaterials(text);
     const sizes = extractSizes(text);
     const useCases = extractUseCases(text);
+    const specFacts: StructuredFact[] = [];
+    if (product.specs && typeof product.specs === 'object') {
+        for (const [key, value] of Object.entries(product.specs).slice(0, 8)) {
+            if (value && (typeof value === 'string' || typeof value === 'number')) {
+                specFacts.push({ subject: 'product', predicate: cleanText(key).replace(/\s+/g, '_') || 'spec', value: String(value).slice(0, 100), confidence: 'confirmed' });
+            }
+        }
+    }
+    if (product.warrantyMonths && product.warrantyMonths > 0) {
+        specFacts.push({ subject: 'product', predicate: 'warranty_months', value: product.warrantyMonths, unit: 'months', confidence: 'confirmed' });
+    }
+    if (product.isReturnable) {
+        specFacts.push({ subject: 'product', predicate: 'returnable', value: true, confidence: 'confirmed' });
+        if (product.returnDays) {
+            specFacts.push({ subject: 'product', predicate: 'return_days', value: product.returnDays, unit: 'days', confidence: 'confirmed' });
+        }
+    }
+
     const facts: StructuredFact[] = [
         ...colors.map((value) => ({ subject: 'product', predicate: 'color', value, confidence: 'confirmed' as const })),
         ...sizes.map((value) => ({ subject: 'product', predicate: 'size', value, confidence: 'confirmed' as const })),
         ...materials.map((value) => ({ subject: 'product', predicate: 'material', value, confidence: 'confirmed' as const })),
         ...useCases.map((value) => ({ subject: 'product', predicate: 'use_case', value, confidence: 'confirmed' as const })),
+        ...specFacts,
     ];
     return { profileVersion: 1, searchableText: text, terms: expandConcepts(text), colors, sizes, materials, categories, useCases, facts, riskLevel: 'normal', sourceHash: sourceHash(source) };
 }
@@ -265,7 +284,7 @@ export function scoreProductMatch(product: Record<string, any>, query: QueryInte
     score += query.categories.filter((value) => profile.categories?.includes(value)).length * 4;
     score += query.materials.filter((value) => profile.materials?.includes(value)).length * 3;
     score += query.useCases.filter((value) => profile.useCases?.includes(value)).length * 4;
-    if (product.stock > 0 || (product.variants || []).some((variant: any) => variant.isActive !== false && variant.stock > 0)) score += 1;
+    if (product.stock > 0 || product.availability === 'in_stock' || (product.variants || []).some((variant: any) => variant.isActive !== false && (variant.stock > 0 || variant.availability === 'in_stock'))) score += 1;
     return score;
 }
 

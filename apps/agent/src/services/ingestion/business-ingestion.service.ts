@@ -9,6 +9,7 @@ import { Offering } from '../../models/Offering';
 import { TrainingCandidate, CandidateStatus } from '../../models/TrainingCandidate';
 import { TrainingRun } from '../../models/TrainingRun';
 import { TrainingSource } from '../../models/TrainingSource';
+import { BusinessAwareness } from '../../models/BusinessAwareness';
 import { assertTenantBusinessId, tenantDocument } from '../../tenancy/context';
 import { classifyProductSimilarity, knowledgeFact, normalizeCurrency, normalizeMoney, normalizeSku, normalizedText, productKey, stableFingerprint, tokenSimilarity } from './normalization';
 import { ExtractedKnowledge, ExtractedProduct, WebsiteExtraction, WebsiteIngestionError, ingestWebsite } from './website-ingestion.service';
@@ -21,6 +22,7 @@ export interface CandidateInput {
     products?: ExtractedProduct[];
     knowledge?: ExtractedKnowledge[];
     business?: Record<string, string | undefined>;
+    businessMarketing?: WebsiteExtraction['businessMarketing'];
     pages?: number;
     warnings?: string[];
     crawl?: WebsiteExtraction['crawl'];
@@ -29,24 +31,43 @@ export interface CandidateInput {
 function sourceMeta(source: any, url?: string, externalId?: string) {
     return { type: source.type, url: url || source.url, externalId: externalId || source.externalId, lastSeenAt: new Date() };
 }
+
 function productPayload(raw: ExtractedProduct) {
     const price = normalizeMoney(raw.basePrice);
     const description = String(raw.description || '').includes('<') ? cheerio.load(String(raw.description || '')).text() : String(raw.description || '');
     const name = cheerio.load(`<span>${String(raw.name || '')}</span>`).text();
     const images = [...new Set((raw.images || []).filter((url) => /^https?:\/\//i.test(String(url))))].slice(0, 12);
     const variants = (raw.variants || []).map((variant) => ({
-        ...variant, name: String(variant.name || variant.specs?.color || variant.specs?.size || 'Variant').trim(),
-        sku: normalizeSku(variant.sku), price: normalizeMoney(variant.price), currency: normalizeCurrency(variant.currency, raw.currency), stock: Number.isFinite(variant.stock) ? Math.max(0, Number(variant.stock)) : undefined, availability: normalizeProductAvailability(variant.availability, variant.stock),
+        ...variant,
+        name: String(variant.name || variant.specs?.color || variant.specs?.size || 'Variant').trim(),
+        sku: normalizeSku(variant.sku),
+        price: normalizeMoney(variant.price),
+        currency: normalizeCurrency(variant.currency, raw.currency),
+        stock: typeof variant.stock === 'number' && Number.isFinite(variant.stock) ? Math.max(0, variant.stock) : undefined,
+        availability: normalizeProductAvailability(variant.availability, variant.stock),
         images: [...new Set((variant.images || []).filter((url) => /^https?:\/\//i.test(String(url))))],
         specs: Object.fromEntries(Object.entries(variant.specs || {}).filter(([, value]) => value !== undefined && value !== '')),
     }));
+
     return {
-        name: name.trim().slice(0, 240), description: description.replace(/\s+/g, ' ').trim().slice(0, 20_000),
-        category: String(raw.category || 'Imported').trim().slice(0, 120), basePrice: price, salePrice: normalizeMoney(raw.salePrice), currency: normalizeCurrency(raw.currency),
-        stock: Number.isFinite(raw.stock) ? Math.max(0, Number(raw.stock)) : undefined, sku: normalizeSku(raw.sku), barcode: raw.barcode,
-        availability: normalizeProductAvailability(raw.availability, raw.stock), brand: raw.brand, canonicalUrl: raw.canonicalUrl, images, variants, specs: raw.specs || {},
+        name: name.trim().slice(0, 240),
+        description: description.replace(/\s+/g, ' ').trim().slice(0, 20_000),
+        category: String(raw.category || 'Imported').trim().slice(0, 120),
+        basePrice: price,
+        salePrice: normalizeMoney(raw.salePrice),
+        currency: normalizeCurrency(raw.currency),
+        stock: typeof raw.stock === 'number' && Number.isFinite(raw.stock) ? Math.max(0, raw.stock) : undefined,
+        sku: normalizeSku(raw.sku),
+        barcode: raw.barcode,
+        availability: normalizeProductAvailability(raw.availability, raw.stock),
+        brand: raw.brand,
+        canonicalUrl: raw.canonicalUrl,
+        images,
+        variants,
+        specs: raw.specs || {},
     };
 }
+
 function conflictsForProduct(existing: any, imported: any) {
     const conflicts: Array<{ field: string; currentValue: unknown; importedValue: unknown }> = [];
     for (const field of ['basePrice', 'salePrice', 'currency', 'stock', 'availability'] as const) {
@@ -56,7 +77,63 @@ function conflictsForProduct(existing: any, imported: any) {
     }
     return conflicts;
 }
-function policyTopic(value: string) { return knowledgeFact(value).replace(/\d+(?:\.\d+)?/g, '#').replace(/\s+/g, ' ').trim(); }
+
+function policyTopic(value: string) {
+    return knowledgeFact(value).replace(/\d+(?:\.\d+)?/g, '#').replace(/\s+/g, ' ').trim();
+}
+
+function generateGroundedProductAiKnowledge(data: any): Array<{ question: string; answer: string }> {
+    const questions: Array<{ question: string; answer: string }> = [];
+    const name = data.name;
+    const price = data.salePrice ?? data.basePrice;
+    const currency = data.currency || 'BDT';
+
+    if (price !== undefined) {
+        questions.push({
+            question: `What is the price of ${name}?`,
+            answer: `The price of ${name} is ${price} ${currency}${data.salePrice && data.basePrice && data.salePrice < data.basePrice ? ` (discounted from ${data.basePrice} ${currency})` : ''}.`,
+        });
+    }
+
+    if (data.availability) {
+        const availAnswer = data.availability === 'in_stock'
+            ? `Yes, ${name} is in stock${typeof data.stock === 'number' ? ` (${data.stock} available)` : ''}.`
+            : data.availability === 'out_of_stock'
+            ? `${name} is currently out of stock.`
+            : `Availability for ${name} has not been explicitly confirmed.`;
+        questions.push({
+            question: `Is ${name} available in stock?`,
+            answer: availAnswer,
+        });
+    }
+
+    if (data.variants?.length) {
+        const variantNames = data.variants.map((v: any) => v.name).filter(Boolean).slice(0, 8).join(', ');
+        if (variantNames) {
+            questions.push({
+                question: `What variants or options are available for ${name}?`,
+                answer: `Available options for ${name}: ${variantNames}.`,
+            });
+        }
+    }
+
+    if (data.specs && Object.keys(data.specs).length > 0) {
+        const specsText = Object.entries(data.specs).slice(0, 5).map(([k, v]) => `${k}: ${v}`).join('; ');
+        questions.push({
+            question: `What are the specifications of ${name}?`,
+            answer: `Specifications for ${name}: ${specsText}.`,
+        });
+    }
+
+    if (data.warrantyMonths) {
+        questions.push({
+            question: `Does ${name} come with a warranty?`,
+            answer: `${name} includes a ${data.warrantyMonths}-month warranty.`,
+        });
+    }
+
+    return questions.slice(0, 6);
+}
 
 async function upsertCandidate(source: any, run: any, values: Record<string, any>) {
     const observedAt = new Date();
@@ -72,56 +149,111 @@ export async function stageCandidates(businessId: string, sourceId: string, runI
     assertTenantBusinessId(businessId, 'ingestion.stage');
     const [source, run, currentBusiness] = await Promise.all([TrainingSource.findById(sourceId), TrainingRun.findById(runId), Business.findById(businessId).lean()]);
     if (!source || !run) throw new Error('Training source or run is unavailable');
+
     const inferenceText = [
         ...(input.products || []).flatMap((item) => [item.name, item.description, item.category]),
         ...(input.knowledge || []).flatMap((item) => [item.title, item.content, item.topic]),
         ...Object.values(input.business || {}),
     ].filter(Boolean).join(' ');
+
     const inference = inferBusinessType(inferenceText) || ((input.products || []).length ? { businessType: 'ECOMMERCE' as const, confidence: .65, evidence: ['catalog-like offerings'] } : undefined);
     if (inference && currentBusiness?.businessTypeStatus !== 'confirmed') {
-        await Business.findByIdAndUpdate(businessId, { $set: {
-            businessType: inference.businessType, businessTypeStatus: 'inferred',
-            businessTypeInference: { value: inference.businessType, confidence: inference.confidence, evidence: inference.evidence, sourceId: source._id, inferredAt: new Date() },
-        } });
+        await Business.findByIdAndUpdate(businessId, {
+            $set: {
+                businessType: inference.businessType,
+                businessTypeStatus: 'inferred',
+                businessTypeInference: { value: inference.businessType, confidence: inference.confidence, evidence: inference.evidence, sourceId: source._id, inferredAt: new Date() },
+            },
+        });
     }
+
     const businessType = normalizeBusinessType(currentBusiness?.businessTypeStatus === 'confirmed' ? currentBusiness.businessType : inference?.businessType || currentBusiness?.businessType) || 'ECOMMERCE';
+
     const stats = {
-        pages: input.pages || 0, discovered: input.crawl?.discovered || input.pages || 0, productUrls: input.crawl?.productUrls || 0,
-        remaining: input.crawl?.remaining || 0, failed: input.crawl?.failed || 0, fetches: input.crawl?.fetches || 0,
-        aiCalls: input.crawl?.aiCalls || 0, pagesWithoutAI: input.crawl?.pagesWithoutAI || 0,
-        unchanged: input.crawl?.unchanged || 0, changed: input.crawl?.changed || 0, newPages: input.crawl?.newPages || 0, durationMs: input.crawl?.durationMs || 0,
-        products: 0, knowledge: 0, duplicates: 0, conflicts: 0, needsAttention: 0,
+        pages: input.pages || 0,
+        discovered: input.crawl?.discovered || input.pages || 0,
+        productUrls: input.crawl?.productUrls || 0,
+        remaining: input.crawl?.remaining || 0,
+        failed: input.crawl?.failed || 0,
+        fetches: input.crawl?.fetches || 0,
+        aiCalls: input.crawl?.aiCalls || 0,
+        pagesWithoutAI: input.crawl?.pagesWithoutAI || 0,
+        unchanged: input.crawl?.unchanged || 0,
+        changed: input.crawl?.changed || 0,
+        newPages: input.crawl?.newPages || 0,
+        durationMs: input.crawl?.durationMs || 0,
+        products: 0,
+        knowledge: 0,
+        duplicates: input.crawl?.duplicatesMerged || 0,
+        conflicts: 0,
+        needsAttention: 0,
     };
+
     const seenProducts = new Set<string>();
     const seenKnowledge = new Set<string>();
 
     for (const raw of input.products || []) {
         const payload = productPayload(raw);
         const key = productKey(payload);
-        if (seenProducts.has(key)) { stats.duplicates += 1; continue; }
+        if (seenProducts.has(key)) {
+            stats.duplicates += 1;
+            continue;
+        }
         seenProducts.add(key);
         const fingerprint = stableFingerprint(key);
+
         let status: CandidateStatus = payload.name.length < 2 || payload.basePrice === undefined || !payload.currency ? 'needs_attention' : 'ready';
         let duplicateKind: 'exact' | 'probable' | undefined;
         let matchedRecordId: mongoose.Types.ObjectId | undefined;
         let conflictFields: Array<{ field: string; currentValue: unknown; importedValue: unknown }> = [];
+
         if (businessType !== 'ECOMMERCE') {
             const offeringPayload = {
-                offeringType: defaultOfferingType(businessType), name: payload.name, description: payload.description,
-                category: payload.category, price: payload.basePrice, salePrice: payload.salePrice, currency: payload.currency,
-                availability: payload.availability, attributes: { ...payload.specs, variants: payload.variants }, images: payload.images,
+                offeringType: defaultOfferingType(businessType),
+                name: payload.name,
+                description: payload.description,
+                category: payload.category,
+                price: payload.basePrice,
+                salePrice: payload.salePrice,
+                currency: payload.currency,
+                availability: payload.availability,
+                attributes: { ...payload.specs, variants: payload.variants },
+                images: payload.images,
                 canonicalUrl: payload.canonicalUrl,
             };
-            const existingOffering = await Offering.findOne({ $or: [
-                ...(payload.canonicalUrl ? [{ canonicalUrl: payload.canonicalUrl }] : []),
-                { name: { $regex: `^${payload.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
-            ] }).lean();
-            if (existingOffering) { duplicateKind = 'exact'; matchedRecordId = existingOffering._id; status = 'possible_duplicate'; stats.duplicates += 1; }
-            if (!payload.name) { status = 'needs_attention'; stats.needsAttention += 1; }
-            await upsertCandidate(source, run, { kind: 'offering', status, title: payload.name || 'Unnamed offering', normalizedKey: key, fingerprint, confidence: status === 'ready' ? 1 : .75, payload: offeringPayload, source: sourceMeta(source, payload.canonicalUrl), duplicateKind, matchedRecordId, conflictFields });
+            const existingOffering = await Offering.findOne({
+                $or: [
+                    ...(payload.canonicalUrl ? [{ canonicalUrl: payload.canonicalUrl }] : []),
+                    { name: { $regex: `^${payload.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+                ],
+            }).lean();
+            if (existingOffering) {
+                duplicateKind = 'exact';
+                matchedRecordId = existingOffering._id;
+                status = 'possible_duplicate';
+                stats.duplicates += 1;
+            }
+            if (!payload.name) {
+                status = 'needs_attention';
+                stats.needsAttention += 1;
+            }
+            await upsertCandidate(source, run, {
+                kind: 'offering',
+                status,
+                title: payload.name || 'Unnamed offering',
+                normalizedKey: key,
+                fingerprint,
+                confidence: status === 'ready' ? 1 : .75,
+                payload: offeringPayload,
+                source: sourceMeta(source, payload.canonicalUrl),
+                duplicateKind,
+                matchedRecordId,
+                conflictFields,
+            });
             stats.products += 1;
             continue;
         }
+
         const exactQueries: Record<string, unknown>[] = [];
         if (payload.sku) exactQueries.push({ 'variants.sku': payload.sku });
         if (payload.barcode) exactQueries.push({ barcode: payload.barcode });
@@ -131,19 +263,85 @@ export async function stageCandidates(businessId: string, sourceId: string, runI
             const possible = await Product.find({ name: { $regex: payload.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').split(/\s+/).slice(0, 2).join('.*'), $options: 'i' } }).limit(20).lean();
             existing = possible.find((item) => classifyProductSimilarity(payload, item) !== 'different') || null;
         }
+
+        // Variant deduplication: if an existing candidate with matching canonicalUrl exists in this source run, merge variants
+        if (payload.canonicalUrl) {
+            const existingStaged = await TrainingCandidate.findOne({
+                sourceId: source._id,
+                kind: 'product',
+                'payload.canonicalUrl': payload.canonicalUrl,
+                fingerprint: { $ne: fingerprint },
+            });
+            if (existingStaged) {
+                const existingVariants = existingStaged.payload.variants || [];
+                const mergedVariants = [...existingVariants];
+                for (const v of payload.variants) {
+                    if (!mergedVariants.some((ev: any) => ev.name === v.name || (ev.sku && v.sku && ev.sku === v.sku))) {
+                        mergedVariants.push(v);
+                    }
+                }
+                existingStaged.payload.variants = mergedVariants;
+                existingStaged.markModified('payload');
+                await existingStaged.save();
+                stats.duplicates += 1;
+                continue;
+            }
+        }
+
         if (existing) {
             duplicateKind = classifyProductSimilarity(payload, existing) === 'exact' ? 'exact' : 'probable';
             matchedRecordId = existing._id;
             conflictFields = conflictsForProduct(existing, payload);
-            if (conflictFields.length) { status = 'conflict'; stats.conflicts += 1; }
-            else if (duplicateKind === 'probable') { status = 'possible_duplicate'; stats.duplicates += 1; }
-            else stats.duplicates += 1;
+            if (conflictFields.length) {
+                status = 'conflict';
+                stats.conflicts += 1;
+            } else if (duplicateKind === 'probable') {
+                status = 'possible_duplicate';
+                stats.duplicates += 1;
+            } else {
+                stats.duplicates += 1;
+            }
         } else {
             const staged = await TrainingCandidate.findOne({ kind: 'product', sourceId: { $ne: source._id }, status: { $nin: ['rejected'] }, normalizedKey: key }).lean();
-            if (staged) { duplicateKind = 'exact'; stats.duplicates += 1; }
+            if (staged) {
+                duplicateKind = 'exact';
+                stats.duplicates += 1;
+            }
         }
+
+        // Derive merchant-friendly review reason
+        let reviewReason: string | undefined;
+        if (payload.name.length < 2) {
+            reviewReason = 'Product title is missing or incomplete';
+        } else if (payload.basePrice === undefined || !payload.currency) {
+            reviewReason = 'Price or currency is missing from source page';
+        } else if (conflictFields.length) {
+            const conflictedNames = conflictFields.map((f) => f.field).join(', ');
+            reviewReason = `Differences found with current catalog record on ${conflictedNames}`;
+        } else if (duplicateKind === 'probable') {
+            reviewReason = `Matches existing catalog item '${existing?.name || ''}'`;
+        } else if (payload.availability === 'in_stock' && (payload.stock === undefined || payload.stock === null)) {
+            reviewReason = 'Source indicates In Stock without an exact inventory count';
+        } else if (status === 'ready') {
+            reviewReason = 'Extracted successfully from source and ready for review';
+        }
+
         if (status === 'needs_attention') stats.needsAttention += 1;
-        await upsertCandidate(source, run, { kind: 'product', status, title: payload.name || 'Unnamed product', normalizedKey: key, fingerprint, confidence: status === 'ready' ? 1 : .75, payload, source: sourceMeta(source, payload.canonicalUrl), duplicateKind, matchedRecordId, conflictFields });
+
+        await upsertCandidate(source, run, {
+            kind: 'product',
+            status,
+            title: payload.name || 'Unnamed product',
+            normalizedKey: key,
+            fingerprint,
+            confidence: status === 'ready' ? 1 : .75,
+            payload,
+            source: sourceMeta(source, payload.canonicalUrl),
+            duplicateKind,
+            matchedRecordId,
+            conflictFields,
+            reviewReason,
+        });
         stats.products += 1;
     }
 
@@ -151,17 +349,25 @@ export async function stageCandidates(businessId: string, sourceId: string, runI
         const content = String(raw.content || '').replace(/\s+/g, ' ').trim().slice(0, 20_000);
         if (!content) continue;
         const fact = knowledgeFact(content);
-        if (seenKnowledge.has(fact)) { stats.duplicates += 1; continue; }
+        if (seenKnowledge.has(fact)) {
+            stats.duplicates += 1;
+            continue;
+        }
         seenKnowledge.add(fact);
         const topic = policyTopic(`${raw.title} ${content.slice(0, 500)}`);
         const fingerprint = stableFingerprint(fact);
+
         let status: CandidateStatus = content.length < 20 || (raw.confidence !== undefined && raw.confidence < .75) ? 'needs_attention' : 'ready';
         let duplicateKind: 'exact' | 'probable' | undefined;
         let matchedRecordId: mongoose.Types.ObjectId | undefined;
         let conflictFields: Array<{ field: string; currentValue: unknown; importedValue: unknown }> = [];
+
         const existing = await Knowledge.findOne({ $or: [{ fingerprint }, { normalizedFact: fact }] }).lean();
-        if (existing) { duplicateKind = 'exact'; matchedRecordId = existing._id; stats.duplicates += 1; }
-        else {
+        if (existing) {
+            duplicateKind = 'exact';
+            matchedRecordId = existing._id;
+            stats.duplicates += 1;
+        } else {
             const likely = await Knowledge.find({ type: raw.type, status: 'active' }).limit(100).lean();
             const similar = likely.find((item) => tokenSimilarity(policyTopic(`${item.title} ${item.content}`), topic) >= .72);
             if (similar) {
@@ -169,13 +375,85 @@ export async function stageCandidates(businessId: string, sourceId: string, runI
                 const currentNumbers = String(similar.content).match(/\d+(?:\.\d+)?/g) || [];
                 const importedNumbers = content.match(/\d+(?:\.\d+)?/g) || [];
                 if (currentNumbers.join(',') !== importedNumbers.join(',')) {
-                    status = 'conflict'; conflictFields = [{ field: 'content', currentValue: similar.content, importedValue: content }]; stats.conflicts += 1;
-                } else { status = 'possible_duplicate'; duplicateKind = 'probable'; stats.duplicates += 1; }
+                    status = 'conflict';
+                    conflictFields = [{ field: 'content', currentValue: similar.content, importedValue: content }];
+                    stats.conflicts += 1;
+                } else {
+                    status = 'possible_duplicate';
+                    duplicateKind = 'probable';
+                    stats.duplicates += 1;
+                }
             }
         }
+
+        let reviewReason: string | undefined;
+        if (content.length < 20) {
+            reviewReason = 'Content snippet is too short to confirm factual policy';
+        } else if (conflictFields.length) {
+            reviewReason = 'Numbers or terms conflict with current active policy';
+        } else if (duplicateKind === 'probable') {
+            reviewReason = 'Similar to existing active knowledge entry';
+        } else if (status === 'ready') {
+            reviewReason = 'Extracted and structured for review';
+        }
+
         if (status === 'needs_attention') stats.needsAttention += 1;
-        await upsertCandidate(source, run, { kind: 'knowledge', status, title: String(raw.title || 'Business information').slice(0, 200), normalizedKey: topic, fingerprint, confidence: raw.confidence ?? (status === 'ready' ? 1 : .75), payload: { title: raw.title, content, type: raw.type, topic: raw.topic, language: 'bn', normalizedFact: fact, businessType, knowledgeDomain: knowledgeDomain(businessType, `${raw.title} ${content}`) }, source: sourceMeta(source, raw.sourceUrl), duplicateKind, matchedRecordId, conflictFields });
+
+        await upsertCandidate(source, run, {
+            kind: 'knowledge',
+            status,
+            title: String(raw.title || 'Business information').slice(0, 200),
+            normalizedKey: topic,
+            fingerprint,
+            confidence: raw.confidence ?? (status === 'ready' ? 1 : .75),
+            payload: {
+                title: raw.title,
+                content,
+                type: raw.type,
+                topic: raw.topic,
+                language: 'bn',
+                normalizedFact: fact,
+                businessType,
+                knowledgeDomain: knowledgeDomain(businessType, `${raw.title} ${content}`),
+            },
+            source: sourceMeta(source, raw.sourceUrl),
+            duplicateKind,
+            matchedRecordId,
+            conflictFields,
+            reviewReason,
+        });
         stats.knowledge += 1;
+    }
+
+    // Handle Temporary Campaign Awareness separately from permanent business facts
+    if (input.businessMarketing?.campaignAwareness?.length) {
+        for (const promo of input.businessMarketing.campaignAwareness) {
+            const promoFp = stableFingerprint(`promo:${promo.title}:${promo.summary.slice(0, 60)}`);
+            await BusinessAwareness.findOneAndUpdate(
+                { businessId, fingerprint: promoFp },
+                {
+                    $set: {
+                        type: 'OFFER',
+                        title: promo.title.slice(0, 240),
+                        summary: promo.summary.slice(0, 2000),
+                        targetType: 'ALL_PRODUCTS',
+                        claimType: promo.claimType || 'TEXT',
+                        claimValue: promo.claimValue,
+                        sourceType: 'website',
+                        sourceUrl: source.url,
+                        status: 'NEEDS_REVIEW',
+                        validation: 'UNVERIFIED',
+                        validationNote: 'Temporary promotional campaign found on website; requires merchant review before activation',
+                        confidence: 0.8,
+                        lastSeenAt: new Date(),
+                        startsAt: new Date(),
+                        endsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                    },
+                    $setOnInsert: tenantDocument({ fingerprint: promoFp }),
+                },
+                { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+        }
     }
 
     const allowedBusinessFields = ['name', 'description', 'phone', 'email', 'address', 'openingHours', 'socialLinks'];
@@ -185,9 +463,21 @@ export async function stageCandidates(businessId: string, sourceId: string, runI
         const currentValue = (currentBusiness as any)?.[field];
         const conflictFields = currentValue && normalizedText(currentValue) !== normalizedText(value) ? [{ field, currentValue, importedValue: value }] : [];
         const fingerprint = stableFingerprint(`business:${field}`);
-        await upsertCandidate(source, run, { kind: 'business', status: conflictFields.length ? 'conflict' : 'ready', title: field.replace(/([A-Z])/g, ' $1'), normalizedKey: `business:${field}`, fingerprint, confidence: 1, payload: { field, value }, source: sourceMeta(source), conflictFields });
+        await upsertCandidate(source, run, {
+            kind: 'business',
+            status: conflictFields.length ? 'conflict' : 'ready',
+            title: field.replace(/([A-Z])/g, ' $1'),
+            normalizedKey: `business:${field}`,
+            fingerprint,
+            confidence: 1,
+            payload: { field, value },
+            source: sourceMeta(source),
+            conflictFields,
+            reviewReason: conflictFields.length ? `Differs from current profile ${field}` : 'Ready for review',
+        });
         if (conflictFields.length) stats.conflicts += 1;
     }
+
     const runStatus = stats.remaining || stats.failed ? 'partial' : 'needs_review';
     await TrainingRun.findByIdAndUpdate(run._id, { $set: { stats, status: runStatus, stage: stats.remaining ? `Ready for review · ${stats.remaining} pages remain for another bounded scan` : 'Ready for your review', progress: 100, completedAt: new Date() } });
     await TrainingSource.findByIdAndUpdate(source._id, { $set: { status: stats.conflicts || stats.needsAttention ? 'needs_attention' : 'ready', stats, lastSeenAt: new Date(), lastSyncedAt: new Date(), errorCode: null, errorMessage: null } });
@@ -238,8 +528,20 @@ export async function runWebsiteIngestion(businessId: string, sourceId: string, 
     }
 }
 
-function slug(value: string) { return normalizedText(value).replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60) || `imported-${crypto.randomBytes(4).toString('hex')}`; }
-function provenance(candidate: any) { return { sourceType: candidate.source.type, sourceUrl: candidate.source.url, sourceExternalId: candidate.source.externalId, fingerprint: candidate.fingerprint, lastSeenAt: candidate.source.lastSeenAt || new Date(), lastSyncedAt: new Date() }; }
+function slug(value: string) {
+    return normalizedText(value).replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60) || `imported-${crypto.randomBytes(4).toString('hex')}`;
+}
+
+function provenance(candidate: any) {
+    return {
+        sourceType: candidate.source.type,
+        sourceUrl: candidate.source.url,
+        sourceExternalId: candidate.source.externalId,
+        fingerprint: candidate.fingerprint,
+        lastSeenAt: candidate.source.lastSeenAt || new Date(),
+        lastSyncedAt: new Date(),
+    };
+}
 
 async function refreshApprovedImageIndex(product: InstanceType<typeof Product>) {
     if (process.env.NODE_ENV === 'test' || process.env.VITEST) return;
@@ -248,7 +550,9 @@ async function refreshApprovedImageIndex(product: InstanceType<typeof Product>) 
     try {
         const results = await Promise.all(images.map((url) => getImageEmbedding(url)));
         product.imageEmbeddings = results.map((result, index) => ({ url: images[index], embedding: result.embedding, model: result.model, updatedAt: new Date() }));
-        product.imageEmbedding = results[0].embedding; product.imageEmbeddingModel = results[0].model; product.lastEmbeddingUpdate = new Date();
+        product.imageEmbedding = results[0].embedding;
+        product.imageEmbeddingModel = results[0].model;
+        product.lastEmbeddingUpdate = new Date();
         await product.save();
     } catch (error) {
         console.warn(`Product ${product._id} was approved without a vision index: ${error instanceof Error ? error.message : 'embedding unavailable'}`);
@@ -259,8 +563,11 @@ async function promoteClaimedCandidate(businessId: string, candidateId: string, 
     assertTenantBusinessId(businessId, 'ingestion.approve');
     const candidate = await TrainingCandidate.findById(candidateId);
     if (!candidate) throw new Error('Candidate not found');
-    if (candidate.status === 'conflict' || candidate.status === 'needs_attention' || candidate.status === 'possible_duplicate') throw new Error('Resolve this item before approval');
+    if (candidate.status === 'conflict' || candidate.status === 'needs_attention' || candidate.status === 'possible_duplicate') {
+        throw new Error('Resolve this item before approval');
+    }
     if (candidate.status === 'imported') return candidate;
+
     if (candidate.kind === 'product') {
         const data = candidate.payload;
         const imageImport = await mirrorExternalProductImages(Array.isArray(data.images) ? data.images : [], businessId);
@@ -272,13 +579,19 @@ async function promoteClaimedCandidate(businessId: string, candidateId: string, 
             if (data.canonicalUrl) exact.push({ canonicalUrl: data.canonicalUrl });
             if (exact.length) existing = await Product.findOne({ $or: exact });
         }
+
+        const aiKnowledge = generateGroundedProductAiKnowledge(data);
+
         if (existing) {
             for (const field of data.resolvedFields || []) {
-                if (['basePrice', 'salePrice', 'currency', 'stock', 'availability'].includes(field) && data[field] !== undefined) (existing as any)[field] = data[field];
+                if (['basePrice', 'salePrice', 'currency', 'stock', 'availability'].includes(field) && data[field] !== undefined) {
+                    (existing as any)[field] = data[field];
+                }
             }
             existing.provenance = [...(existing.provenance || []).filter((item: any) => item.fingerprint !== candidate.fingerprint), provenance(candidate)];
             if (imageImport.images.length && !existing.images?.length) existing.images = imageImport.images;
             if (imageImport.imports.length) existing.imageImports = imageImport.imports;
+            if (aiKnowledge.length) existing.aiKnowledge = aiKnowledge;
             await existing.save();
             if (imageImport.images.length) void refreshApprovedImageIndex(existing);
             candidate.matchedRecordId = existing._id;
@@ -287,13 +600,45 @@ async function promoteClaimedCandidate(businessId: string, candidateId: string, 
             const categorySlug = slug(normalizedText(categoryName).replace(/\s+/g, ''));
             let category = await Category.findOne({ slug: categorySlug, isActive: true });
             if (!category) category = await Category.create(tenantDocument({ name: categoryName, slug: categorySlug, isActive: true, order: 0 }));
+
             const product = await Product.create(tenantDocument({
-                name: data.name, slug: `${slug(data.name)}-${candidate.fingerprint.slice(0, 8)}`, description: data.description || data.name,
-                categoryId: category._id, basePrice: data.basePrice, salePrice: data.salePrice, currency: data.currency, stock: data.stock ?? null,
-                variants: (data.variants?.length ? data.variants : data.sku ? [{ name: 'Default', sku: data.sku, price: data.basePrice, currency: data.currency, stock: data.stock, availability: data.availability, images: data.images || [], specs: {} }] : []).map((variant: any, index: number) => ({ variantId: `import-${index}-${candidate.fingerprint.slice(0, 6)}`, name: variant.name || 'Variant', sku: variant.sku || `${candidate.fingerprint.slice(0, 10)}-${index}`, price: variant.price ?? data.basePrice, currency: variant.currency || data.currency, stock: variant.stock ?? null, availability: variant.availability || normalizeProductAvailability(undefined, variant.stock), images: variant.images || [], specs: variant.specs || {}, isActive: true })),
-                specs: data.specs || {}, compatibilityTags: [], images: imageImport.images, imageImports: imageImport.imports, barcode: data.barcode, brand: data.brand,
-                canonicalUrl: data.canonicalUrl, warrantyMonths: 0, isReturnable: true, returnDays: 7, isActive: true, isFeatured: false,
-                lowStockThreshold: 10, availability: data.availability, provenance: [provenance(candidate)], merchantConfirmed: true,
+                name: data.name,
+                slug: `${slug(data.name)}-${candidate.fingerprint.slice(0, 8)}`,
+                description: data.description || data.name,
+                categoryId: category._id,
+                basePrice: data.basePrice,
+                salePrice: data.salePrice,
+                currency: data.currency,
+                stock: data.stock ?? null,
+                variants: (data.variants?.length ? data.variants : data.sku ? [{ name: 'Default', sku: data.sku, price: data.basePrice, currency: data.currency, stock: data.stock, availability: data.availability, images: data.images || [], specs: {} }] : []).map((variant: any, index: number) => ({
+                    variantId: `import-${index}-${candidate.fingerprint.slice(0, 6)}`,
+                    name: variant.name || 'Variant',
+                    sku: variant.sku || `${candidate.fingerprint.slice(0, 10)}-${index}`,
+                    price: variant.price ?? data.basePrice,
+                    currency: variant.currency || data.currency,
+                    stock: variant.stock ?? null,
+                    availability: variant.availability || normalizeProductAvailability(undefined, variant.stock),
+                    images: variant.images || [],
+                    specs: variant.specs || {},
+                    isActive: true,
+                })),
+                specs: data.specs || {},
+                compatibilityTags: [],
+                images: imageImport.images,
+                imageImports: imageImport.imports,
+                barcode: data.barcode,
+                brand: data.brand,
+                canonicalUrl: data.canonicalUrl,
+                warrantyMonths: 0,
+                isReturnable: true,
+                returnDays: 7,
+                isActive: true,
+                isFeatured: false,
+                lowStockThreshold: 10,
+                availability: data.availability,
+                provenance: [provenance(candidate)],
+                merchantConfirmed: true,
+                aiKnowledge,
             }));
             candidate.matchedRecordId = product._id;
             void refreshApprovedImageIndex(product);
@@ -313,30 +658,80 @@ async function promoteClaimedCandidate(businessId: string, candidateId: string, 
         let existing = await Knowledge.findOne({ $or: [{ fingerprint: candidate.fingerprint }, { normalizedFact: data.normalizedFact }] });
         if (existing) {
             if ((data.resolvedFields || []).includes('content')) {
-                existing.content = data.content; existing.normalizedFact = data.normalizedFact; existing.updatedBy = userId;
+                existing.content = data.content;
+                existing.normalizedFact = data.normalizedFact;
+                existing.updatedBy = userId;
             }
             existing.businessType = data.businessType || existing.businessType;
             existing.knowledgeDomain = data.knowledgeDomain || existing.knowledgeDomain;
             existing.provenance = [...(existing.provenance || []).filter((item: any) => item.fingerprint !== candidate.fingerprint), provenance(candidate)];
-            await existing.save(); candidate.matchedRecordId = existing._id;
+            await existing.save();
+            candidate.matchedRecordId = existing._id;
         } else {
-            existing = await Knowledge.create(tenantDocument({ title: data.title, content: data.content, type: data.type, language: data.language || 'bn', tags: normalizedText(`${data.title} ${data.content}`).split(' ').slice(0, 12), status: 'active', sourcePriority: 'normal', createdBy: userId, updatedBy: userId, isPinned: data.type === 'POLICY', normalizedFact: data.normalizedFact, fingerprint: candidate.fingerprint, provenance: [provenance(candidate)], merchantConfirmed: true, businessType: data.businessType, knowledgeDomain: data.knowledgeDomain }));
+            existing = await Knowledge.create(tenantDocument({
+                title: data.title,
+                content: data.content,
+                type: data.type,
+                language: data.language || 'bn',
+                tags: normalizedText(`${data.title} ${data.content}`).split(' ').slice(0, 12),
+                status: 'active',
+                sourcePriority: 'normal',
+                createdBy: userId,
+                updatedBy: userId,
+                isPinned: data.type === 'POLICY',
+                normalizedFact: data.normalizedFact,
+                fingerprint: candidate.fingerprint,
+                provenance: [provenance(candidate)],
+                merchantConfirmed: true,
+                businessType: data.businessType,
+                knowledgeDomain: data.knowledgeDomain,
+            }));
             candidate.matchedRecordId = existing._id;
         }
     } else {
         const { field, value } = candidate.payload;
         if (!['name', 'phone', 'website', 'businessType'].includes(field)) {
-            await Knowledge.create(tenantDocument({ title: candidate.title, content: String(value), type: 'GUIDE', language: 'bn', tags: [field], status: 'active', sourcePriority: 'normal', createdBy: userId, updatedBy: userId, isPinned: false, normalizedFact: knowledgeFact(value), fingerprint: candidate.fingerprint, provenance: [provenance(candidate)], merchantConfirmed: true }));
+            await Knowledge.create(tenantDocument({
+                title: candidate.title,
+                content: String(value),
+                type: 'GUIDE',
+                language: 'bn',
+                tags: [field],
+                status: 'active',
+                sourcePriority: 'normal',
+                createdBy: userId,
+                updatedBy: userId,
+                isPinned: false,
+                normalizedFact: knowledgeFact(value),
+                fingerprint: candidate.fingerprint,
+                provenance: [provenance(candidate)],
+                merchantConfirmed: true,
+            }));
         } else await Business.findByIdAndUpdate(businessId, { $set: { [field]: value } });
     }
-    candidate.status = 'imported'; candidate.approvedBy = userId; candidate.approvedAt = new Date();
+
+    candidate.status = 'imported';
+    candidate.approvedBy = userId;
+    candidate.approvedAt = new Date();
     await candidate.save();
+
     const [productsImported, knowledgeImported, needsReview] = await Promise.all([
         TrainingCandidate.countDocuments({ kind: { $in: ['product', 'offering'] }, status: 'imported' }),
         TrainingCandidate.countDocuments({ kind: { $in: ['knowledge', 'business'] }, status: 'imported' }),
         TrainingCandidate.countDocuments({ status: { $in: ['possible_duplicate', 'conflict', 'needs_attention'] } }),
     ]);
-    await Business.findByIdAndUpdate(businessId, { $set: { 'training.status': needsReview ? 'needs_review' : 'ready', 'training.productsImported': productsImported, 'training.knowledgeImported': knowledgeImported, 'training.needsReview': needsReview, 'onboarding.productAdded': productsImported > 0, 'onboarding.knowledgeAdded': knowledgeImported > 0 } });
+
+    await Business.findByIdAndUpdate(businessId, {
+        $set: {
+            'training.status': needsReview ? 'needs_review' : 'ready',
+            'training.productsImported': productsImported,
+            'training.knowledgeImported': knowledgeImported,
+            'training.needsReview': needsReview,
+            'onboarding.productAdded': productsImported > 0,
+            'onboarding.knowledgeAdded': knowledgeImported > 0,
+        },
+    });
+
     return candidate;
 }
 

@@ -20,6 +20,7 @@ export interface ITrainingCandidate extends Document {
     matchedRecordId?: mongoose.Types.ObjectId;
     conflictFields: Array<{ field: string; currentValue: unknown; importedValue: unknown }>;
     reviewNote?: string;
+    reviewReason?: string;
     approvedBy?: string;
     approvedAt?: Date;
     lastError?: string;
@@ -44,6 +45,7 @@ const TrainingCandidateSchema = new Schema<ITrainingCandidate>({
     matchedRecordId: Schema.Types.ObjectId,
     conflictFields: [{ field: String, currentValue: Schema.Types.Mixed, importedValue: Schema.Types.Mixed }],
     reviewNote: String,
+    reviewReason: String,
     approvedBy: String,
     approvedAt: Date,
     lastError: String,

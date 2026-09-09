@@ -248,6 +248,8 @@ export interface TrainingCandidate extends TenantEntity {
   title: string; confidence: number; payload: Record<string, any>; duplicateKind?: 'exact' | 'probable';
   conflictFields: Array<{ field: string; currentValue: unknown; importedValue: unknown }>;
   source: { type: string; url?: string; externalId?: string; lastSeenAt: string };
+  reviewReason?: string;
+  reviewNote?: string;
   lastError?: string; approvalAttempts?: number;
 }
 export interface TrainingOverview {
