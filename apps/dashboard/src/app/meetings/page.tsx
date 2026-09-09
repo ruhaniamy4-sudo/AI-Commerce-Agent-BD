@@ -125,21 +125,21 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
 
     return (
         <Dialog open={!!meeting} onOpenChange={onClose}>
-            <DialogContent className="max-w-2xl p-0 overflow-hidden border-border shadow-2xl rounded-3xl bg-background text-foreground">
-                <DialogHeader className="p-8 bg-muted/10 border-b border-border">
+            <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl p-0 overflow-hidden border-border shadow-2xl rounded-2xl sm:rounded-3xl bg-background text-foreground max-h-[90dvh]">
+                <DialogHeader className="p-4 sm:p-6 md:p-8 bg-muted/10 border-b border-border">
                     <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20 flex items-center gap-2">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="bg-primary/10 px-2.5 sm:px-3 py-1 rounded-full border border-primary/20 flex items-center gap-1.5 sm:gap-2">
                                 <Zap className="h-3 w-3 text-primary" />
-                                <span className="text-[10px] font-black uppercase tracking-widest text-primary">Strategic Session</span>
+                                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-primary">Strategic Session</span>
                             </div>
-                            <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest italic opacity-50">Ref: {meeting._id.slice(-8).toUpperCase()}</span>
+                            <span className="text-[9px] sm:text-[10px] text-muted-foreground font-mono uppercase tracking-widest italic opacity-50">Ref: {meeting._id.slice(-8).toUpperCase()}</span>
                         </div>
                         {!isEditing && (
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-10 w-10 bg-secondary/50 border border-border text-foreground rounded-xl hover:bg-secondary"
+                                className="h-8 w-8 sm:h-10 sm:w-10 bg-secondary/50 border border-border text-foreground rounded-lg sm:rounded-xl hover:bg-secondary"
                                 onClick={() => {
                                     setIsEditing(true);
                                     setEditData({
@@ -151,24 +151,24 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                                     });
                                 }}
                             >
-                                <Edit className="h-4 w-4" />
+                                <Edit className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             </Button>
                         )}
                     </div>
-                    <DialogTitle className="text-3xl font-black text-foreground tracking-tighter">
+                    <DialogTitle className="text-xl sm:text-2xl md:text-3xl font-black text-foreground tracking-tighter">
                         {isEditing ? 'Refine Objective' : meeting.title}
                     </DialogTitle>
-                    <DialogDescription className="text-muted-foreground font-medium mt-1">
+                    <DialogDescription className="text-muted-foreground font-medium mt-1 text-xs sm:text-sm">
                         {isEditing
                             ? 'Calibrate the temporal and physical parameters of this engagement.'
                             : 'Detailed telemetry and management interface for this transaction.'}
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="p-8 space-y-6">
+                <div className="p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6 max-h-[60vh] overflow-y-auto">
                     {isEditing ? (
-                        <div className="space-y-6">
-                            <div className="space-y-2.5">
+                        <div className="space-y-4 sm:space-y-6">
+                            <div className="space-y-1.5 sm:space-y-2.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">
                                     Engagement Title
                                 </label>
@@ -180,11 +180,11 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                                             title: e.target.value,
                                         })
                                     }
-                                    className="h-14 bg-muted/5 border-border rounded-2xl focus:bg-muted/10 transition-all shadow-inner text-foreground"
+                                    className="h-11 sm:h-12 md:h-14 bg-muted/5 border-border rounded-xl sm:rounded-2xl focus:bg-muted/10 transition-all shadow-inner text-foreground text-sm"
                                 />
                             </div>
-                            <div className="grid grid-cols-2 gap-8">
-                                <div className="space-y-2.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-8">
+                                <div className="space-y-1.5 sm:space-y-2.5">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">
                                         Temporal Start
                                     </label>
@@ -208,10 +208,10 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                                                 ).toISOString(),
                                             })
                                         }
-                                        className="h-14 bg-muted/5 border-border rounded-2xl focus:bg-muted/10 transition-all shadow-inner text-foreground"
+                                        className="h-11 sm:h-12 md:h-14 bg-muted/5 border-border rounded-xl sm:rounded-2xl focus:bg-muted/10 transition-all shadow-inner text-foreground text-sm"
                                     />
                                 </div>
-                                <div className="space-y-2.5">
+                                <div className="space-y-1.5 sm:space-y-2.5">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">
                                         Temporal End
                                     </label>
@@ -235,11 +235,11 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                                                 ).toISOString(),
                                             })
                                         }
-                                        className="h-14 bg-muted/5 border-border rounded-2xl focus:bg-muted/10 transition-all shadow-inner text-foreground"
+                                        className="h-11 sm:h-12 md:h-14 bg-muted/5 border-border rounded-xl sm:rounded-2xl focus:bg-muted/10 transition-all shadow-inner text-foreground text-sm"
                                     />
                                 </div>
                             </div>
-                            <div className="space-y-2.5">
+                            <div className="space-y-1.5 sm:space-y-2.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">
                                     Deployment Location
                                 </label>
@@ -252,15 +252,15 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                                             location: e.target.value,
                                         })
                                     }
-                                    className="h-14 bg-muted/5 border-border rounded-2xl focus:bg-muted/10 transition-all shadow-inner text-foreground"
+                                    className="h-11 sm:h-12 md:h-14 bg-muted/5 border-border rounded-xl sm:rounded-2xl focus:bg-muted/10 transition-all shadow-inner text-foreground text-sm"
                                 />
                             </div>
-                            <div className="space-y-2.5">
+                            <div className="space-y-1.5 sm:space-y-2.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">
                                     Operational Brief
                                 </label>
                                 <textarea
-                                    className="w-full min-h-[120px] p-6 rounded-2xl border-border bg-muted/5 text-sm text-foreground focus:bg-muted/10 transition-all outline-none shadow-inner leading-relaxed"
+                                    className="w-full min-h-[90px] sm:min-h-[120px] p-3 sm:p-6 rounded-xl sm:rounded-2xl border-border bg-muted/5 text-sm text-foreground focus:bg-muted/10 transition-all outline-none shadow-inner leading-relaxed"
                                     value={editData.description || ''}
                                     onChange={(e) =>
                                         setEditData({
@@ -272,29 +272,29 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                             </div>
                         </div>
                     ) : (
-                        <div className="space-y-8">
-                            <div className="flex items-center justify-between p-6 rounded-3xl bg-muted/5 border border-border shadow-inner">
-                                <div className="flex items-center gap-4">
+                        <div className="space-y-6 sm:space-y-8">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-muted/5 border border-border shadow-inner">
+                                <div className="flex items-center gap-3 sm:gap-4">
                                     <div className={cn(
-                                        "h-12 w-12 rounded-2xl flex items-center justify-center border",
+                                        "h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-2xl flex items-center justify-center border shrink-0",
                                         meeting.status === 'scheduled' ? "bg-primary/10 border-primary/20 text-primary" :
                                             meeting.status === 'completed' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" :
                                                 "bg-rose-500/10 border-rose-500/20 text-rose-500"
                                     )}>
-                                        {meeting.status === 'scheduled' ? <Clock className="h-6 w-6" /> :
-                                            meeting.status === 'completed' ? <CheckCircle className="h-6 w-6" /> :
-                                                <XCircle className="h-6 w-6" />}
+                                        {meeting.status === 'scheduled' ? <Clock className="h-5 w-5 sm:h-6 sm:w-6" /> :
+                                            meeting.status === 'completed' ? <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6" /> :
+                                                <XCircle className="h-5 w-5 sm:h-6 sm:w-6" />}
                                     </div>
                                     <div>
                                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Current State</p>
-                                        <p className="text-base font-black text-foreground tracking-tight uppercase tracking-widest">{meeting.status}</p>
+                                        <p className="text-sm sm:text-base font-black text-foreground tracking-tight uppercase tracking-widest">{meeting.status}</p>
                                     </div>
                                 </div>
-                                <div className="flex gap-3">
+                                <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
                                     {meeting.status !== 'completed' && (
                                         <Button
                                             onClick={() => handleUpdateStatus('completed')}
-                                            className="h-12 bg-primary text-primary-foreground hover:bg-primary/90 rounded-2xl px-6 font-black uppercase tracking-widest shadow-xl shadow-primary/10"
+                                            className="h-10 sm:h-12 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl sm:rounded-2xl px-4 sm:px-6 font-black uppercase tracking-widest shadow-xl shadow-primary/10 text-xs sm:text-sm flex-1 sm:flex-none"
                                         >
                                             Complete
                                         </Button>
@@ -303,7 +303,7 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                                         <Button
                                             variant="ghost"
                                             onClick={() => handleUpdateStatus('cancelled')}
-                                            className="h-12 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-6 rounded-2xl font-black uppercase tracking-widest"
+                                            className="h-10 sm:h-12 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-4 sm:px-6 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest text-xs sm:text-sm flex-1 sm:flex-none"
                                         >
                                             Cancel
                                         </Button>
@@ -311,40 +311,40 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-8">
-                                <div className="space-y-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8">
+                                <div className="space-y-1.5 sm:space-y-2">
                                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                                         <CalendarIcon className="h-3 w-3" /> Start Temporal
                                     </div>
-                                    <p className="text-base font-bold text-foreground tracking-tight">
+                                    <p className="text-sm sm:text-base font-bold text-foreground tracking-tight">
                                         {formatInBDTime(meeting.startTime, 'PPp')}
                                     </p>
                                 </div>
-                                <div className="space-y-2">
+                                <div className="space-y-1.5 sm:space-y-2">
                                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                                         <History className="h-3 w-3" /> End Temporal
                                     </div>
-                                    <p className="text-base font-bold text-foreground tracking-tight">
+                                    <p className="text-sm sm:text-base font-bold text-foreground tracking-tight">
                                         {formatInBDTime(meeting.endTime, 'PPp')}
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="space-y-4 border-t border-border pt-8">
-                                <div className="space-y-2">
+                            <div className="space-y-4 border-t border-border pt-4 sm:pt-8">
+                                <div className="space-y-1.5 sm:space-y-2">
                                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                                         <MapPin className="h-3 w-3" /> Sector (Location)
                                     </div>
-                                    <p className="text-sm font-medium text-foreground/80 leading-relaxed">
+                                    <p className="text-xs sm:text-sm font-medium text-foreground/80 leading-relaxed">
                                         {meeting.location || <span className="text-muted-foreground/40 italic">No coordinates defined</span>}
                                     </p>
                                 </div>
 
-                                <div className="space-y-2 border-t border-border pt-4">
+                                <div className="space-y-1.5 sm:space-y-2 border-t border-border pt-3 sm:pt-4">
                                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                                         <FileText className="h-3 w-3" /> Operational Brief
                                     </div>
-                                    <p className="text-sm font-medium text-foreground/70 whitespace-pre-wrap leading-relaxed">
+                                    <p className="text-xs sm:text-sm font-medium text-foreground/70 whitespace-pre-wrap leading-relaxed">
                                         {meeting.description || <span className="text-muted-foreground/40 italic">No brief available</span>}
                                     </p>
                                 </div>
@@ -353,20 +353,20 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                     )}
                 </div>
 
-                <DialogFooter className="p-8 bg-muted/30 border-t border-border flex justify-between items-center">
+                <DialogFooter className="p-4 sm:p-6 md:p-8 bg-muted/30 border-t border-border flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-3">
                     {isEditing ? (
                         <>
                             <Button
                                 variant="ghost"
                                 onClick={() => setIsEditing(false)}
-                                className="h-14 rounded-2xl border-border bg-transparent text-foreground px-8 font-bold hover:bg-accent"
+                                className="h-11 sm:h-12 md:h-14 rounded-xl sm:rounded-2xl border-border bg-transparent text-foreground px-6 sm:px-8 font-bold hover:bg-accent w-full sm:w-auto"
                             >
                                 Cancel
                             </Button>
                             <Button
                                 onClick={handleSaveEdit}
                                 disabled={updateMutation.isPending}
-                                className="h-14 bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl px-12 font-black uppercase tracking-widest shadow-xl shadow-primary/20"
+                                className="h-11 sm:h-12 md:h-14 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl sm:rounded-2xl px-8 sm:px-12 font-black uppercase tracking-widest shadow-xl shadow-primary/20 w-full sm:w-auto text-xs sm:text-sm"
                             >
                                 {updateMutation.isPending && (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -384,15 +384,15 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                                     }
                                 }}
                                 disabled={deleteMutation.isPending}
-                                className="h-14 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-8 rounded-2xl font-black uppercase tracking-widest"
+                                className="h-11 sm:h-12 md:h-14 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-6 sm:px-8 rounded-xl sm:rounded-2xl font-black uppercase tracking-widest w-full sm:w-auto text-xs sm:text-sm"
                             >
-                                <Trash className="h-4 w-4 mr-3" />
+                                <Trash className="h-4 w-4 mr-2 sm:mr-3" />
                                 Purge
                             </Button>
                             <Button
                                 variant="outline"
                                 onClick={onClose}
-                                className="h-14 rounded-2xl border-border bg-secondary/50 text-foreground px-12 font-bold hover:bg-secondary"
+                                className="h-11 sm:h-12 md:h-14 rounded-xl sm:rounded-2xl border-border bg-secondary/50 text-foreground px-8 sm:px-12 font-bold hover:bg-secondary w-full sm:w-auto text-xs sm:text-sm"
                             >
                                 Dismiss
                             </Button>
@@ -428,21 +428,21 @@ function CalendarView({
     };
 
     return (
-        <Card className="glass-card border-border shadow-premium rounded-3xl overflow-hidden bg-card/10">
-            <CardHeader className="p-8 flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0 border-b border-border">
+        <Card className="glass-card border-border shadow-premium rounded-2xl sm:rounded-3xl overflow-hidden bg-card/10">
+            <CardHeader className="p-4 sm:p-6 md:p-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 border-b border-border">
                 <div className="text-center sm:text-left">
-                    <CardTitle className="text-3xl font-black text-foreground tracking-tighter">
+                    <CardTitle className="text-xl sm:text-2xl md:text-3xl font-black text-foreground tracking-tighter">
                         {format(currentMonth, 'MMMM yyyy')}
                     </CardTitle>
-                    <CardDescription className="text-muted-foreground font-medium mt-1">
+                    <CardDescription className="text-muted-foreground font-medium mt-1 text-xs sm:text-sm">
                         Temporal timeline for institutional engagements
                     </CardDescription>
                 </div>
-                <div className="flex gap-3 bg-muted/10 p-1.5 rounded-2xl border border-border">
+                <div className="flex gap-2 sm:gap-3 bg-muted/10 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-border">
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-11 w-11 rounded-xl hover:bg-accent text-foreground"
+                        className="h-9 w-9 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl hover:bg-accent text-foreground"
                         onClick={() =>
                             setCurrentMonth(
                                 new Date(
@@ -453,12 +453,12 @@ function CalendarView({
                             )
                         }
                     >
-                        <ChevronLeft className="h-5 w-5" />
+                        <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
                     </Button>
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-11 w-11 rounded-xl hover:bg-accent text-foreground"
+                        className="h-9 w-9 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl hover:bg-accent text-foreground"
                         onClick={() =>
                             setCurrentMonth(
                                 new Date(
@@ -469,7 +469,7 @@ function CalendarView({
                             )
                         }
                     >
-                        <ChevronRight className="h-5 w-5" />
+                        <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
                     </Button>
                 </div>
             </CardHeader>
@@ -479,7 +479,7 @@ function CalendarView({
                         (day) => (
                             <div
                                 key={day}
-                                className="bg-muted/10 py-4 text-center text-[10px] font-black uppercase text-muted-foreground tracking-[0.2em]"
+                                className="bg-muted/10 py-2 sm:py-4 text-center text-[9px] sm:text-[10px] font-black uppercase text-muted-foreground tracking-wider sm:tracking-[0.2em]"
                             >
                                 {day}
                             </div>
@@ -488,7 +488,7 @@ function CalendarView({
                     {emptyDays.map((_, i) => (
                         <div
                             key={`empty-${i}`}
-                            className="bg-muted/5 min-h-[140px]"
+                            className="bg-muted/5 min-h-[70px] sm:min-h-[140px]"
                         />
                     ))}
                     {daysInMonth.map((day) => {
@@ -500,19 +500,19 @@ function CalendarView({
                             <div
                                 key={day.toISOString()}
                                 className={cn(
-                                    'bg-background min-h-[140px] p-3 transition-all relative group border-r border-b border-border/20',
+                                    'bg-background min-h-[70px] sm:min-h-[140px] p-1.5 sm:p-3 transition-all relative group border-r border-b border-border/20',
                                     !isCurrentMonth && 'opacity-20 pointer-events-none grayscale',
                                     isToday && 'bg-primary/[0.03]'
                                 )}
                             >
                                 <div
                                     className={cn(
-                                        'text-xs font-black mb-3 flex items-center justify-between',
+                                        'text-xs font-black mb-1 sm:mb-3 flex items-center justify-between',
                                         isToday ? 'text-primary' : 'text-muted-foreground/40'
                                     )}
                                 >
                                     <span className={cn(
-                                        "h-8 w-8 flex items-center justify-center rounded-lg transition-colors",
+                                        "h-6 w-6 sm:h-8 sm:w-8 flex items-center justify-center rounded-md sm:rounded-lg transition-colors text-[10px] sm:text-xs",
                                         isToday ? "bg-primary text-white shadow-lg shadow-primary/20" : "group-hover:text-white"
                                     )}>
                                         {format(day, 'd')}
@@ -521,23 +521,23 @@ function CalendarView({
                                         <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
                                     )}
                                 </div>
-                                <div className="space-y-2 overflow-y-auto max-h-[100px] custom-scrollbar">
+                                <div className="space-y-1 sm:space-y-2 overflow-y-auto max-h-[60px] sm:max-h-[100px] custom-scrollbar">
                                     {dayMeetings.map((meeting) => (
                                         <button
                                             key={meeting._id}
                                             onClick={() => onSelect(meeting)}
                                             className={cn(
-                                                'w-full text-left p-2.5 rounded-xl truncate transition-all border shadow-sm group/btn',
+                                                'w-full text-left p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl truncate transition-all border shadow-sm group/btn',
                                                 meeting.status === 'scheduled' && 'bg-primary/10 border-primary/20 text-foreground hover:bg-primary/20',
                                                 meeting.status === 'completed' && 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20',
                                                 meeting.status === 'cancelled' && 'bg-muted/5 border-border text-muted-foreground/40 hover:bg-muted/10 line-through'
                                             )}
                                         >
                                             <div className="flex flex-col gap-0.5">
-                                                <span className="text-[9px] font-black uppercase tracking-widest opacity-60">
+                                                <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-60">
                                                     {formatInBDTime(meeting.startTime, 'HH:mm')}
                                                 </span>
-                                                <span className="text-[10px] font-bold truncate tracking-tight">{meeting.title}</span>
+                                                <span className="text-[9px] sm:text-[10px] font-bold truncate tracking-tight">{meeting.title}</span>
                                             </div>
                                         </button>
                                     ))}
@@ -559,15 +559,15 @@ function ListView({
     onSelect: (m: Meeting) => void;
 }) {
     return (
-        <Card className="glass-card border-border shadow-premium rounded-3xl overflow-hidden bg-card/10">
+        <Card className="glass-card border-border shadow-premium rounded-2xl sm:rounded-3xl overflow-hidden bg-card/10">
             <CardContent className="p-0">
                 <Table>
                     <TableHeader>
                         <TableRow className="bg-muted/10 hover:bg-muted/10 border-b border-border">
-                            <TableHead className="font-bold py-5 pl-8 text-muted-foreground uppercase text-[10px] tracking-widest">Meeting Payload</TableHead>
-                            <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Temporal Log</TableHead>
-                            <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Operational State</TableHead>
-                            <TableHead className="text-right font-bold py-5 pr-8 text-muted-foreground uppercase text-[10px] tracking-widest">Calibration</TableHead>
+                            <TableHead className="font-bold py-3 sm:py-5 pl-4 sm:pl-8 text-muted-foreground uppercase text-[10px] tracking-widest">Meeting Payload</TableHead>
+                            <TableHead className="font-bold py-3 sm:py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Temporal Log</TableHead>
+                            <TableHead className="font-bold py-3 sm:py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Operational State</TableHead>
+                            <TableHead className="text-right font-bold py-3 sm:py-5 pr-4 sm:pr-8 text-muted-foreground uppercase text-[10px] tracking-widest">Calibration</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -577,9 +577,9 @@ function ListView({
                                     key={meeting._id}
                                     className="hover:bg-muted/5 transition-colors group border-b border-border/10"
                                 >
-                                    <TableCell className="py-6 pl-8">
+                                    <TableCell className="py-3.5 sm:py-6 pl-4 sm:pl-8">
                                         <div className="flex flex-col">
-                                            <span className="text-base font-black text-foreground tracking-tight">{meeting.title}</span>
+                                            <span className="text-sm sm:text-base font-black text-foreground tracking-tight">{meeting.title}</span>
                                             {meeting.location && (
                                                 <div className="text-[10px] text-muted-foreground/60 mt-0.5 flex items-center gap-1.5 italic">
                                                     <MapPin className="h-2.5 w-2.5" /> {meeting.location}
@@ -587,20 +587,20 @@ function ListView({
                                             )}
                                         </div>
                                     </TableCell>
-                                    <TableCell className="py-6">
+                                    <TableCell className="py-3.5 sm:py-6">
                                         <div className="flex flex-col">
-                                            <span className="text-sm font-bold text-foreground tracking-tighter">
+                                            <span className="text-xs sm:text-sm font-bold text-foreground tracking-tighter">
                                                 {formatInBDTime(meeting.startTime, 'PP')}
                                             </span>
-                                            <span className="text-[10px] text-muted-foreground/40 font-black uppercase tracking-widest mt-0.5">
+                                            <span className="text-[9px] sm:text-[10px] text-muted-foreground/40 font-black uppercase tracking-widest mt-0.5">
                                                 {formatInBDTime(meeting.startTime, 'HH:mm')} - {formatInBDTime(meeting.endTime, 'HH:mm')}
                                             </span>
                                         </div>
                                     </TableCell>
-                                    <TableCell className="py-6">
+                                    <TableCell className="py-3.5 sm:py-6">
                                         <Badge
                                             className={cn(
-                                                "capitalize px-4 py-1.5 border-none font-black text-[9px] tracking-widest rounded-full",
+                                                "capitalize px-3 sm:px-4 py-1 sm:py-1.5 border-none font-black text-[9px] tracking-widest rounded-full",
                                                 meeting.status === 'scheduled' ? "bg-primary/10 text-primary" :
                                                     meeting.status === 'completed' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
                                                         "bg-rose-500/10 text-rose-500"
@@ -609,11 +609,11 @@ function ListView({
                                             {meeting.status}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell className="py-6 text-right pr-8">
+                                    <TableCell className="py-3.5 sm:py-6 text-right pr-4 sm:pr-8">
                                         <Button
                                             variant="ghost"
                                             onClick={() => onSelect(meeting)}
-                                            className="h-10 px-6 text-[10px] font-black uppercase tracking-widest bg-secondary/50 border border-border text-foreground hover:bg-primary hover:text-white hover:border-primary transition-all rounded-xl shadow-lg"
+                                            className="h-8 sm:h-10 px-3 sm:px-6 text-[9px] sm:text-[10px] font-black uppercase tracking-widest bg-secondary/50 border border-border text-foreground hover:bg-primary hover:text-white hover:border-primary transition-all rounded-lg sm:rounded-xl shadow-lg"
                                         >
                                             Manage
                                         </Button>
@@ -624,15 +624,15 @@ function ListView({
                             <TableRow>
                                 <TableCell
                                     colSpan={4}
-                                    className="py-32 text-center"
+                                    className="py-16 sm:py-32 text-center"
                                 >
                                     <div className="flex flex-col items-center gap-4">
-                                        <div className="h-20 w-20 bg-muted rounded-3xl flex items-center justify-center mx-auto shadow-inner border border-border">
-                                            <CalendarIcon className="h-10 w-10 text-muted-foreground/20" />
+                                        <div className="h-16 w-16 sm:h-20 sm:w-20 bg-muted rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto shadow-inner border border-border">
+                                            <CalendarIcon className="h-8 w-8 sm:h-10 sm:w-10 text-muted-foreground/20" />
                                         </div>
-                                        <div className="space-y-2">
-                                            <h3 className="text-lg font-bold text-foreground">Silent Ledger</h3>
-                                            <p className="text-sm text-muted-foreground max-w-xs mx-auto">No scheduled engagement protocols found in the temporal database.</p>
+                                        <div className="space-y-1 sm:space-y-2">
+                                            <h3 className="text-base sm:text-lg font-bold text-foreground">Silent Ledger</h3>
+                                            <p className="text-xs sm:text-sm text-muted-foreground max-w-xs mx-auto">No scheduled engagement protocols found in the temporal database.</p>
                                         </div>
                                     </div>
                                 </TableCell>
@@ -663,36 +663,36 @@ export default function MeetingsPage() {
                 title="Engagement Ledger"
                 description="Synthesize, calibrate, and oversee institutional meeting protocols across temporal sectors."
             />
-            <div className="py-8 space-y-8 pb-20">
-                <Tabs defaultValue="calendar" className="space-y-12">
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-                        <TabsList className="bg-muted/10 p-1.5 border border-border shadow-2xl rounded-2xl backdrop-blur-3xl">
+            <div className="py-4 sm:py-8 space-y-6 sm:space-y-8 pb-12 sm:pb-20">
+                <Tabs defaultValue="calendar" className="space-y-6 sm:space-y-12">
+                    <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-8">
+                        <TabsList className="w-full sm:w-auto bg-muted/10 p-1 sm:p-1.5 border border-border shadow-2xl rounded-xl sm:rounded-2xl backdrop-blur-3xl">
                             <TabsTrigger
                                 value="calendar"
-                                className="px-8 py-3 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all font-black text-[10px] uppercase tracking-widest flex items-center gap-2"
+                                className="flex-1 sm:flex-initial px-4 sm:px-8 py-2.5 sm:py-3 rounded-lg sm:rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all font-black text-[9px] sm:text-[10px] uppercase tracking-widest flex items-center justify-center gap-2"
                             >
-                                <CalendarIcon className="h-4 w-4" />
+                                <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                 Matrix View
                             </TabsTrigger>
                             <TabsTrigger
                                 value="list"
-                                className="px-8 py-3 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all font-black text-[10px] uppercase tracking-widest flex items-center gap-2"
+                                className="flex-1 sm:flex-initial px-4 sm:px-8 py-2.5 sm:py-3 rounded-lg sm:rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all font-black text-[9px] sm:text-[10px] uppercase tracking-widest flex items-center justify-center gap-2"
                             >
-                                <List className="h-4 w-4" />
+                                <List className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                 Sequence View
                             </TabsTrigger>
                         </TabsList>
 
-                        <div className="flex items-center gap-8 bg-muted/30 px-8 py-4 rounded-3xl border border-border backdrop-blur-md shadow-inner">
-                            <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-around sm:justify-start gap-4 sm:gap-8 bg-muted/30 px-4 sm:px-8 py-2.5 sm:py-4 rounded-2xl sm:rounded-3xl border border-border backdrop-blur-md shadow-inner">
+                            <div className="flex items-center gap-2 sm:gap-3">
                                 <div className="h-2 w-2 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
                                 <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Scheduled</span>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 sm:gap-3">
                                 <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                                 <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Completed</span>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 sm:gap-3">
                                 <div className="h-2 w-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
                                 <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cancelled</span>
                             </div>

@@ -128,27 +128,27 @@ export default function KnowledgeBasePage() {
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
                     <DialogHeader><DialogTitle>Add knowledge</DialogTitle><DialogDescription>Write a clear, factual answer your assistant can use with customers.</DialogDescription></DialogHeader>
-                    <form onSubmit={handleAddEntry} className="space-y-5">
-                        <div className="grid grid-cols-2 gap-4">
-                            <label className="space-y-2 text-sm font-medium">Type<select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={newEntry.type} onChange={(e) => setNewEntry({ ...newEntry, type: e.target.value as Knowledge['type'] })}><option value="FAQ">FAQ</option><option value="POLICY">Policy</option><option value="GUIDE">Guide</option></select></label>
-                            <label className="space-y-2 text-sm font-medium">Language<select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={newEntry.language} onChange={(e) => setNewEntry({ ...newEntry, language: e.target.value as Knowledge['language'] })}><option value="en">English</option><option value="bn">Bangla</option></select></label>
+                    <form onSubmit={handleAddEntry} className="space-y-4 sm:space-y-5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                            <label className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm font-medium">Type<select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={newEntry.type} onChange={(e) => setNewEntry({ ...newEntry, type: e.target.value as Knowledge['type'] })}><option value="FAQ">FAQ</option><option value="POLICY">Policy</option><option value="GUIDE">Guide</option></select></label>
+                            <label className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm font-medium">Language<select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={newEntry.language} onChange={(e) => setNewEntry({ ...newEntry, language: e.target.value as Knowledge['language'] })}><option value="en">English</option><option value="bn">Bangla</option></select></label>
                         </div>
-                        <label className="block space-y-2 text-sm font-medium"><span>Title or question</span><Input placeholder="What is your return policy?" value={newEntry.title} onChange={(e) => setNewEntry({ ...newEntry, title: e.target.value })} required /></label>
-                        <label className="block space-y-2 text-sm font-medium"><span>Answer or content</span><Textarea rows={6} value={newEntry.content} onChange={(e) => setNewEntry({ ...newEntry, content: e.target.value })} required /></label>
-                        <label className="block space-y-2 text-sm font-medium"><span>Tags <span className="font-normal text-muted-foreground">(comma separated)</span></span><Input placeholder="returns, warranty" value={newEntry.tags} onChange={(e) => setNewEntry({ ...newEntry, tags: e.target.value })} /></label>
+                        <label className="block space-y-1.5 sm:space-y-2 text-xs sm:text-sm font-medium"><span>Title or question</span><Input placeholder="What is your return policy?" value={newEntry.title} onChange={(e) => setNewEntry({ ...newEntry, title: e.target.value })} required /></label>
+                        <label className="block space-y-1.5 sm:space-y-2 text-xs sm:text-sm font-medium"><span>Answer or content</span><Textarea rows={5} value={newEntry.content} onChange={(e) => setNewEntry({ ...newEntry, content: e.target.value })} required /></label>
+                        <label className="block space-y-1.5 sm:space-y-2 text-xs sm:text-sm font-medium"><span>Tags <span className="font-normal text-muted-foreground">(comma separated)</span></span><Input placeholder="returns, warranty" value={newEntry.tags} onChange={(e) => setNewEntry({ ...newEntry, tags: e.target.value })} /></label>
                         {createMutation.isError && <p role="alert" className="text-sm text-destructive">Could not save this entry. Please try again.</p>}
-                        <div className="flex justify-end gap-3 border-t border-border pt-4"><Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button><Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending && <Loader2 size={16} className="mr-2 animate-spin" />}Save knowledge</Button></div>
+                        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 border-t border-border pt-4"><Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>Cancel</Button><Button type="submit" className="w-full sm:w-auto" disabled={createMutation.isPending}>{createMutation.isPending && <Loader2 size={16} className="mr-2 animate-spin" />}Save knowledge</Button></div>
                     </form>
                 </DialogContent>
             </Dialog>
             <Dialog open={!!editingEntry} onOpenChange={(open) => !open && setEditingEntry(null)}>
                 <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
                     <DialogHeader><DialogTitle>Edit knowledge</DialogTitle><DialogDescription>Keep this answer up to date for future customer conversations.</DialogDescription></DialogHeader>
-                    {editingEntry && <form onSubmit={handleUpdateEntry} className="space-y-5">
-                        <label className="block space-y-2 text-sm font-medium"><span>Title or question</span><Input value={editingEntry.title} onChange={(e) => setEditingEntry({ ...editingEntry, title: e.target.value })} required /></label>
-                        <label className="block space-y-2 text-sm font-medium"><span>Answer or content</span><Textarea rows={8} value={editingEntry.content} onChange={(e) => setEditingEntry({ ...editingEntry, content: e.target.value })} required /></label>
+                    {editingEntry && <form onSubmit={handleUpdateEntry} className="space-y-4 sm:space-y-5">
+                        <label className="block space-y-1.5 sm:space-y-2 text-xs sm:text-sm font-medium"><span>Title or question</span><Input value={editingEntry.title} onChange={(e) => setEditingEntry({ ...editingEntry, title: e.target.value })} required /></label>
+                        <label className="block space-y-1.5 sm:space-y-2 text-xs sm:text-sm font-medium"><span>Answer or content</span><Textarea rows={6} value={editingEntry.content} onChange={(e) => setEditingEntry({ ...editingEntry, content: e.target.value })} required /></label>
                         {updateMutation.isError && <p role="alert" className="text-sm text-destructive">Could not save your changes. Please try again.</p>}
-                        <div className="flex justify-end gap-3 border-t border-border pt-4"><Button type="button" variant="outline" onClick={() => setEditingEntry(null)}>Cancel</Button><Button type="submit" disabled={updateMutation.isPending}>Save changes</Button></div>
+                        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 border-t border-border pt-4"><Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setEditingEntry(null)}>Cancel</Button><Button type="submit" className="w-full sm:w-auto" disabled={updateMutation.isPending}>Save changes</Button></div>
                     </form>}
                 </DialogContent>
             </Dialog>

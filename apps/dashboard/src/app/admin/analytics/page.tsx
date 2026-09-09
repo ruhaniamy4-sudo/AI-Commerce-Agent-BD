@@ -111,29 +111,29 @@ export default function AnalyticsPage() {
         title="Business Analytics"
         description="A clear view of customers, orders, and sales activity from your connected channels."
       />
-      <div className="space-y-8 py-8">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="space-y-6 sm:space-y-8 py-4 sm:py-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4">
           {metrics.map(({ label, value, detail, icon: Icon }) => (
             <article key={label} className="metric-card sp-enter">
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start justify-between gap-3 sm:gap-4">
                 <div>
                   <p className="sp-meta">{label}</p>
-                  <p className="mt-3 text-3xl font-bold tracking-tight text-foreground">
+                  <p className="mt-2 sm:mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                     {value}
                   </p>
                 </div>
-                <span className="rounded-2xl bg-primary/10 p-3 text-primary">
+                <span className="rounded-xl sm:rounded-2xl bg-primary/10 p-2 sm:p-3 text-primary shrink-0">
                   <Icon className="h-5 w-5" />
                 </span>
               </div>
-              <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              <p className="mt-3 sm:mt-5 text-xs sm:text-sm leading-5 sm:leading-6 text-muted-foreground">
                 {detail}
               </p>
             </article>
           ))}
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.55fr_1fr]">
+        <div className="grid gap-4 sm:gap-6 xl:grid-cols-[1.55fr_1fr]">
           <InsightPanel
             title="Order activity"
             description="Recorded activity over time. No estimates or projected revenue are added."
@@ -237,7 +237,7 @@ export default function AnalyticsPage() {
           </InsightPanel>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-3">
+        <div className="grid gap-4 sm:gap-6 xl:grid-cols-3">
           <InsightPanel
             title="Top products"
             description="Products ranked by units sold."
@@ -300,10 +300,10 @@ export default function AnalyticsPage() {
               {insights.map((insight) => (
                 <div
                   key={insight}
-                  className="flex gap-3 rounded-2xl border border-primary/15 bg-primary/5 p-4"
+                  className="flex gap-3 rounded-xl sm:rounded-2xl border border-primary/15 bg-primary/5 p-3.5 sm:p-4"
                 >
                   <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                  <p className="text-sm leading-6 text-foreground">{insight}</p>
+                  <p className="text-xs sm:text-sm leading-5 sm:leading-6 text-foreground">{insight}</p>
                 </div>
               ))}
             </div>
@@ -327,11 +327,11 @@ function InsightPanel({
 }) {
   return (
     <section className="data-panel overflow-hidden">
-      <div className="border-b border-border px-6 py-5">
-        <h2 className="text-lg font-bold text-foreground">{title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      <div className="border-b border-border px-4 sm:px-6 py-3.5 sm:py-5">
+        <h2 className="text-base sm:text-lg font-bold text-foreground">{title}</h2>
+        <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-muted-foreground">{description}</p>
       </div>
-      <div className="p-6">{children}</div>
+      <div className="p-3.5 sm:p-6">{children}</div>
     </section>
   );
 }
@@ -359,21 +359,21 @@ function RankedList({
   items: Array<{ name: string; value: string }>;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2 sm:space-y-3">
       {items.map((item, index) => (
         <div
           key={`${item.name}-${index}`}
-          className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-muted/25 px-4 py-3"
+          className="flex items-center justify-between gap-3 sm:gap-4 rounded-xl sm:rounded-2xl border border-border bg-muted/25 px-3 sm:px-4 py-2.5 sm:py-3"
         >
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
+          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+            <span className="grid h-6 w-6 sm:h-7 sm:w-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-[11px] sm:text-xs font-bold text-primary">
               {index + 1}
             </span>
-            <span className="truncate text-sm font-semibold text-foreground">
+            <span className="truncate text-xs sm:text-sm font-semibold text-foreground">
               {item.name}
             </span>
           </div>
-          <span className="shrink-0 text-xs font-medium text-muted-foreground">
+          <span className="shrink-0 text-[11px] sm:text-xs font-medium text-muted-foreground">
             {item.value}
           </span>
         </div>

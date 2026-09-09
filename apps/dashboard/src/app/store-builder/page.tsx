@@ -49,13 +49,13 @@ export default function StoreBuilderPage() {
         title="Store Builder"
         description="Customize the connected storefront without changing your products, inventory, or checkout flow."
         actions={
-          <div className="flex gap-2">
-            <Button asChild variant="outline">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            <Button asChild variant="outline" className="flex-1 sm:flex-initial">
               <a href={`${siteUrl}/shop`} target="_blank" rel="noreferrer">
                 View live <ExternalLink className="ml-2 h-4 w-4" />
               </a>
             </Button>
-            <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            <Button onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 sm:flex-initial">
               <Save className="mr-2 h-4 w-4" />
               {save.isPending ? "Saving…" : "Publish changes"}
             </Button>
@@ -153,14 +153,14 @@ export default function StoreBuilderPage() {
         </Card>
 
         <Card className="overflow-hidden">
-          <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardHeader className="flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 space-y-0">
             <div>
               <CardTitle>Store preview</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
                 Preview your design with current catalog data. Changes are not published until you save.
               </p>
             </div>
-            <div className="flex rounded-xl border bg-muted/40 p-1">
+            <div className="flex rounded-xl border bg-muted/40 p-1 shrink-0">
               <button
                 type="button"
                 aria-label="Desktop preview"
@@ -187,50 +187,50 @@ export default function StoreBuilderPage() {
               </button>
             </div>
           </CardHeader>
-          <CardContent className="bg-muted/30 p-5 sm:p-8">
+          <CardContent className="bg-muted/30 p-3 sm:p-8">
             <div
               className={cn(
-                "mx-auto overflow-hidden rounded-[24px] border bg-white text-slate-950 shadow-2xl transition-all duration-300",
+                "mx-auto overflow-hidden rounded-2xl sm:rounded-[24px] border bg-white text-slate-950 shadow-2xl transition-all duration-300",
                 preview === "mobile" ? "max-w-[390px]" : "max-w-5xl",
               )}
             >
-              <div className="flex items-center justify-between border-b px-5 py-4">
-                <div className="flex items-center gap-2 font-bold">
+              <div className="flex items-center justify-between border-b px-3.5 sm:px-5 py-3 sm:py-4">
+                <div className="flex items-center gap-2 font-bold text-sm sm:text-base">
                   <span
-                    className="grid h-8 w-8 place-items-center rounded-lg text-white"
+                    className="grid h-7 w-7 sm:h-8 sm:w-8 place-items-center rounded-lg text-white shrink-0"
                     style={{ background: settings.primaryColor }}
                   >
-                    <Store className="h-4 w-4" />
+                    <Store className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   </span>
                   {data?.name || "Your store"}
                 </div>
-                <span className="text-xs text-slate-500">Catalog · Cart</span>
+                <span className="text-[11px] sm:text-xs text-slate-500">Catalog · Cart</span>
               </div>
               <div
-                className="p-7 sm:p-10"
+                className="p-4 sm:p-10"
                 style={{
                   background: `linear-gradient(135deg, ${settings.primaryColor}18, ${settings.accentColor}22)`,
                 }}
               >
                 <p
-                  className="text-xs font-bold uppercase tracking-[.2em]"
+                  className="text-[10px] sm:text-xs font-bold uppercase tracking-[.2em]"
                   style={{ color: settings.primaryColor }}
                 >
                   New collection
                 </p>
-                <h2 className="mt-3 max-w-xl text-3xl font-black tracking-tight sm:text-5xl">
+                <h2 className="mt-2 sm:mt-3 max-w-xl text-xl sm:text-3xl md:text-5xl font-black tracking-tight">
                   {settings.heroTitle || "Your storefront headline"}
                 </h2>
-                <p className="mt-3 max-w-lg text-sm leading-6 text-slate-600">
+                <p className="mt-2 sm:mt-3 max-w-lg text-xs sm:text-sm leading-5 sm:leading-6 text-slate-600">
                   {settings.heroSubtitle}
                 </p>
               </div>
               <div
                 className={cn(
-                  "grid gap-3 p-5",
+                  "grid gap-2 sm:gap-3 p-3 sm:p-5",
                   preview === "mobile" || settings.layout === "editorial"
                     ? "grid-cols-2"
-                    : "grid-cols-4",
+                    : "grid-cols-2 sm:grid-cols-4",
                 )}
               >
                 {catalog.isLoading && <p className="col-span-full text-sm text-slate-500">Loading catalog…</p>}

@@ -79,7 +79,7 @@ export default function IntegrationsPage() {
             <IntegrationCard icon={MessageCircle} name="WhatsApp" status="Coming soon" muted />
         </div>
         <Card className="max-w-3xl border-border shadow-premium">
-            <CardHeader className="border-b border-border"><div className="flex items-start justify-between gap-4"><div className="flex gap-4"><div className="grid h-11 w-11 place-items-center rounded-xl bg-blue-500/10"><MessageCircle className="h-5 w-5 text-blue-500" /></div><div><CardTitle>Facebook Messenger</CardTitle><CardDescription className="mt-1">Authorize Pages you manage. SellPilot stores one encrypted Page token per business connection.</CardDescription></div></div><Button onClick={() => startFacebook.mutate(false)} disabled={startFacebook.isPending}>{startFacebook.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlugZap className="mr-2 h-4 w-4" />}Connect Facebook</Button></div></CardHeader>
+            <CardHeader className="border-b border-border"><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4"><div className="flex gap-4"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-500/10"><MessageCircle className="h-5 w-5 text-blue-500" /></div><div><CardTitle>Facebook Messenger</CardTitle><CardDescription className="mt-1">Authorize Pages you manage. SellPilot stores one encrypted Page token per business connection.</CardDescription></div></div><Button className="w-full sm:w-auto shrink-0" onClick={() => startFacebook.mutate(false)} disabled={startFacebook.isPending}>{startFacebook.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlugZap className="mr-2 h-4 w-4" />}Connect Facebook</Button></div></CardHeader>
             <CardContent className="space-y-4 pt-6">
                 {facebookMessage && <p className="rounded-xl border bg-muted/30 p-3 text-sm">{facebookMessage}</p>}
                 {facebookSession && <div className="space-y-3 rounded-xl border p-4"><b>Choose a Facebook Page</b><p className="text-sm text-muted-foreground">Only connect a Page you are authorized to manage. SellPilot will act for this business and subscribe it to Messenger events.</p><div className="grid gap-2">{pageChoices.isLoading && <p className="text-sm">Loading authorized Pages…</p>}{pageChoices.data?.pages.map(page => <label key={page.choiceId} className="flex cursor-pointer items-center gap-3 rounded-lg border p-3"><input type="radio" name="facebook-page" checked={selectedPage === page.choiceId} onChange={() => setSelectedPage(page.choiceId)} />{page.picture ? <img alt="" src={page.picture} className="h-10 w-10 rounded-full object-cover" /> : <div className="h-10 w-10 rounded-full bg-muted" />}<span><b className="block">{page.name}</b><span className="text-xs text-muted-foreground">{page.category || 'Facebook Page'}</span></span></label>)}</div><Button disabled={!selectedPage || confirmFacebook.isPending} onClick={() => confirmFacebook.mutate()}>{confirmFacebook.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Authorize selected Page</Button></div>}
@@ -90,9 +90,9 @@ export default function IntegrationsPage() {
         </Card>
         <Card className="max-w-3xl border-border shadow-premium">
             <CardHeader className="border-b border-border">
-                <div className="flex items-start justify-between gap-4">
-                    <div className="flex gap-4"><div className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10"><PlugZap className="h-5 w-5 text-primary" /></div><div><CardTitle>Steadfast Courier</CardTitle><CardDescription className="mt-1">Create and track Bangladesh deliveries after merchant approval.</CardDescription></div></div>
-                    <Badge variant={status?.connected ? 'default' : 'secondary'}>{status?.connected ? 'Connected' : 'Not connected'}</Badge>
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="flex gap-4"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10"><PlugZap className="h-5 w-5 text-primary" /></div><div><CardTitle>Steadfast Courier</CardTitle><CardDescription className="mt-1">Create and track Bangladesh deliveries after merchant approval.</CardDescription></div></div>
+                    <Badge variant={status?.connected ? 'default' : 'secondary'} className="self-start sm:self-auto">{status?.connected ? 'Connected' : 'Not connected'}</Badge>
                 </div>
             </CardHeader>
             <CardContent className="space-y-6 pt-6">
@@ -103,9 +103,9 @@ export default function IntegrationsPage() {
                 <div className="flex gap-3 rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" /><p>Credentials are encrypted server-side and are never returned to this dashboard. Enter both fields only when connecting or replacing credentials.</p></div>
                 {message && <div className="flex items-center gap-2 text-sm text-muted-foreground"><CheckCircle2 className="h-4 w-4 text-primary" />{message}</div>}
                 <div className="flex flex-wrap gap-3">
-                    <Button onClick={() => save.mutate()} disabled={busy || !apiKey || !secretKey}>{save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}Save & validate</Button>
-                    <Button variant="outline" onClick={() => test.mutate()} disabled={busy || !status?.configured}>Test connection</Button>
-                    <Button variant="destructive" onClick={() => disconnect.mutate()} disabled={busy || !status?.configured}><Unplug className="mr-2 h-4 w-4" />Disconnect</Button>
+                    <Button className="w-full sm:w-auto" onClick={() => save.mutate()} disabled={busy || !apiKey || !secretKey}>{save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}Save & validate</Button>
+                    <Button className="w-full sm:w-auto" variant="outline" onClick={() => test.mutate()} disabled={busy || !status?.configured}>Test connection</Button>
+                    <Button className="w-full sm:w-auto" variant="destructive" onClick={() => disconnect.mutate()} disabled={busy || !status?.configured}><Unplug className="mr-2 h-4 w-4" />Disconnect</Button>
                 </div>
             </CardContent>
         </Card>

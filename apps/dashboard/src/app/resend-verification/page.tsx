@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PublicAuthPage } from '@/components/auth-visual';
 
 export default function ResendVerificationPage() {
     const [email, setEmail] = useState('');
@@ -38,7 +39,7 @@ export default function ResendVerificationPage() {
         }
     }
 
-    return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+    return <PublicAuthPage>
         <Card className="w-full max-w-md">
             <CardHeader>
                 <CardTitle className="text-3xl">Verify your email</CardTitle>
@@ -54,5 +55,5 @@ export default function ResendVerificationPage() {
                 </form>}
             </CardContent>
         </Card>
-    </main>;
+    </PublicAuthPage>;
 }

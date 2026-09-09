@@ -39,10 +39,10 @@ export function OrderAnalytics() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-black text-foreground tracking-tight">Order Analytics</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h2 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">Order Analytics</h2>
                 <Select value={dateRange} onValueChange={setDateRange}>
-                    <SelectTrigger className="w-48 h-12 bg-muted/10 border-border rounded-xl">
+                    <SelectTrigger className="w-full sm:w-48 h-10 sm:h-12 bg-muted/10 border-border rounded-xl">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -55,31 +55,31 @@ export function OrderAnalytics() {
             </div>
 
             {/* Revenue Card */}
-            <div className="glass-card p-8 rounded-3xl border-border">
-                <div className="flex items-start justify-between">
+            <div className="glass-card p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl border-border">
+                <div className="flex flex-col-reverse sm:flex-row sm:items-start justify-between gap-4">
                     <div>
                         <div className="flex items-center gap-2 mb-2">
-                            <div className="p-2 bg-emerald-500/10 rounded-xl">
-                                <DollarSign className="h-5 w-5 text-emerald-500" />
+                            <div className="p-1.5 sm:p-2 bg-emerald-500/10 rounded-xl">
+                                <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-500" />
                             </div>
-                            <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Total Revenue</p>
+                            <p className="text-xs sm:text-sm font-bold text-muted-foreground uppercase tracking-widest">Total Revenue</p>
                         </div>
-                        <p className="text-5xl font-black text-foreground mt-2">
+                        <p className="text-3xl sm:text-4xl md:text-5xl font-black text-foreground mt-2">
                             {formatRevenue(analytics?.revenue.total || 0)}
                         </p>
-                        <p className="text-sm text-muted-foreground mt-2">{getDateRangeLabel(dateRange)}</p>
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-1 sm:mt-2">{getDateRangeLabel(dateRange)}</p>
                     </div>
-                    <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 rounded-full">
-                        <TrendingUp className="h-4 w-4 text-emerald-500" />
-                        <span className="text-sm font-bold text-emerald-500">Paid Orders</span>
+                    <div className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-emerald-500/10 rounded-full self-start sm:self-auto">
+                        <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500" />
+                        <span className="text-xs sm:text-sm font-bold text-emerald-500">Paid Orders</span>
                     </div>
                 </div>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
                 {/* Orders by Status */}
-                <Card className="p-6 glass-card border-border rounded-2xl">
+                <Card className="p-4 sm:p-6 glass-card border-border rounded-xl sm:rounded-2xl">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-2 bg-primary/10 rounded-xl">
                             <Package className="h-5 w-5 text-primary" />
@@ -97,7 +97,7 @@ export function OrderAnalytics() {
                 </Card>
 
                 {/* Payment Status */}
-                <Card className="p-6 glass-card border-border rounded-2xl">
+                <Card className="p-4 sm:p-6 glass-card border-border rounded-xl sm:rounded-2xl">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-2 bg-emerald-500/10 rounded-xl">
                             <CreditCard className="h-5 w-5 text-emerald-500" />
@@ -115,7 +115,7 @@ export function OrderAnalytics() {
                 </Card>
 
                 {/* Shipping Method */}
-                <Card className="p-6 glass-card border-border rounded-2xl">
+                <Card className="p-4 sm:p-6 glass-card border-border rounded-xl sm:rounded-2xl">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-2 bg-violet-500/10 rounded-xl">
                             <Truck className="h-5 w-5 text-violet-500" />

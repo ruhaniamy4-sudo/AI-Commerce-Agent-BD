@@ -130,21 +130,21 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl p-0 overflow-hidden border-border shadow-2xl rounded-3xl bg-background text-foreground">
-                <DialogHeader className="p-8 bg-muted/10 border-b border-border">
+            <DialogContent className="max-w-4xl p-0 overflow-hidden border-border shadow-2xl rounded-2xl sm:rounded-3xl bg-background text-foreground">
+                <DialogHeader className="p-4 sm:p-6 md:p-8 bg-muted/10 border-b border-border">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20 flex items-center gap-2">
                             <ShoppingCart className="h-3 w-3 text-primary" />
                             <span className="text-[10px] font-black uppercase tracking-widest text-primary">Manual Order</span>
                         </div>
                     </div>
-                    <DialogTitle className="text-3xl font-black text-foreground tracking-tighter">Create New Order</DialogTitle>
-                    <DialogDescription className="text-muted-foreground font-medium mt-1">
+                    <DialogTitle className="text-xl sm:text-2xl md:text-3xl font-black text-foreground tracking-tighter">Create New Order</DialogTitle>
+                    <DialogDescription className="text-muted-foreground font-medium mt-1 text-xs sm:text-sm">
                         Step {step} of 4 - {step === 1 ? 'Select Customer' : step === 2 ? 'Add Products' : step === 3 ? 'Shipping Details' : 'Review & Submit'}
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="p-8 max-h-[60vh] overflow-y-auto">
+                <div className="p-4 sm:p-6 md:p-8 max-h-[60vh] overflow-y-auto">
                     {/* Step 1: Customer Selection */}
                     {step === 1 && (
                         <div className="space-y-4">
@@ -152,7 +152,7 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                                 placeholder="Search customers by name or phone..."
                                 value={customerSearch}
                                 onChange={(e) => setCustomerSearch(e.target.value)}
-                                className="h-14 bg-muted/10 border-border rounded-2xl"
+                                className="h-11 sm:h-12 md:h-14 bg-muted/10 border-border rounded-xl sm:rounded-2xl"
                             />
                             <div className="grid gap-3 max-h-96 overflow-y-auto">
                                 {customersData?.data.map((customer) => (
@@ -181,7 +181,7 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                                 placeholder="Search products..."
                                 value={productSearch}
                                 onChange={(e) => setProductSearch(e.target.value)}
-                                className="h-14 bg-muted/10 border-border rounded-2xl"
+                                className="h-11 sm:h-12 md:h-14 bg-muted/10 border-border rounded-xl sm:rounded-2xl"
                             />
 
                             {items.length > 0 && (
@@ -238,11 +238,11 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                     {/* Step 3: Shipping & Payment */}
                     {step === 3 && (
                         <div className="space-y-6">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                 <div className="space-y-2">
                                     <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Shipping Method</Label>
                                     <Select value={formData.shippingMethod} onValueChange={(v: 'standard' | 'express' | 'overnight') => setFormData({ ...formData, shippingMethod: v })}>
-                                        <SelectTrigger className="h-14 bg-muted/10 border-border rounded-2xl">
+                                        <SelectTrigger className="h-11 sm:h-12 md:h-14 bg-muted/10 border-border rounded-xl sm:rounded-2xl">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -257,7 +257,7 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                                     <Input
                                         value={formData.paymentMethod}
                                         onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
-                                        className="h-14 bg-muted/10 border-border rounded-2xl"
+                                        className="h-11 sm:h-12 md:h-14 bg-muted/10 border-border rounded-xl sm:rounded-2xl"
                                     />
                                 </div>
                             </div>
@@ -267,17 +267,17 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                                 <Input
                                     value={formData.shippingAddress.fullName}
                                     onChange={(e) => setFormData({ ...formData, shippingAddress: { ...formData.shippingAddress, fullName: e.target.value } })}
-                                    className="h-14 bg-muted/10 border-border rounded-2xl"
+                                    className="h-11 sm:h-12 md:h-14 bg-muted/10 border-border rounded-xl sm:rounded-2xl"
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                 <div className="space-y-2">
                                     <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Phone</Label>
                                     <Input
                                         value={formData.shippingAddress.phone}
                                         onChange={(e) => setFormData({ ...formData, shippingAddress: { ...formData.shippingAddress, phone: e.target.value } })}
-                                        className="h-14 bg-muted/10 border-border rounded-2xl"
+                                        className="h-11 sm:h-12 md:h-14 bg-muted/10 border-border rounded-xl sm:rounded-2xl"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -285,7 +285,7 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                                     <Input
                                         value={formData.shippingAddress.city}
                                         onChange={(e) => setFormData({ ...formData, shippingAddress: { ...formData.shippingAddress, city: e.target.value } })}
-                                        className="h-14 bg-muted/10 border-border rounded-2xl"
+                                        className="h-11 sm:h-12 md:h-14 bg-muted/10 border-border rounded-xl sm:rounded-2xl"
                                     />
                                 </div>
                             </div>
@@ -295,7 +295,7 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                                 <Textarea
                                     value={formData.shippingAddress.addressLine1}
                                     onChange={(e) => setFormData({ ...formData, shippingAddress: { ...formData.shippingAddress, addressLine1: e.target.value } })}
-                                    className="bg-muted/10 border-border rounded-2xl"
+                                    className="bg-muted/10 border-border rounded-xl sm:rounded-2xl"
                                     rows={3}
                                 />
                             </div>
@@ -305,7 +305,7 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                     {/* Step 4: Review */}
                     {step === 4 && (
                         <div className="space-y-6">
-                            <div className="p-6 bg-muted/5 rounded-xl border border-border">
+                            <div className="p-4 sm:p-6 bg-muted/5 rounded-xl border border-border">
                                 <h3 className="font-black text-lg mb-4">Order Summary</h3>
                                 <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
@@ -332,7 +332,7 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                                     </div>
                                     <div className="flex justify-between pt-3 border-t border-border">
                                         <span className="font-black text-lg">Total</span>
-                                        <span className="font-black text-2xl text-primary">৳{total.toLocaleString()}</span>
+                                        <span className="font-black text-xl sm:text-2xl text-primary">৳{total.toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>
@@ -340,11 +340,11 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                     )}
                 </div>
 
-                <div className="p-8 bg-muted/30 border-t border-border flex justify-between">
+                <div className="p-4 sm:p-6 md:p-8 bg-muted/30 border-t border-border flex flex-col-reverse sm:flex-row justify-between gap-3">
                     <Button
                         variant="outline"
                         onClick={() => step > 1 ? setStep(step - 1) : onOpenChange(false)}
-                        className="h-14 rounded-2xl border-border px-8"
+                        className="h-11 sm:h-12 md:h-14 rounded-xl sm:rounded-2xl border-border px-4 sm:px-8 w-full sm:w-auto"
                     >
                         {step === 1 ? 'Cancel' : 'Back'}
                     </Button>
@@ -355,7 +355,7 @@ export function CreateOrderDialog({ open, onOpenChange }: CreateOrderDialogProps
                             (step === 2 && items.length === 0) ||
                             createOrderMutation.isPending
                         }
-                        className="h-14 bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl px-12 font-black uppercase tracking-widest"
+                        className="h-11 sm:h-12 md:h-14 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl sm:rounded-2xl px-6 sm:px-12 font-black uppercase tracking-wider text-xs sm:text-sm w-full sm:w-auto"
                     >
                         {createOrderMutation.isPending ? (
                             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...</>

@@ -155,13 +155,13 @@ export default function CategoriesPage() {
                 }
             />
 
-            <div className="py-8">
-                <div className="glass-card rounded-3xl overflow-hidden border-border shadow-premium">
-                    <div className="p-8 border-b border-border bg-muted/5">
-                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div className="py-4 sm:py-8">
+                <div className="glass-card rounded-2xl sm:rounded-3xl overflow-hidden border-border shadow-premium">
+                    <div className="p-4 sm:p-6 md:p-8 border-b border-border bg-muted/5">
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6">
                             <div className="space-y-1">
-                                <h2 className="text-2xl font-black text-foreground tracking-tight">Taxonomy Matrix</h2>
-                                <p className="text-sm text-muted-foreground font-medium">{filteredCategories.length} classifications architectural</p>
+                                <h2 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">Taxonomy Matrix</h2>
+                                <p className="text-xs sm:text-sm text-muted-foreground font-medium">{filteredCategories.length} classifications architectural</p>
                             </div>
                             <div className="relative w-full md:w-96 group">
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
@@ -169,7 +169,7 @@ export default function CategoriesPage() {
                                     placeholder="Search classifications..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="pl-12 h-14 bg-muted/10 border-border rounded-2xl focus:bg-muted/20 transition-all shadow-inner text-foreground placeholder:text-muted-foreground/50"
+                                    className="pl-11 sm:pl-12 h-11 sm:h-12 md:h-14 bg-muted/10 border-border rounded-xl sm:rounded-2xl focus:bg-muted/20 transition-all shadow-inner text-foreground placeholder:text-muted-foreground/50 text-sm"
                                 />
                             </div>
                         </div>
@@ -179,11 +179,11 @@ export default function CategoriesPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-muted/10 hover:bg-muted/10 border-b border-border">
-                                        <TableHead className="font-bold py-5 pl-8 text-muted-foreground uppercase text-[10px] tracking-widest">Classification Identity</TableHead>
-                                        <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Slug (Alias)</TableHead>
-                                        <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Network</TableHead>
-                                        <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Status</TableHead>
-                                        <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest text-right pr-8">Actions</TableHead>
+                                        <TableHead className="font-bold py-3 sm:py-5 pl-4 sm:pl-8 text-muted-foreground uppercase text-[10px] tracking-widest">Classification Identity</TableHead>
+                                        <TableHead className="font-bold py-3 sm:py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Slug (Alias)</TableHead>
+                                        <TableHead className="font-bold py-3 sm:py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Network</TableHead>
+                                        <TableHead className="font-bold py-3 sm:py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Status</TableHead>
+                                        <TableHead className="font-bold py-3 sm:py-5 text-muted-foreground uppercase text-[10px] tracking-widest text-right pr-4 sm:pr-8">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -192,18 +192,18 @@ export default function CategoriesPage() {
                                         return (
                                             <React.Fragment key={cat._id}>
                                                 <TableRow className="group border-b border-border hover:bg-muted/10 transition-colors bg-muted/5">
-                                                    <TableCell className="py-6 pl-8">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20 shadow-lg group-hover:scale-110 transition-transform">
-                                                                <Layers className="h-6 w-6" />
+                                                    <TableCell className="py-3 sm:py-6 pl-4 sm:pl-8">
+                                                        <div className="flex items-center gap-3 sm:gap-4">
+                                                            <div className="h-9 w-9 sm:h-12 sm:w-12 rounded-xl sm:rounded-2xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20 shadow-lg group-hover:scale-110 transition-transform shrink-0">
+                                                                <Layers className="h-4 w-4 sm:h-6 sm:w-6" />
                                                             </div>
-                                                            <span className="font-black text-foreground text-base tracking-tight">{cat.name}</span>
+                                                            <span className="font-black text-foreground text-sm sm:text-base tracking-tight">{cat.name}</span>
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="py-6">
-                                                        <code className="text-[10px] bg-muted px-3 py-1 rounded-lg text-muted-foreground border border-border font-mono uppercase truncate">{cat.slug}</code>
+                                                    <TableCell className="py-3 sm:py-6">
+                                                        <code className="text-[10px] bg-muted px-2.5 sm:px-3 py-1 rounded-lg text-muted-foreground border border-border font-mono uppercase truncate">{cat.slug}</code>
                                                     </TableCell>
-                                                    <TableCell className="py-6">
+                                                    <TableCell className="py-3 sm:py-6">
                                                         <div className="flex items-center gap-2">
                                                             <div className="h-1 w-12 bg-muted rounded-full overflow-hidden">
                                                                 <div className="h-full bg-primary" style={{ width: `${Math.min(100, (children.length / 5) * 100)}%` }} />
@@ -211,7 +211,7 @@ export default function CategoriesPage() {
                                                             <span className="text-[10px] text-muted-foreground font-black uppercase tracking-tighter">{children.length} Nodes</span>
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="py-6">
+                                                    <TableCell className="py-3 sm:py-6">
                                                         <div className={cn(
                                                             "inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
                                                             cat.isActive
@@ -222,34 +222,34 @@ export default function CategoriesPage() {
                                                             {cat.isActive ? 'Architectural' : 'Latent'}
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="py-6 text-right pr-8">
-                                                        <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
-                                                            <Button variant="ghost" size="icon" onClick={() => openEdit(cat)} className="h-10 w-10 bg-secondary/50 border border-border text-foreground hover:text-primary hover:bg-secondary rounded-xl transition-all">
-                                                                <Edit className="h-4 w-4" />
+                                                    <TableCell className="py-3 sm:py-6 text-right pr-4 sm:pr-8">
+                                                        <div className="flex justify-end gap-1.5 sm:gap-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all sm:translate-x-4 sm:group-hover:translate-x-0">
+                                                            <Button variant="ghost" size="icon" onClick={() => openEdit(cat)} className="h-8 w-8 sm:h-10 sm:w-10 bg-secondary/50 border border-border text-foreground hover:text-primary hover:bg-secondary rounded-lg sm:rounded-xl transition-all">
+                                                                <Edit className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                                             </Button>
-                                                            <Button variant="ghost" size="icon" className="h-10 w-10 bg-secondary/50 border border-border text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all" onClick={() => {
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 bg-secondary/50 border border-border text-rose-400 hover:bg-rose-500/10 rounded-lg sm:rounded-xl transition-all" onClick={() => {
                                                                 if (confirm('Permanently deconstruct this classification?')) deleteMutation.mutate(cat._id);
                                                             }}>
-                                                                <Trash2 className="h-4 w-4" />
+                                                                <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                                             </Button>
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>
                                                 {children.map(child => (
                                                     <TableRow key={child._id} className="group border-b border-white/[0.01] hover:bg-white/[0.03] transition-colors bg-white/[0.005]">
-                                                        <TableCell className="py-4 pl-16">
-                                                            <div className="flex items-center gap-4">
-                                                                <ChevronRight className="h-4 w-4 text-primary/40 group-hover:translate-x-1 transition-transform" />
-                                                                <span className="font-bold text-muted-foreground group-hover:text-foreground transition-colors">{child.name}</span>
+                                                        <TableCell className="py-2.5 sm:py-4 pl-6 sm:pl-16">
+                                                            <div className="flex items-center gap-3 sm:gap-4">
+                                                                <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary/40 group-hover:translate-x-1 transition-transform shrink-0" />
+                                                                <span className="font-bold text-muted-foreground group-hover:text-foreground transition-colors text-xs sm:text-sm">{child.name}</span>
                                                             </div>
                                                         </TableCell>
-                                                        <TableCell className="py-4">
+                                                        <TableCell className="py-2.5 sm:py-4">
                                                             <code className="text-[10px] text-muted-foreground/40 font-mono italic">{child.slug}</code>
                                                         </TableCell>
-                                                        <TableCell className="py-4">
+                                                        <TableCell className="py-2.5 sm:py-4">
                                                             <span className="text-[9px] text-muted-foreground/30 font-black uppercase tracking-[0.2em] border-l border-border pl-3">Sub-Processor</span>
                                                         </TableCell>
-                                                        <TableCell className="py-4">
+                                                        <TableCell className="py-2.5 sm:py-4">
                                                             <Badge variant="outline" className={cn(
                                                                 "border-none bg-transparent text-[9px] font-black uppercase tracking-widest p-0 flex items-center gap-2",
                                                                 child.isActive ? "text-emerald-500/60" : "text-muted-foreground/30"
@@ -257,12 +257,12 @@ export default function CategoriesPage() {
                                                                 {child.isActive ? 'Synchronized' : 'Offline'}
                                                             </Badge>
                                                         </TableCell>
-                                                        <TableCell className="py-4 text-right pr-8">
-                                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                                                                <Button variant="ghost" size="icon" onClick={() => openEdit(child)} className="h-8 w-8 text-muted-foreground/40 hover:text-primary transition-colors">
+                                                        <TableCell className="py-2.5 sm:py-4 text-right pr-4 sm:pr-8">
+                                                            <div className="flex justify-end gap-1.5 sm:gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all">
+                                                                <Button variant="ghost" size="icon" onClick={() => openEdit(child)} className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground/40 hover:text-primary transition-colors">
                                                                     <Edit className="h-3.5 w-3.5" />
                                                                 </Button>
-                                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/20 hover:text-rose-400 transition-colors" onClick={() => {
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground/20 hover:text-rose-400 transition-colors" onClick={() => {
                                                                     if (confirm('Deconstruct sub-processor?')) deleteMutation.mutate(child._id);
                                                                 }}>
                                                                     <Trash2 className="h-3.5 w-3.5" />
@@ -296,15 +296,15 @@ export default function CategoriesPage() {
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={(open) => !open && resetForm()}>
-                <DialogContent className="max-w-xl p-0 overflow-hidden border-border shadow-2xl rounded-3xl bg-background text-foreground">
+                <DialogContent className="w-[calc(100vw-1.5rem)] max-w-xl p-0 overflow-hidden border-border shadow-2xl rounded-2xl sm:rounded-3xl bg-background text-foreground max-h-[90dvh]">
                     <form onSubmit={handleSubmit} className="flex flex-col">
-                        <DialogHeader className="p-8 bg-muted/10 border-b border-border">
+                        <DialogHeader className="p-4 sm:p-6 md:p-8 bg-muted/10 border-b border-border">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <DialogTitle className="text-3xl font-black text-foreground tracking-tight">
+                                    <DialogTitle className="text-xl sm:text-2xl md:text-3xl font-black text-foreground tracking-tight">
                                         {editingCategory ? 'Refine Taxonomy' : 'Manifest Category'}
                                     </DialogTitle>
-                                    <DialogDescription className="text-muted-foreground font-medium mt-1">
+                                    <DialogDescription className="text-muted-foreground font-medium mt-1 text-xs sm:text-sm">
                                         Define classification nodes for intelligent architectural organization.
                                     </DialogDescription>
                                 </div>
@@ -314,33 +314,33 @@ export default function CategoriesPage() {
                             </div>
                         </DialogHeader>
 
-                        <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto scrollbar-hide">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div className="space-y-3">
+                        <div className="p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6 md:space-y-8 max-h-[65vh] overflow-y-auto scrollbar-hide">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8">
+                                <div className="space-y-2 sm:space-y-3">
                                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Classification Name</Label>
                                     <Input
                                         value={formData.name}
                                         onChange={e => setFormData({ ...formData, name: e.target.value })}
                                         required
-                                        className="h-14 bg-muted/5 border-border focus:bg-muted/10 rounded-2xl shadow-inner transition-all text-foreground placeholder:text-muted-foreground/30 px-6 font-medium"
+                                        className="h-11 sm:h-12 md:h-14 bg-muted/5 border-border focus:bg-muted/10 rounded-xl sm:rounded-2xl shadow-inner transition-all text-foreground placeholder:text-muted-foreground/30 px-4 sm:px-6 font-medium text-sm"
                                         placeholder="e.g. Next-Gen Wearables"
                                     />
                                 </div>
-                                <div className="space-y-3">
+                                <div className="space-y-2 sm:space-y-3">
                                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Alias (Slug)</Label>
                                     <Input
                                         value={formData.slug}
                                         onChange={e => setFormData({ ...formData, slug: e.target.value })}
-                                        className="h-14 bg-muted/5 border-border focus:bg-muted/10 rounded-2xl shadow-inner transition-all text-foreground placeholder:text-muted-foreground/30 px-6 font-mono"
+                                        className="h-11 sm:h-12 md:h-14 bg-muted/5 border-border focus:bg-muted/10 rounded-xl sm:rounded-2xl shadow-inner transition-all text-foreground placeholder:text-muted-foreground/30 px-4 sm:px-6 font-mono text-sm"
                                         placeholder="wearables"
                                     />
                                 </div>
                             </div>
 
-                            <div className="space-y-3">
+                            <div className="space-y-2 sm:space-y-3">
                                 <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Architectural Parent</Label>
                                 <select
-                                    className="w-full h-14 bg-muted/5 border border-border rounded-2xl px-6 text-sm text-foreground outline-none focus:bg-muted/10 transition-all appearance-none cursor-pointer"
+                                    className="w-full h-11 sm:h-12 md:h-14 bg-muted/5 border border-border rounded-xl sm:rounded-2xl px-4 sm:px-6 text-sm text-foreground outline-none focus:bg-muted/10 transition-all appearance-none cursor-pointer"
                                     value={formData.parentId || ''}
                                     onChange={e => setFormData({ ...formData, parentId: e.target.value || null })}
                                 >
@@ -351,35 +351,35 @@ export default function CategoriesPage() {
                                 </select>
                             </div>
 
-                            <div className="space-y-3">
+                            <div className="space-y-2 sm:space-y-3">
                                 <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Semantic Context (AI Intelligence)</Label>
                                 <Textarea
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    className="h-32 bg-muted/5 border-border focus:bg-muted/10 rounded-2xl shadow-inner p-6 transition-all resize-none text-foreground placeholder:text-muted-foreground/30 leading-relaxed"
+                                    className="h-28 sm:h-32 bg-muted/5 border-border focus:bg-muted/10 rounded-xl sm:rounded-2xl shadow-inner p-3.5 sm:p-6 transition-all resize-none text-foreground placeholder:text-muted-foreground/30 leading-relaxed text-sm"
                                     placeholder="Provide detailed context for the AI agent to understand when to recommend this category..."
                                 />
                             </div>
 
-                            <div className="flex items-center justify-between p-6 bg-white/[0.02] rounded-2xl border border-white/5 group hover:bg-white/[0.04] transition-colors">
+                            <div className="flex items-center justify-between p-3.5 sm:p-6 bg-white/[0.02] rounded-xl sm:rounded-2xl border border-white/5 group hover:bg-white/[0.04] transition-colors">
                                 <div>
-                                    <p className="text-sm font-bold text-white tracking-tight">Architectural Priority</p>
-                                    <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter">Determine sequencing in public interfaces</p>
+                                    <p className="text-xs sm:text-sm font-bold text-foreground tracking-tight">Architectural Priority</p>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5 sm:mt-1 uppercase tracking-tighter">Determine sequencing in public interfaces</p>
                                 </div>
                                 <Input
                                     type="number"
-                                    className="w-24 h-11 bg-muted/10 border-border rounded-xl text-center font-black text-primary text-lg"
+                                    className="w-20 sm:w-24 h-10 sm:h-11 bg-muted/10 border-border rounded-xl text-center font-black text-primary text-base sm:text-lg"
                                     value={formData.order}
                                     onChange={e => setFormData({ ...formData, order: Number(e.target.value) })}
                                 />
                             </div>
                         </div>
 
-                        <div className="p-8 bg-muted/30 border-t border-border flex justify-between items-center">
-                            <Button type="button" variant="ghost" onClick={resetForm} className="text-muted-foreground/30 hover:text-foreground font-black uppercase text-[10px] tracking-[0.2em] transition-colors">Abort</Button>
-                            <div className="flex gap-4">
-                                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="h-14 rounded-2xl border-border bg-transparent text-foreground px-8 font-bold hover:bg-accent">Cancel</Button>
-                                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="h-14 bg-primary text-primary-foreground rounded-2xl px-12 font-black uppercase tracking-widest shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50">
+                        <div className="p-4 sm:p-6 md:p-8 bg-muted/30 border-t border-border flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 sm:gap-4">
+                            <Button type="button" variant="ghost" onClick={resetForm} className="text-muted-foreground/50 hover:text-foreground font-black uppercase text-[10px] tracking-[0.2em] transition-colors h-10 sm:h-auto">Abort</Button>
+                            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-4 w-full sm:w-auto">
+                                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="h-11 sm:h-12 md:h-14 rounded-xl sm:rounded-2xl border-border bg-transparent text-foreground px-6 sm:px-8 font-bold hover:bg-accent w-full sm:w-auto">Cancel</Button>
+                                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="h-11 sm:h-12 md:h-14 bg-primary text-primary-foreground rounded-xl sm:rounded-2xl px-6 sm:px-12 font-black uppercase tracking-widest shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 w-full sm:w-auto text-xs sm:text-sm">
                                     {(createMutation.isPending || updateMutation.isPending) ? (
                                         <Loader2 className="h-5 w-5 animate-spin" />
                                     ) : (

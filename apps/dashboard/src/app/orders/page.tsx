@@ -120,8 +120,8 @@ return (<div><PageHeader title="Orders" description="From confirmation to fulfil
                 <DialogContent className="max-w-4xl p-0 overflow-hidden border-border shadow-2xl rounded-xl bg-background text-foreground">
                     {selectedOrder && (
                         <div className="flex flex-col">
-                            <DialogHeader className="p-6 bg-muted/10 border-b border-border">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6" >
+                            <DialogHeader className="p-4 sm:p-6 bg-muted/10 border-b border-border">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6" >
                                     <div>
                                         <div className="flex items-center gap-3 mb-2">
                                             <div className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20 flex items-center gap-2">
@@ -134,20 +134,20 @@ return (<div><PageHeader title="Orders" description="From confirmation to fulfil
                                                 Order ID: {selectedOrder._id}
                                             </span>
                                         </div>
-                                        <DialogTitle className="text-2xl font-semibold text-foreground tracking-tighter" >
+                                        <DialogTitle className="text-xl sm:text-2xl font-semibold text-foreground tracking-tighter" >
                                             Order #{selectedOrder._id.slice(-8).toUpperCase()}
                                         </DialogTitle>
                                         <DialogDescription className="text-muted-foreground font-medium mt-2 flex items-center gap-4" >
-                                            <span className="flex items-center gap-1.5" >
+                                            <span className="flex items-center gap-1.5 text-xs sm:text-sm" >
                                                 <Calendar className="h-4 w-4 opacity-40" />{' '}
                                                 {format(new Date(selectedOrder.createdAt), 'MMMM d, yyyy • HH:mm')}
                                             </span>
                                         </DialogDescription>
                                     </div>
-                                    <div className="flex flex-col items-end gap-3" >
+                                    <div className="flex flex-row md:flex-col items-center md:items-end justify-between gap-3 flex-wrap" >
                                         <div
                                             className={cn(
-                                                'px-4 py-2 rounded-2xl border text-xs font-semibold uppercase tracking-[0.2em]',
+                                                'px-3 sm:px-4 py-1.5 sm:py-2 rounded-2xl border text-xs font-semibold uppercase tracking-[0.2em]',
                                                 getStatusStyles(selectedOrder.status)
                                             )}
                                         >
@@ -159,7 +159,7 @@ return (<div><PageHeader title="Orders" description="From confirmation to fulfil
                                                 statusMutation.mutate({ id: selectedOrder._id, status: val })
                                             }
                                         >
-                                            <SelectTrigger className="h-10 w-44 bg-muted/10 border-border rounded-xl focus:ring-0 text-[10px] font-semibold tracking-normal" >
+                                            <SelectTrigger className="h-10 w-36 sm:w-44 bg-muted/10 border-border rounded-xl focus:ring-0 text-[10px] font-semibold tracking-normal" >
                                                 <SelectValue placeholder="Update status" />
                                             </SelectTrigger>
                                             <SelectContent className="bg-popover border-border text-foreground" >
@@ -174,7 +174,7 @@ return (<div><PageHeader title="Orders" description="From confirmation to fulfil
                                 </div>
                             </DialogHeader>
 
-                            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 max-h-[60vh] overflow-y-auto scrollbar-hide" >
+                            <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 max-h-[60vh] overflow-y-auto scrollbar-hide" >
                                 <div className="lg:col-span-2 space-y-8" >
                                     <div className="space-y-4" >
                                         <h4 className="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
@@ -314,15 +314,15 @@ return (<div><PageHeader title="Orders" description="From confirmation to fulfil
                                 </div>
                             </div>
 
-                            <div className="p-6 bg-black/40 border-t border-white/5 flex justify-end gap-4" >
+                            <div className="p-4 sm:p-6 bg-black/40 border-t border-white/5 flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4" >
                                 <Button
                                     variant="outline"
                                     onClick={() => setSelectedOrder(null)}
-                                    className="h-11 rounded-2xl border-white/10 bg-transparent text-white px-8 font-bold hover:bg-white/5"
+                                    className="h-11 rounded-2xl border-white/10 bg-transparent text-white px-6 sm:px-8 font-bold hover:bg-white/5 w-full sm:w-auto"
                                 >
                                     Close Terminal
                                 </Button>
-                                <Button disabled title="Invoice generation is not available" className="h-11 bg-white text-black hover:bg-white/90 rounded-2xl px-12 font-semibold tracking-normal shadow-xl shadow-white/10" >
+                                <Button disabled title="Invoice generation is not available" className="h-11 bg-white text-black hover:bg-white/90 rounded-2xl px-6 sm:px-12 font-semibold tracking-normal shadow-xl shadow-white/10 w-full sm:w-auto" >
                                     Invoice unavailable
                                 </Button>
                             </div>
