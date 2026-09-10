@@ -253,15 +253,24 @@ router.post('/email-verification/confirm', limited, async (req, res) => {
 
 router.post('/password-reset/request', limited, async (req, res) => {
     const email = normalizeEmail(req.body?.email);
-    const user = emailPattern.test(email) ? await User.findOne({ email, status: 'active', emailVerified: true }).lean() : null;
+    const user = emailPattern.test(email) ? await User.findOne({ email, status: 'active' }).lean() : null;
     if (user) {
-        const issued = await issueAuthActionToken(user._id.toString(), 'password_reset');
-        if (await sendPasswordResetEmail(user.email, issued.token)) {
-            await User.updateOne({ _id: user._id }, { $set: { passwordResetEmailLastSentAt: new Date() } });
+        if (user.emailVerified) {
+            const issued = await issueAuthActionToken(user._id.toString(), 'password_reset');
+            if (await sendPasswordResetEmail(user.email, issued.token)) {
+                await User.updateOne({ _id: user._id }, { $set: { passwordResetEmailLastSentAt: new Date() } });
+            }
+        } else {
+            // An unverified address cannot receive a reset token. Send the prerequisite
+            // verification step without revealing the account state in the response.
+            const issued = await issueAuthActionToken(user._id.toString(), 'email_verification');
+            if (await sendVerificationEmail(user.email, issued.token)) {
+                await User.updateOne({ _id: user._id }, { $set: { verificationEmailLastSentAt: new Date() } });
+            }
         }
     }
     return res.status(202).json({
-        message: 'If an account exists for this verified email, a reset link has been sent.',
+        message: 'If an active account exists, an email with the next step has been sent.',
         emailDeliveryConfigured: getEmailConfiguration().configured,
     });
 });
@@ -272,10 +281,11 @@ router.post('/password-reset/confirm', limited, async (req, res) => {
     if (passwordError) return res.status(400).json({ error: passwordError });
     const record = await consumeAuthActionToken(String(req.body?.token || ''), 'password_reset');
     if (!record) return res.status(400).json({ error: 'Password reset link is invalid or expired' });
-    await User.updateOne(
+    const updated = await User.updateOne(
         { _id: record.userId, status: 'active' },
         { $set: { passwordHash: await hashPassword(password), passwordChangedAt: new Date(), failedLoginAttempts: 0 }, $unset: { lockedUntil: 1 } }
     );
+    if (!updated.matchedCount) return res.status(400).json({ error: 'Password reset link is invalid or expired' });
     await revokeAllUserSessions(record.userId.toString(), 'password_reset');
     return res.json({ passwordReset: true });
 });

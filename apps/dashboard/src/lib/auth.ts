@@ -47,13 +47,22 @@ const providers: NextAuthOptions['providers'] = [CredentialsProvider({
     credentials: { email: { label: 'Email', type: 'email' }, password: { label: 'Password', type: 'password' }, businessId: { label: 'Business ID', type: 'text' } },
     async authorize(credentials) {
         if (!apiBaseUrl || !credentials?.email || !credentials.password) return null;
-        const response = await fetch(`${apiBaseUrl}/auth/login`, {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ email: credentials.email, password: credentials.password, businessId: credentials.businessId || undefined }),
-        });
-        if (!response.ok) return null;
-        const result = await response.json() as AgentSession;
-        if (result.verificationRequired || !result.refreshToken ||
+        let response: Response;
+        try {
+            response = await fetch(`${apiBaseUrl}/auth/login`, {
+                method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ email: credentials.email, password: credentials.password, businessId: credentials.businessId || undefined }),
+            });
+        } catch { throw new Error('BACKEND_UNAVAILABLE'); }
+        const result = await response.json().catch(() => ({})) as AgentSession & { error?: string };
+        if (!response.ok) {
+            if (response.status === 409 && result.error?.includes('businessId')) throw new Error('BUSINESS_ID_REQUIRED');
+            if (response.status === 403) throw new Error('BUSINESS_INACTIVE');
+            if (response.status >= 500) throw new Error('BACKEND_UNAVAILABLE');
+            return null;
+        }
+        if (result.verificationRequired) throw new Error('EMAIL_NOT_VERIFIED');
+        if (!result.refreshToken ||
             (result.needsOnboarding && !result.accountToken) || (!result.needsOnboarding && !result.accessToken)) return null;
         return { id: result.user.id, name: result.user.name, email: result.user.email,
             accessToken: result.accessToken, accountToken: result.accountToken, refreshToken: result.refreshToken,

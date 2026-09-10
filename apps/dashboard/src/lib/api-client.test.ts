@@ -87,4 +87,12 @@ describe('shared Agent API authentication', () => {
         expect(failure.config.params).toEqual(expect.objectContaining({ _fresh: expect.any(Number) }));
         expect(mocks.instance.request).toHaveBeenCalledTimes(1);
     });
+
+    it('turns a transport failure into an actionable backend message', async () => {
+        const failure = { message: 'Network Error' };
+        await expect(responseErrorInterceptor()(failure)).rejects.toMatchObject({
+            status: 500,
+            message: 'Cannot reach the backend server. Start the API and try again.',
+        });
+    });
 });

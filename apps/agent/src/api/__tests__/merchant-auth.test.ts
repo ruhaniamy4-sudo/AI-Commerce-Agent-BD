@@ -33,7 +33,7 @@ describe('merchant account and business onboarding', () => {
         vi.spyOn(AuthSession, 'create').mockImplementation(async (data: any) => ({ _id: new mongoose.Types.ObjectId(), ...data }) as any);
         vi.spyOn(AuthActionToken, 'updateMany').mockResolvedValue({ acknowledged: true } as any);
         vi.spyOn(AuthActionToken, 'create').mockImplementation(async (data: any) => ({ _id: new mongoose.Types.ObjectId(), ...data }) as any);
-        vi.spyOn(User, 'updateOne').mockResolvedValue({ acknowledged: true } as any);
+        vi.spyOn(User, 'updateOne').mockResolvedValue({ acknowledged: true, matchedCount: 1, modifiedCount: 1 } as any);
     });
 
     it('normalizes signup email, hashes the password, and never returns the hash', async () => {
@@ -136,14 +136,25 @@ describe('merchant account and business onboarding', () => {
         expect(vi.mocked(User.updateOne).mock.calls.some(([, update]: any[]) => update?.$set?.emailVerified !== undefined)).toBe(false);
     });
 
-    it('sends password reset only for an active verified account', async () => {
+    it('sends password reset for an active verified account', async () => {
         const find = vi.spyOn(User, 'findOne').mockReturnValue({
             lean: vi.fn().mockResolvedValue({ _id: userId, email: 'owner@example.com', status: 'active', emailVerified: true }),
         } as any);
         await request(app).post('/auth/password-reset/request').send({ email: 'owner@example.com' }).expect(202);
-        expect(find).toHaveBeenCalledWith({ email: 'owner@example.com', status: 'active', emailVerified: true });
+        expect(find).toHaveBeenCalledWith({ email: 'owner@example.com', status: 'active' });
         expect(sendPasswordResetEmail).toHaveBeenCalledWith('owner@example.com', expect.any(String));
         expect(User.updateOne).toHaveBeenCalledWith({ _id: userId }, { $set: { passwordResetEmailLastSentAt: expect.any(Date) } });
+    });
+
+    it('sends the verification prerequisite instead of a reset token for an unverified account', async () => {
+        vi.spyOn(User, 'findOne').mockReturnValue({
+            lean: vi.fn().mockResolvedValue({ _id: userId, email: 'owner@example.com', status: 'active', emailVerified: false }),
+        } as any);
+        const response = await request(app).post('/auth/password-reset/request').send({ email: 'owner@example.com' }).expect(202);
+        expect(response.body.message).not.toContain('verified');
+        expect(sendVerificationEmail).toHaveBeenCalledWith('owner@example.com', expect.any(String));
+        expect(sendPasswordResetEmail).not.toHaveBeenCalled();
+        expect(User.updateOne).toHaveBeenCalledWith({ _id: userId }, { $set: { verificationEmailLastSentAt: expect.any(Date) } });
     });
 
     it('confirms a one-time email verification token', async () => {

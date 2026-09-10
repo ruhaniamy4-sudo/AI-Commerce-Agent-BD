@@ -122,6 +122,11 @@ export const productsApi = {
             params,
         }),
     create: (data: Partial<Product>) => apiClient.post<Product>('/api/products', data),
+    importFile: (file: File) => {
+        const data = new FormData();
+        data.append('file', file);
+        return apiClient.post<{ message: string; count: number }>('/api/products/import', data);
+    },
     update: (id: string, data: Partial<Product>) =>
         apiClient.patch<Product>(`/api/products/${id}`, data),
     delete: (id: string) => apiClient.delete(`/api/products/${id}`),

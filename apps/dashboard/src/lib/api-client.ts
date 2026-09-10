@@ -112,7 +112,9 @@ axiosInstance.interceptors.response.use(
         }
         if (status === 401) notifyAuthenticationRequired();
         const data = error.response?.data as Record<string, unknown>;
-        const message = (data?.message as string) || (data?.error as string) || error.message || 'An unexpected error occurred';
+        const message = !error.response
+            ? 'Cannot reach the backend server. Start the API and try again.'
+            : (data?.message as string) || (data?.error as string) || error.message || 'An unexpected error occurred';
 
         throw new ApiError(message, status, data);
     }

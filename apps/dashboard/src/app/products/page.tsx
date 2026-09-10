@@ -24,7 +24,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { productsApi, categoriesApi } from '@/lib/api';
-import { Product, ProductVariant } from '@/types';
+import { Category, PaginatedResponse, Product, ProductVariant } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     Loader2,
@@ -36,6 +36,10 @@ import {
     AlertTriangle,
     Layers,
     ListChecks,
+    Upload,
+    Download,
+    FileSpreadsheet,
+    CheckCircle2,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
@@ -46,6 +50,14 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
 import { formatCurrency, stockLabel } from '@/lib/currency';
+import { ApiError } from '@/lib/api-client';
+
+type ImportFailure = { error?: string; rowErrors?: Array<{ row: number; errors: string[] }> };
+
+function productCategoryId(product: Product) {
+    const category = product.categoryId as unknown as string | { _id?: string };
+    return typeof category === 'string' ? category : category?._id || '';
+}
 
 export default function ProductsPage() {
     const queryClient = useQueryClient();
@@ -57,6 +69,12 @@ export default function ProductsPage() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [activeTab, setActiveTab] = useState('general');
+    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importError, setImportError] = useState<ImportFailure | null>(null);
+    const [importSuccess, setImportSuccess] = useState('');
+    const [formError, setFormError] = useState('');
+    const [newCategoryName, setNewCategoryName] = useState('');
 
     const { data: response, isLoading } = useQuery({
         queryKey: ['products', page, searchQuery],
@@ -149,20 +167,71 @@ export default function ProductsPage() {
 
     const createMutation = useMutation({
         mutationFn: (data: Partial<Product>) => productsApi.create(data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['products'] });
+        onSuccess: (product) => {
+            queryClient.setQueryData<PaginatedResponse<Product>>(['products', page, searchQuery], (current) => {
+                if (!current || searchQuery.trim()) return current;
+                const nextTotal = current.pagination.total + (current.data.some((item) => item._id === product._id) ? 0 : 1);
+                return {
+                    data: [product, ...current.data.filter((item) => item._id !== product._id)].slice(0, limit),
+                    pagination: {
+                        ...current.pagination,
+                        total: nextTotal,
+                        totalPages: Math.ceil(nextTotal / current.pagination.limit),
+                    },
+                };
+            });
             setIsDialogOpen(false);
             resetForm();
-        }
+            void queryClient.invalidateQueries({ queryKey: ['products'], refetchType: 'active' });
+        },
+        onError: (error: ApiError) => setFormError(error.message || 'Product could not be saved'),
     });
 
     const updateMutation = useMutation({
         mutationFn: (data: { id: string; update: Partial<Product> }) => productsApi.update(data.id, data.update),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['products'] });
+        onSuccess: (product) => {
+            queryClient.setQueryData<PaginatedResponse<Product>>(['products', page, searchQuery], (current) => current ? {
+                ...current,
+                data: current.data.map((item) => item._id === product._id ? product : item),
+            } : current);
             setIsDialogOpen(false);
             resetForm();
-        }
+            void queryClient.invalidateQueries({ queryKey: ['products'], refetchType: 'active' });
+        },
+        onError: (error: ApiError) => setFormError(error.message || 'Product could not be updated'),
+    });
+
+    const createCategoryMutation = useMutation({
+        mutationFn: (name: string) => categoriesApi.create({
+            name: name.trim(),
+            slug: name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `category-${Date.now().toString(36)}`,
+            isActive: true,
+        }),
+        onSuccess: (category) => {
+            queryClient.setQueryData<Category[]>(['categories'], (current = []) =>
+                [...current.filter((item) => item._id !== category._id), category].sort((left, right) => left.name.localeCompare(right.name))
+            );
+            setFormData((current) => ({ ...current, categoryId: category._id }));
+            setNewCategoryName('');
+            setFormError('');
+            void queryClient.invalidateQueries({ queryKey: ['categories'], refetchType: 'active' });
+        },
+        onError: (error: ApiError) => setFormError(error.message === 'Network Error' ? 'Cannot reach the backend server. Start the API and try again.' : error.message || 'Category could not be created'),
+    });
+
+    const importMutation = useMutation({
+        mutationFn: (file: File) => productsApi.importFile(file),
+        onSuccess: (result) => {
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['categories'] });
+            setImportError(null);
+            setImportFile(null);
+            setImportSuccess(result.message);
+        },
+        onError: (error: ApiError) => {
+            setImportSuccess('');
+            setImportError((error.response as ImportFailure) || { error: error.message });
+        },
     });
 
     const resetForm = () => {
@@ -185,10 +254,29 @@ export default function ProductsPage() {
             lowStockThreshold: 5
         });
         setActiveTab('general');
+        setFormError('');
+        setNewCategoryName('');
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        setFormError('');
+        if (!formData.name?.trim() || !formData.description?.trim() || !formData.categoryId) {
+            setFormError('Product name, description, and category are required.');
+            setActiveTab('general');
+            return;
+        }
+        if (!Number.isFinite(Number(formData.basePrice)) || Number(formData.basePrice) < 0) {
+            setFormError('Base price must be a non-negative number.');
+            setActiveTab('settings');
+            return;
+        }
+        const invalidVariant = formData.variants?.find((variant) => !variant.name.trim() || !variant.sku.trim() || !Number.isFinite(variant.price) || variant.price < 0 || (typeof variant.stock === 'number' && variant.stock < 0));
+        if (invalidVariant) {
+            setFormError('Every variant needs an identifier, SKU, valid price, and non-negative stock.');
+            setActiveTab('variants');
+            return;
+        }
         // Generate slug if empty
         const finalData = {
             ...formData,
@@ -212,7 +300,7 @@ export default function ProductsPage() {
             currency: product.currency || 'BDT',
             stock: product.stock,
             images: product.images || [],
-            categoryId: product.categoryId,
+            categoryId: productCategoryId(product),
             variants: product.variants || [],
             specs: product.specs || {},
             isActive: product.isActive,
@@ -222,6 +310,17 @@ export default function ProductsPage() {
             lowStockThreshold: product.lowStockThreshold
         });
         setIsDialogOpen(true);
+        setFormError('');
+    };
+
+    const downloadImportTemplate = () => {
+        const csv = 'name,description,category,price,currency,stock,sku,variant,brand,images,specs\nWireless Headset,Low-latency gaming headset,Electronics,3500,BDT,12,HEADSET-01,Black,Acme,https://example.com/headset.jpg,"color=Black;connection=Wireless"\n';
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = 'sellpilot-product-import-template.csv';
+        anchor.click();
+        URL.revokeObjectURL(url);
     };
 
     if (isLoading) return <div className="flex h-[80vh] items-center justify-center"><Loader2 className="animate-spin text-primary h-12 w-12" /></div>;
@@ -232,7 +331,9 @@ export default function ProductsPage() {
                 title="Product Inventory"
                 description="Manage your store's products and stock."
                 actions={
-                    <div className="flex gap-2"><Button asChild variant="outline"><Link href="/categories"><Layers className="mr-2 h-4 w-4"/>Categories</Link></Button><Button onClick={() => setIsDialogOpen(true)} className="flex items-center gap-2 bg-primary hover:bg-violet-600 text-white rounded-xl px-6 py-6 shadow-xl shadow-primary/20 transition-all hover:scale-[1.05] active:scale-95 text-sm font-bold">
+                    <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link href="/categories"><Layers className="mr-2 h-4 w-4"/>Categories</Link></Button><Button type="button" variant="outline" onClick={() => { setIsImportOpen(true); setImportError(null); setImportSuccess(''); }}>
+                        <Upload className="mr-2 h-4 w-4" /> Import file
+                    </Button><Button onClick={() => setIsDialogOpen(true)} className="flex items-center gap-2 bg-primary hover:bg-violet-600 text-white rounded-xl px-6 py-6 shadow-xl shadow-primary/20 transition-all hover:scale-[1.05] active:scale-95 text-sm font-bold">
                         <Plus className="h-5 w-5" /> Add Product
                     </Button></div>
                 }
@@ -283,7 +384,7 @@ export default function ProductsPage() {
                                                     </div>
                                                     <div className="flex flex-col min-w-0">
                                                         <span className="font-bold  w-[300px] text-foreground text-base truncate">{p.name}</span>
-                                                        <span className="text-[10px] text-primary font-bold uppercase tracking-widest mt-0.5">{categories?.find(c => c._id === p.categoryId)?.name || 'General Access'}</span>
+                                                        <span className="text-[10px] text-primary font-bold uppercase tracking-widest mt-0.5">{categories?.find(c => c._id === productCategoryId(p))?.name || 'Uncategorized'}</span>
                                                     </div>
                                                 </div>
                                             </TableCell>
@@ -341,16 +442,21 @@ export default function ProductsPage() {
                                     <h3 className="text-xl font-bold text-foreground">Your catalog is empty</h3>
                                     <p className="text-sm text-muted-foreground max-w-xs mx-auto">Start building your high-performance product inventory to enable AI grounding.</p>
                                 </div>
-                                <Button variant="outline" onClick={() => setIsDialogOpen(true)} className="rounded-2xl border-border bg-secondary/50 text-foreground hover:bg-primary hover:text-white hover:border-primary transition-all px-8 h-12">
-                                    <Plus className="h-5 w-5 mr-2" /> Add first product
-                                </Button>
+                                <div className="flex flex-wrap justify-center gap-3">
+                                    <Button variant="outline" onClick={() => setIsDialogOpen(true)} className="rounded-2xl border-border bg-secondary/50 text-foreground hover:bg-primary hover:text-white hover:border-primary transition-all px-8 h-12">
+                                        <Plus className="h-5 w-5 mr-2" /> Add first product
+                                    </Button>
+                                    <Button variant="outline" onClick={() => { setIsImportOpen(true); setImportError(null); setImportSuccess(''); }} className="rounded-2xl px-8 h-12">
+                                        <Upload className="h-5 w-5 mr-2" /> Import catalog
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </CardContent>
                 </div>
             </div>
 
-            <Dialog open={isDialogOpen} onOpenChange={(open) => !open && resetForm()}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
                 <DialogContent className="max-w-4xl p-0 overflow-hidden border-border shadow-2xl rounded-3xl bg-background text-foreground">
                     <form onSubmit={handleSubmit} className="flex flex-col max-h-[90vh]">
                         <DialogHeader className="p-8 bg-muted/5 border-b border-border">
@@ -394,7 +500,7 @@ export default function ProductsPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         <div className="space-y-6">
                                             <div className="space-y-3">
-                                                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Product Name</Label>
+                                                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Product Name *</Label>
                                                 <Input
                                                     value={formData.name}
                                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
@@ -404,7 +510,7 @@ export default function ProductsPage() {
                                                 />
                                             </div>
                                             <div className="space-y-3">
-                                                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Category</Label>
+                                                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Category *</Label>
                                                 <Select
                                                     value={formData.categoryId}
                                                     onValueChange={val => setFormData({ ...formData, categoryId: val })}
@@ -418,10 +524,21 @@ export default function ProductsPage() {
                                                         ))}
                                                     </SelectContent>
                                                 </Select>
+                                                <div className="flex gap-2">
+                                                    <Input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} onKeyDown={(event) => {
+                                                        if (event.key === 'Enter' && newCategoryName.trim() && !createCategoryMutation.isPending) {
+                                                            event.preventDefault();
+                                                            createCategoryMutation.mutate(newCategoryName);
+                                                        }
+                                                    }} placeholder="Or create a category" className="h-10 rounded-xl" />
+                                                    <Button type="button" variant="outline" disabled={!newCategoryName.trim() || createCategoryMutation.isPending} onClick={() => createCategoryMutation.mutate(newCategoryName)} className="h-10 shrink-0 rounded-xl">
+                                                        {createCategoryMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
+                                                    </Button>
+                                                </div>
                                             </div>
                                         </div>
                                         <div className="space-y-3">
-                                            <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Product Description</Label>
+                                            <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Product Description *</Label>
                                             <Textarea
                                                 value={formData.description}
                                                 onChange={e => setFormData({ ...formData, description: e.target.value })}
@@ -563,8 +680,8 @@ export default function ProductsPage() {
                                                 <h5 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/50 border-l-2 border-primary pl-4">Pricing & Stock</h5>
                                                 <div className="grid gap-6 sm:grid-cols-3">
                                                     <div className="space-y-3">
-                                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Base Price</Label>
-                                                        <Input type="number" value={formData.basePrice} onChange={e => setFormData({ ...formData, basePrice: Number(e.target.value) })} className="h-14 bg-white/[0.03] border-white/10 rounded-2xl" />
+                                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Base Price *</Label>
+                                                        <Input type="number" min="0" step="0.01" value={formData.basePrice} onChange={e => setFormData({ ...formData, basePrice: Number(e.target.value) })} className="h-14 bg-white/[0.03] border-white/10 rounded-2xl" />
                                                     </div>
                                                     <div className="space-y-3">
                                                         <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Currency</Label>
@@ -624,6 +741,7 @@ export default function ProductsPage() {
                             </div>
                         </Tabs>
 
+                        {formError && <div role="alert" className="mx-8 mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-600 dark:text-rose-300">{formError}</div>}
                         <div className="p-8 bg-muted/20 border-t border-border flex justify-between items-center">
                             <Button type="button" variant="ghost" onClick={resetForm} className="text-muted-foreground/50 hover:text-foreground font-black uppercase text-[10px] tracking-[0.2em] transition-colors">Clear Form</Button>
                             <div className="flex gap-4">
@@ -638,6 +756,44 @@ export default function ProductsPage() {
                             </div>
                         </div>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isImportOpen} onOpenChange={(open) => { setIsImportOpen(open); if (!open) { setImportFile(null); setImportError(null); setImportSuccess(''); } }}>
+                <DialogContent className="max-w-2xl rounded-3xl border-border bg-background p-0 text-foreground shadow-2xl">
+                    <DialogHeader className="border-b border-border p-8">
+                        <DialogTitle className="flex items-center gap-3 text-2xl font-black"><FileSpreadsheet className="h-7 w-7 text-primary" /> Import products</DialogTitle>
+                        <DialogDescription>Upload a CSV or XLSX file. The import is validated first; invalid rows are not saved.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-5 p-8">
+                        <div className="rounded-2xl border border-border bg-muted/20 p-5 text-sm">
+                            <p className="font-bold">Required columns</p>
+                            <p className="mt-1 text-muted-foreground"><code>name</code>, <code>description</code>, <code>category</code>, <code>price</code></p>
+                            <p className="mt-3 text-xs text-muted-foreground">Optional: currency, stock, SKU, variant, brand, image URLs, specs, sale price and product settings. New category names are created automatically.</p>
+                            <Button type="button" variant="link" onClick={downloadImportTemplate} className="mt-2 h-auto p-0 text-primary">
+                                <Download className="mr-2 h-4 w-4" /> Download CSV template
+                            </Button>
+                        </div>
+
+                        <Label htmlFor="product-import-file" className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border bg-muted/10 px-6 py-10 text-center hover:border-primary/50">
+                            <Upload className="mb-3 h-8 w-8 text-primary" />
+                            <span className="font-bold">{importFile?.name || 'Choose CSV or XLSX file'}</span>
+                            <span className="mt-1 text-xs text-muted-foreground">Maximum 5 MB and 1,000 products</span>
+                        </Label>
+                        <Input id="product-import-file" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={(event) => { setImportFile(event.target.files?.[0] || null); setImportError(null); setImportSuccess(''); }} />
+
+                        {importSuccess && <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm font-bold text-emerald-700 dark:text-emerald-300"><CheckCircle2 className="h-5 w-5" />{importSuccess}</div>}
+                        {importError && <div role="alert" className="max-h-48 overflow-y-auto rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-700 dark:text-rose-300">
+                            <p className="font-bold">{importError.error || 'Import failed'}</p>
+                            {importError.rowErrors?.map((row) => <p key={row.row} className="mt-2"><b>Row {row.row}:</b> {row.errors.join('; ')}</p>)}
+                        </div>}
+                    </div>
+                    <div className="flex justify-end gap-3 border-t border-border bg-muted/20 p-6">
+                        <Button type="button" variant="outline" onClick={() => setIsImportOpen(false)}>Close</Button>
+                        <Button type="button" disabled={!importFile || importMutation.isPending} onClick={() => importFile && importMutation.mutate(importFile)}>
+                            {importMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />} Import products
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>
