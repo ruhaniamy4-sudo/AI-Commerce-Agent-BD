@@ -268,7 +268,7 @@ function GuidedBusinessWizard({ businessType, questions, answers, onSaved }: { b
                                     </label>
                                     {['textarea', 'schedule'].includes(activeQuestion.control) ? (
                                         <textarea
-                                            ref={customInputRef as any}
+                                            ref={(element) => { customInputRef.current = element; }}
                                             rows={3}
                                             className="w-full rounded-xl border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
                                             value={customValue}
@@ -278,7 +278,7 @@ function GuidedBusinessWizard({ businessType, questions, answers, onSaved }: { b
                                         />
                                     ) : (
                                         <Input
-                                            ref={customInputRef as any}
+                                            ref={(element) => { customInputRef.current = element; }}
                                             type={activeQuestion.control === 'currency' ? 'text' : activeQuestion.control === 'date' ? 'date' : 'text'}
                                             value={customValue}
                                             onChange={(e) => setCustomValue(e.target.value)}

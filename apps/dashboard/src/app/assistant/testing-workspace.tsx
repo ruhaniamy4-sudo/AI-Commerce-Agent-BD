@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query"
 import {
   Bot,
   Check,
-  ChevronRight,
   Loader2,
   MessageCircle,
   Package,
