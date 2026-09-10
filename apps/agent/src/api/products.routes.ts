@@ -9,7 +9,11 @@ import { mirrorExternalProductImages } from '../services/ingestion/external-imag
 import { cleanupDetachedProductMedia } from '../services/media-storage.service';
 
 import {productSoldCounts,productSalesReport} from '../services/product-sales.service';
+import {getProductOverview} from '../services/product-overview.service';
 const router = Router();
+router.get('/products/overview', async (req, res) => {
+    res.json(await getProductOverview(req.query.sort === 'newest' ? 'newest' : 'most_sales'));
+});
 router.get('/products/:id/sales',async(req,res)=>{
  if(!mongoose.isValidObjectId(req.params.id))return res.status(400).json({error:'Invalid product ID'});
  if(!await Product.exists({_id:req.params.id}))return res.status(404).json({error:'Product not found'});

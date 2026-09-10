@@ -3,11 +3,13 @@ import mongoose from "mongoose";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import authRoutes from "../auth.routes";
+import platformAuthRoutes from "../platform-auth.routes";
 import { clearAuthRateLimitsForTests } from "../../auth/rate-limit";
 import { hashPassword } from "../../auth/password";
 import { User } from "../../models/User";
 import { Business } from "../../models/Business";
 import { BusinessMember } from "../../models/BusinessMember";
+import { PlatformAdmin } from "../../models/PlatformAdmin";
 import { signAccessToken, signAccountToken } from "../../auth/token";
 import { MerchantActivity } from "../../models/MerchantActivity";
 import { AuthSession } from "../../models/AuthSession";
@@ -19,10 +21,14 @@ vi.mock("../../auth/mail", () => ({
   sendVerificationEmail: vi.fn(),
 }));
 
-const app = express().use(express.json()).use("/auth", authRoutes);
+const app = express()
+  .use(express.json())
+  .use("/auth", authRoutes)
+  .use("/platform-auth", platformAuthRoutes);
 const userId = new mongoose.Types.ObjectId();
 const businessId = new mongoose.Types.ObjectId();
 const membershipId = new mongoose.Types.ObjectId();
+
 
 describe("merchant account and business onboarding", () => {
   beforeEach(() => {
@@ -47,7 +53,11 @@ describe("merchant account and business onboarding", () => {
     vi.spyOn(User, "updateOne").mockResolvedValue({
       acknowledged: true,
     } as any);
+    vi.spyOn(BusinessMember, "find").mockReturnValue({
+      limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
+    } as any);
   });
+
 
   it("normalizes signup email, hashes the password, and never returns the hash", async () => {
     const create = vi
@@ -735,6 +745,261 @@ describe("merchant account and business onboarding", () => {
           name: "Multi",
         })
         .expect(409, { error: "Choose a business using email sign in" });
+    });
+  });
+
+  describe("merchant login regression fixes & credential isolation", () => {
+    it("grandfathers existing merchant with active membership whose emailVerified was false", async () => {
+      const passwordHash = await hashPassword("ValidMerchantPass123!");
+      const existingUser = {
+        _id: userId,
+        name: "Existing Merchant",
+        email: "existing.merchant@example.com",
+        passwordHash,
+        status: "active",
+        emailVerified: false,
+        createdAt: new Date("2026-09-08T08:10:26.367Z"),
+      };
+
+      vi.spyOn(User, "findOne").mockReturnValue({
+        select: vi.fn().mockResolvedValue(existingUser),
+      } as any);
+
+      vi.spyOn(BusinessMember, "find").mockReturnValue({
+        limit: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue([
+            {
+              _id: membershipId,
+              businessId,
+              role: "Owner",
+              status: "active",
+            },
+          ]),
+        }),
+      } as any);
+
+      vi.spyOn(Business, "findOne").mockReturnValue({
+        lean: vi.fn().mockResolvedValue({
+          _id: businessId,
+          name: "ARA",
+          slug: "ara",
+          status: "active",
+          onboarding: { completedAt: new Date() },
+        }),
+      } as any);
+
+      const updateSpy = vi.spyOn(User, "updateOne").mockResolvedValue({ acknowledged: true } as any);
+
+      const res = await request(app)
+        .post("/auth/login")
+        .send({ email: "existing.merchant@example.com", password: "ValidMerchantPass123!" })
+        .expect(200);
+
+      expect(res.body.accessToken).toBeTruthy();
+      expect(res.body.refreshToken).toBeTruthy();
+      expect(res.body.needsOnboarding).toBe(false);
+      expect(res.body.business).toMatchObject({
+        id: businessId.toString(),
+        name: "ARA",
+        onboardingComplete: true,
+      });
+      expect(res.body.role).toBe("Owner");
+
+      expect(updateSpy).toHaveBeenCalledWith(
+        { _id: userId, emailVerified: { $ne: true } },
+        expect.objectContaining({
+          $set: expect.objectContaining({
+            emailVerified: true,
+            emailVerificationMethod: "legacy",
+          }),
+        }),
+      );
+    });
+
+    it("requires email verification for new unverified accounts without business membership", async () => {
+      const passwordHash = await hashPassword("NewPass123!");
+      const newUser = {
+        _id: userId,
+        name: "New Unverified",
+        email: "new.unverified@example.com",
+        passwordHash,
+        status: "active",
+        emailVerified: false,
+      };
+
+      vi.spyOn(User, "findOne").mockReturnValue({
+        select: vi.fn().mockResolvedValue(newUser),
+      } as any);
+
+      vi.spyOn(BusinessMember, "find").mockReturnValue({
+        limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
+      } as any);
+
+      const res = await request(app)
+        .post("/auth/login")
+        .send({ email: "new.unverified@example.com", password: "NewPass123!" })
+        .expect(200);
+
+      expect(res.body).toMatchObject({ verificationRequired: true });
+      expect(res.body.user).toMatchObject({ email: "new.unverified@example.com", emailVerified: false });
+      expect(res.body).not.toHaveProperty("accessToken");
+      expect(res.body).not.toHaveProperty("accountToken");
+    });
+
+    it("returns 409 BUSINESS_ID_REQUIRED when user has multiple active memberships without businessId", async () => {
+      const passwordHash = await hashPassword("MultiPass123!");
+      const multiUser = {
+        _id: userId,
+        name: "Multi Merchant",
+        email: "multi.merchant@example.com",
+        passwordHash,
+        status: "active",
+        emailVerified: true,
+      };
+
+      vi.spyOn(User, "findOne").mockReturnValue({
+        select: vi.fn().mockResolvedValue(multiUser),
+      } as any);
+
+      const secondBizId = new mongoose.Types.ObjectId();
+      vi.spyOn(BusinessMember, "find").mockReturnValue({
+        limit: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue([
+            { _id: membershipId, businessId, role: "Owner", status: "active" },
+            { _id: new mongoose.Types.ObjectId(), businessId: secondBizId, role: "Admin", status: "active" },
+          ]),
+        }),
+      } as any);
+
+      const res = await request(app)
+        .post("/auth/login")
+        .send({ email: "multi.merchant@example.com", password: "MultiPass123!" })
+        .expect(409);
+
+      expect(res.body).toMatchObject({
+        error: "businessId is required for users with multiple memberships",
+        code: "BUSINESS_ID_REQUIRED",
+      });
+    });
+
+    it("resolves specific business session when businessId is supplied for multi-business user", async () => {
+      const passwordHash = await hashPassword("MultiPass123!");
+      const multiUser = {
+        _id: userId,
+        name: "Multi Merchant",
+        email: "multi.merchant@example.com",
+        passwordHash,
+        status: "active",
+        emailVerified: true,
+      };
+
+      vi.spyOn(User, "findOne").mockReturnValue({
+        select: vi.fn().mockResolvedValue(multiUser),
+      } as any);
+
+      vi.spyOn(BusinessMember, "find").mockReturnValue({
+        limit: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue([
+            { _id: membershipId, businessId, role: "Owner", status: "active" },
+          ]),
+        }),
+      } as any);
+
+      vi.spyOn(Business, "findOne").mockReturnValue({
+        lean: vi.fn().mockResolvedValue({
+          _id: businessId,
+          name: "Target Store",
+          slug: "target-store",
+          status: "active",
+        }),
+      } as any);
+
+      const res = await request(app)
+        .post("/auth/login")
+        .send({
+          email: "multi.merchant@example.com",
+          password: "MultiPass123!",
+          businessId: businessId.toString(),
+        })
+        .expect(200);
+
+      expect(res.body.accessToken).toBeTruthy();
+      expect(res.body.business.id).toBe(businessId.toString());
+      expect(res.body.business.name).toBe("Target Store");
+    });
+
+    it("returns 403 BUSINESS_INACTIVE when user's business is suspended or inactive", async () => {
+      const passwordHash = await hashPassword("MerchantPass123!");
+      const user = {
+        _id: userId,
+        name: "Inactive Merchant",
+        email: "inactive@example.com",
+        passwordHash,
+        status: "active",
+        emailVerified: true,
+      };
+
+      vi.spyOn(User, "findOne").mockReturnValue({
+        select: vi.fn().mockResolvedValue(user),
+      } as any);
+
+      vi.spyOn(BusinessMember, "find").mockReturnValue({
+        limit: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue([
+            { _id: membershipId, businessId, role: "Owner", status: "active" },
+          ]),
+        }),
+      } as any);
+
+      vi.spyOn(Business, "findOne").mockReturnValue({
+        lean: vi.fn().mockResolvedValue(null),
+      } as any);
+
+      const res = await request(app)
+        .post("/auth/login")
+        .send({ email: "inactive@example.com", password: "MerchantPass123!" })
+        .expect(403);
+
+      expect(res.body).toMatchObject({
+        error: "Business is not active",
+        code: "BUSINESS_INACTIVE",
+      });
+    });
+
+    it("fails safely with 401 Invalid credentials on incorrect password", async () => {
+      const passwordHash = await hashPassword("RealPass123!");
+      const user = {
+        _id: userId,
+        name: "Merchant",
+        email: "merchant@example.com",
+        passwordHash,
+        status: "active",
+        emailVerified: true,
+      };
+
+      vi.spyOn(User, "findOne").mockReturnValue({
+        select: vi.fn().mockResolvedValue(user),
+      } as any);
+
+      const res = await request(app)
+        .post("/auth/login")
+        .send({ email: "merchant@example.com", password: "WrongPass123!" })
+        .expect(401);
+
+      expect(res.body).toEqual({ error: "Invalid credentials" });
+    });
+
+    it("enforces platform admin isolation: merchant cannot log in as platform admin", async () => {
+      vi.spyOn(PlatformAdmin, "findOne").mockReturnValue({
+        select: vi.fn().mockResolvedValue(null),
+      } as any);
+
+      const res = await request(app)
+        .post("/platform-auth/login")
+        .send({ email: "merchant@example.com", password: "AnyPassword123!" })
+        .expect(401);
+
+      expect(res.body).toEqual({ error: "Invalid credentials" });
     });
   });
 });

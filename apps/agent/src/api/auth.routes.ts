@@ -174,12 +174,12 @@ async function sessionForUser(
     name: string;
     email: string;
     emailVerified?: boolean;
+    emailVerificationMethod?: string;
+    createdAt?: Date;
   },
   metadata: SessionMetadata,
   requestedBusinessId?: string,
 ) {
-  if (verificationIsRequired() && !user.emailVerified)
-    return { verificationRequired: true as const, user: publicUser(user) };
   const membershipQuery: Record<string, unknown> = {
     userId: user._id,
     status: "active",
@@ -188,6 +188,35 @@ async function sessionForUser(
   const memberships = await BusinessMember.find(membershipQuery)
     .limit(2)
     .lean();
+
+  if (!user.emailVerified) {
+    const hasActiveMembership =
+      memberships.length > 0 ||
+      (requestedBusinessId
+        ? Boolean(
+            await BusinessMember.exists({
+              userId: user._id,
+              status: "active",
+            }),
+          )
+        : false);
+    if (hasActiveMembership) {
+      await User.updateOne(
+        { _id: user._id, emailVerified: { $ne: true } },
+        {
+          $set: {
+            emailVerified: true,
+            emailVerifiedAt: user.createdAt || new Date(),
+            emailVerificationMethod: "legacy",
+          },
+        },
+      );
+      user.emailVerified = true;
+    }
+  }
+
+  if (verificationIsRequired() && !user.emailVerified)
+    return { verificationRequired: true as const, user: publicUser(user) };
   if (!requestedBusinessId && memberships.length > 1)
     return { conflict: true as const };
   const membership = memberships[0];
@@ -304,10 +333,14 @@ router.post("/login", limited, async (req, res) => {
   if ("conflict" in result) {
     return res.status(409).json({
       error: "businessId is required for users with multiple memberships",
+      code: "BUSINESS_ID_REQUIRED",
     });
   }
   if ("forbidden" in result)
-    return res.status(403).json({ error: "Business is not active" });
+    return res.status(403).json({
+      error: "Business is not active",
+      code: "BUSINESS_INACTIVE",
+    });
   return res.json(result);
 });
 

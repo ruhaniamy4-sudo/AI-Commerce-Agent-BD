@@ -23,6 +23,7 @@ import {
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { HomeSalesAgent, HomeReveal, HomeScrollStory } from "./home-sales-agent";
+import { PlanGrid } from "./commerce-system";
 
 const capabilities = [
   { icon: MessageCircle, title: "Conversation intelligence", copy: "Respond from approved catalog and business knowledge, with the customer’s intent kept in view." },
@@ -145,6 +146,18 @@ export function ChatAiHome() {
             <article><BarChart3 /><div><h3>Recorded insights</h3><p>Analytics reflect customer, order, and assistant activity already in SellPilot.</p></div></article>
             <article><Headphones /><div><h3>Human ownership</h3><p>Your team can take over a customer conversation when judgment matters.</p></div></article>
           </div>
+        </div>
+      </HomeReveal>
+
+      <HomeReveal className="fig-dark sp-section" id="pricing">
+        <div className="sp-wrap">
+          <header className="fig-section-heading inverse">
+            <p className="fig-kicker">A PLAN FOR YOUR NEXT CHAPTER</p>
+            <h2>Start with what your business needs.</h2>
+            <p>Explore the early-access options. Confirm your rollout and pricing with our team before committing.</p>
+          </header>
+          <PlanGrid />
+          <div className="fig-actions mt-8"><Link href="/pricing" className="fig-secondary">Compare plans and details <ArrowRight size={16} /></Link></div>
         </div>
       </HomeReveal>
 

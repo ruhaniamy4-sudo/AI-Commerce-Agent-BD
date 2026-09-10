@@ -1,5 +1,5 @@
 'use client';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {ArrowUpRight,Bot,Package,Sparkles} from 'lucide-react';
 import {Area,AreaChart,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
@@ -10,27 +10,36 @@ import {Button} from '@/components/ui/button';
 import {Switch} from '@/components/ui/switch';
 import {SafeProductImage} from '@/components/ui/safe-product-image';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
+import {availableUnits,StatusLabel,useProductSelling} from './product-selling-control';
 import './products.css';
 
 type Status='active'|'limited'|'disabled';
 type Report={totalSold:number;totalRevenue:number;totalOrders:number;conversionRate:number|null;conversionNote:string;basis:string;series:Array<{date:string;units:number}>;recentOrders:Array<{_id:string;orderNumber:string;customer:string;quantity:number;amount:number;status:string}>};
 export function productCategory(p:Product){const category=p.categoryId as unknown as {name?:string};return category?.name||'Uncategorized';}
-export function availableUnits(p:Product){const variants=p.variants?.filter(v=>v.isActive!==false)||[];return variants.length?variants.some(v=>typeof v.stock!=='number')?null:variants.reduce((sum,v)=>sum+(v.stock||0),0):p.stock;}
-function StatusLabel({status}:{status:Status}){return <span className={`product-status ${status}`}><i/>{status==='active'?'Active':status==='limited'?'Limited':'Disabled'}</span>;}
 
-export function ProductWorkspace({products,loading,error,onAdd,onEdit,onDelete}:{products:Product[];loading:boolean;error:boolean;onAdd:()=>void;onEdit:(p:Product)=>void;onDelete:(id:string)=>void}){
- const [selected,setSelected]=useState<Product|null>(null);const [disabling,setDisabling]=useState<Product|null>(null);const [reason,setReason]=useState('Out of Stock');const client=useQueryClient();
- const selling=useMutation({mutationFn:({id,status,reason}:{id:string;status:Status;reason?:string})=>apiClient.patch<Product>(`/api/products/${id}/ai-selling`,{status,reason}),onSuccess:p=>{void client.invalidateQueries({queryKey:['products']});void client.invalidateQueries({queryKey:['product-detail',p._id]});if(selected?._id===p._id)setSelected({...selected,...p,categoryId:selected.categoryId});setDisabling(null);}});
- const change=(p:Product,status:Status)=>{selling.reset();if(status==='disabled'){setReason('Out of Stock');setDisabling(p);}else selling.mutate({id:p._id,status});};
+export function ProductWorkspace({products,loading,error,onAdd,onEdit,onDelete,initialProductId}:{initialProductId?:string;products:Product[];loading:boolean;error:boolean;onAdd:()=>void;onEdit:(p:Product)=>void;onDelete:(id:string)=>void}){
+ const [selected,setSelected]=useState<Product|null>(null);
+ const [linkError,setLinkError]=useState(false);
+ const [linkLoading,setLinkLoading]=useState(false);
+ const selling=useProductSelling(product=>{if(selected?._id===product._id)setSelected({...selected,...product,categoryId:selected.categoryId});});
+ const change=selling.change;
+ useEffect(()=>{
+  const id=initialProductId;if(!id)return;
+  let cancelled=false;setLinkLoading(true);setLinkError(false);
+  void apiClient.get<Product>(`/api/products/${encodeURIComponent(id)}`).then(product=>{if(!cancelled){setSelected(product);}}).catch(()=>{if(!cancelled)setLinkError(true);}).finally(()=>{if(!cancelled)setLinkLoading(false);});
+  return ()=>{cancelled=true;};
+ },[initialProductId]);
  return <>
+ {linkLoading&&<p role="status" className="mb-4 text-sm text-muted-foreground">Opening product details…</p>}
  <div className="product-agent-note"><span className="product-agent-icon"><Bot size={21}/></span><div><strong>Your catalog. Your AI’s selling rules.</strong><p>Keep stock accurate and decide which products your sales agent can recommend.</p></div><span className="product-note-tag"><Sparkles size={13}/> AI connected</span></div>
- {selling.isError&&!disabling&&<p role="alert" className="text-sm text-destructive mb-4">Selling status could not be updated. Check your administrator access and try again.</p>}
+ {selling.isError&&<p role="alert" className="text-sm text-destructive mb-4">Selling status could not be updated. Check your administrator access and try again.</p>}
  {loading?<div className="product-grid" aria-label="Loading products">{[1,2,3,4,5,6].map(n=><div key={n} className="product-card h-96 animate-pulse bg-muted"/>)}</div>:error?<div className="product-empty" role="alert"><Package/><h2>Products couldn’t be loaded</h2><p>Check the connection and refresh this page.</p></div>:!products.length?<div className="product-empty"><span className="product-agent-icon"><Package size={30}/></span><h2>Your next best seller starts here</h2><p>Add a product or adjust your filters to build your AI-ready catalog.</p><Button onClick={onAdd}>Add Product</Button></div>:<div className="product-grid">{products.map(p=>{const status=p.aiSellingStatus||'active';const units=availableUnits(p);return <article key={p._id} className="product-card">
  <button className="product-cover" onClick={()=>setSelected(p)} aria-label={`View ${p.name}`}><SafeProductImage src={p.images?.[0]} alt={p.name} imageClassName="object-contain p-5"/><span className="product-cover-arrow"><ArrowUpRight size={17}/></span>{!p.isActive&&<span className="product-archived">Hidden from store</span>}</button>
  <div className="product-card-body"><p className="product-category">{productCategory(p)}</p><button className="product-name" onClick={()=>setSelected(p)}>{p.name}</button><p className="product-price">{formatCurrency(p.salePrice??p.basePrice,p.currency)}</p><div className="product-inventory"><div><span>Available Units</span><strong className={units===0?'text-rose-600':''}>{units==null?'Unknown':units.toLocaleString()}</strong></div><div><span>Total Sold</span><strong>{(p.totalSold||0).toLocaleString()} <small>units</small></strong></div></div>
  <div className="product-selling-row"><div><span className="product-small-label">AI Selling</span><StatusLabel status={status}/></div><Switch aria-label={`AI selling for ${p.name}`} checked={status!=='disabled'} disabled={selling.isPending} onCheckedChange={v=>change(p,v?'active':'disabled')}/></div><button className="product-details-button" onClick={()=>setSelected(p)}>View Details<ArrowUpRight size={15}/></button></div></article>;})}</div>}
  <Dialog open={!!selected} onOpenChange={v=>{if(!v)setSelected(null);}}><DialogContent className="product-detail-dialog"><DialogHeader><DialogTitle>Product details</DialogTitle><DialogDescription>Inventory, sales performance and your AI’s product knowledge.</DialogDescription></DialogHeader>{selected&&<ProductDetail key={selected._id} product={selected} pending={selling.isPending} onStatus={s=>change(selected,s)} onEdit={p=>{setSelected(null);onEdit(p);}} onDelete={()=>{if(confirm('Hide this product from the store? Existing orders are preserved.')){onDelete(selected._id);setSelected(null);}}}/>}</DialogContent></Dialog>
- <Dialog open={!!disabling} onOpenChange={v=>{if(!v&&!selling.isPending)setDisabling(null);}}><DialogContent><DialogHeader><DialogTitle>Turn Off AI Selling?</DialogTitle><DialogDescription>The AI agent will stop recommending this product and will not accept new orders for this product.</DialogDescription></DialogHeader><fieldset className="space-y-3 my-3"><legend className="mb-3 text-sm font-semibold">Reason</legend>{['Out of Stock','Temporarily unavailable','Discontinued'].map(r=><label key={r} className="flex gap-3 items-center rounded-xl border p-3 text-sm cursor-pointer"><input type="radio" name="disable-reason" checked={reason===r} onChange={()=>setReason(r)}/>{r}</label>)}</fieldset>{selling.isError&&<p role="alert" className="text-sm text-destructive">Could not update selling status. Please try again.</p>}<div className="flex justify-end gap-3"><Button variant="outline" disabled={selling.isPending} onClick={()=>setDisabling(null)}>Cancel</Button><Button disabled={selling.isPending} onClick={()=>disabling&&selling.mutate({id:disabling._id,status:'disabled',reason})}>{selling.isPending?'Saving…':'Turn Off'}</Button></div></DialogContent></Dialog>
+ {selling.confirmation}
+ {linkError&&<p role="alert" className="text-sm text-destructive">The requested product could not be opened. Choose a product from the catalog or try again.</p>}
  </>;
 }
 

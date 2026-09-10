@@ -27,7 +27,8 @@ import {
     Layers,
     ListChecks,
 } from 'lucide-react';
-import { useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import {useSearchParams} from 'next/navigation';
 import { Textarea } from '@/components/ui/textarea';
 import { ImageUpload } from '@/components/ui/image-upload';
 
@@ -37,7 +38,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import Link from 'next/link';
 
 
-export default function ProductsPage() {
+export default function ProductsPage(){return <Suspense fallback={<p className="p-8 text-muted-foreground">Loading products…</p>}><ProductsContent/></Suspense>;}
+function ProductsContent() {
+    const params=useSearchParams();
+    const searchParams={new:params.get('new'),product:params.get('product')||undefined};
     const queryClient = useQueryClient();
     const [searchQuery, setSearchQuery] = useState('');
     const [page,setPage] = useState(1);
@@ -50,6 +54,9 @@ export default function ProductsPage() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [activeTab, setActiveTab] = useState('general');
+    useEffect(()=>{
+        if(searchParams?.new==='1')setIsDialogOpen(true);
+    },[searchParams?.new]);
 
     const { data: response, isLoading, isError } = useQuery({
         queryKey: ['products', page, searchQuery,statusFilter,categoryFilter],
@@ -219,7 +226,7 @@ export default function ProductsPage() {
 
 return (<div><PageHeader title="Products" description="Manage your products, inventory and control what your AI agent can sell." actions={<><WorkspaceSearch value={searchQuery} onChange={v=>{setSearchQuery(v);setPage(1);}} placeholder="Search products"/><Button variant="outline" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={15} className="mr-2"/>Filter</Button><Button onClick={()=>{resetForm();setIsDialogOpen(true);}}><Plus size={15} className="mr-2"/>Add Product</Button></>}/>
 {filtersOpen&&<div className="product-filters"><select aria-label="Filter by AI selling status" value={statusFilter} onChange={e=>{setStatusFilter(e.target.value);setPage(1);}}><option value="">All selling states</option><option value="active">Active</option><option value="limited">Limited</option><option value="disabled">Disabled</option></select><select aria-label="Filter by category" value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setPage(1);}}><option value="">All categories</option>{categories?.map(c=><option key={c._id} value={c._id}>{c.name}</option>)}</select><Button variant="ghost" onClick={()=>{setStatusFilter('');setCategoryFilter('');setPage(1);}}>Reset filters</Button><Button asChild variant="ghost"><Link href="/categories"><Layers size={14} className="mr-2"/>Manage Categories</Link></Button></div>}
-<div className="flex justify-between mb-4 text-xs text-muted-foreground"><span>{pagination?.total||0} products in your catalog</span><span>Inventory & AI selling control</span></div><ProductWorkspace products={products} loading={isLoading} error={isError} onAdd={()=>{resetForm();setIsDialogOpen(true);}} onEdit={openEdit} onDelete={id=>deleteMutation.mutate(id)}/><WorkspacePagination page={page} totalPages={pagination?.totalPages||1} onChange={setPage}/>
+<div className="flex justify-between mb-4 text-xs text-muted-foreground"><span>{pagination?.total||0} products in your catalog</span><span>Inventory & AI selling control</span></div><ProductWorkspace initialProductId={searchParams?.product} products={products} loading={isLoading} error={isError} onAdd={()=>{resetForm();setIsDialogOpen(true);}} onEdit={openEdit} onDelete={id=>deleteMutation.mutate(id)}/><WorkspacePagination page={page} totalPages={pagination?.totalPages||1} onChange={setPage}/>
 <Dialog open={isDialogOpen} onOpenChange={(open) => {setIsDialogOpen(open);if(!open)resetForm();}}>
                 <DialogContent className="max-w-4xl p-0 overflow-hidden border-border shadow-2xl rounded-xl bg-background text-foreground">
                     <form onSubmit={handleSubmit} className="flex flex-col max-h-[90vh]">

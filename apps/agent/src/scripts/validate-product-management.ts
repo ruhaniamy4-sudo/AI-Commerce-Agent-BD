@@ -21,7 +21,15 @@ async function main(){
   const base={customerId:new mongoose.Types.ObjectId(),items:[{productId:p._id,productName:p.name,sku:p.slug,quantity:2,unitPriceSnapshot:1490,subtotal:2980}],subtotal:2980,total:2980,shippingAddress:{fullName:'Validation customer',phone:'01700000000',addressLine1:'Test',city:'Dhaka',zone:'Dhaka',country:'Bangladesh'},paymentMethod:'Cash on Delivery'};
   const delivered=await Order.create({...base,orderNumber:'VALIDATION-DELIVERED',status:'delivered'});
   await Order.create({...base,orderNumber:'VALIDATION-CANCELLED',status:'cancelled'});
-  const list=await request(app).get('/api/products?includeInactive=true').expect(200);assert.equal(list.body.data[0].totalSold,2);
+  for(let index=0;index<7;index++)await Product.create({name:'New product '+index,slug:'new-product-'+index,categoryId:category._id,basePrice:500,stock:3,description:'New arrival'});
+  await withTenantContext(context(other),()=>Order.create({...base,orderNumber:'FOREIGN-TENANT',status:'delivered'}));
+  const overview=await request(app).get('/api/products/overview?sort=most_sales').expect(200);
+  assert.equal(overview.body.total,8);assert.equal(overview.body.products.length,6);assert.equal(overview.body.topProducts.length,4);
+  assert.equal(overview.body.topProducts[0]._id,String(p._id));assert.equal(overview.body.topProducts[0].totalSold,2);
+  assert.ok(!overview.body.products.some((row:any)=>row._id===String(p._id)),'Most Sales must rank beyond the latest six products');
+  const newest=await request(app).get('/api/products/overview?sort=newest').expect(200);assert.notEqual(newest.body.topProducts[0]._id,String(p._id));
+  const foreignOverview=await request(app).get('/api/products/overview').set('x-other-tenant','yes').expect(200);assert.equal(foreignOverview.body.total,0);
+  const list=await request(app).get('/api/products?includeInactive=true').expect(200);assert.equal(list.body.data.find((row:any)=>row._id===String(p._id)).totalSold,2);
   const report=await request(app).get(`/api/products/${p._id}/sales?period=daily`).expect(200);assert.equal(report.body.totalRevenue,2980);assert.equal(report.body.totalOrders,1);assert.equal(report.body.recentOrders.length,2);assert.equal(report.body.conversionRate,null);assert.equal(report.body.series[0].units,2);
   const viewedAt=new Date(Date.now()-60000);
   for(const [externalId,visitorId,sessionId] of [['view-1','visitor1','session1'],['view-2','visitor1','session1'],['view-3','visitor2','session2']])await recordCustomerEvent({type:'product_viewed',source:'website',externalId,visitorId,sessionId,occurredAt:viewedAt,data:{productId:p.slug}});
@@ -37,7 +45,7 @@ async function main(){
   assert.equal((await Product.findById(p._id))?.aiKnowledge[0].answer,'Cotton');
   await request(app).get(`/api/products/${p._id}/sales`).set('x-other-tenant','yes').expect(404);
   await request(app).patch(`/api/products/${p._id}/ai-selling`).set('x-other-tenant','yes').send({status:'active'}).expect(404);
- });console.log('PASS: product sales totals, filtering, status validation, role enforcement, saved knowledge and tenant isolation');}
+ });console.log('PASS: overview global ranking, sort order, preview limits, tenant isolation, product sales, filtering, status validation, permissions and saved knowledge');}
  finally{await mongoose.disconnect();await db.stop();}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

@@ -5,7 +5,15 @@ export function customerFacingText(value: unknown): string {
     const trimmed = current.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     if (!trimmed) return '';
     if (!/^[\[{\"]/.test(trimmed)) return trimmed;
-    try { current = JSON.parse(trimmed); } catch { return /^[\[{]/.test(trimmed) ? 'The assistant response could not be displayed safely.' : trimmed; }
+    try {
+      current = JSON.parse(trimmed);
+    } catch {
+      const match = trimmed.match(/"(?:message_text|content|text|message)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+      if (match && match[1]) {
+        return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      }
+      return /^[\[{]/.test(trimmed) ? "I'm sorry, I couldn't format that response properly. Could you please try again?" : trimmed;
+    }
   }
   if (typeof current === 'string') return current.trim();
   if (Array.isArray(current)) return current.map(customerFacingText).filter(Boolean).join('\n');
@@ -17,5 +25,5 @@ export function customerFacingText(value: unknown): string {
       if (candidate) return candidate;
     }
   }
-  return 'The assistant response could not be displayed safely.';
+  return "I'm sorry, I couldn't format that response properly. Could you please try again?";
 }

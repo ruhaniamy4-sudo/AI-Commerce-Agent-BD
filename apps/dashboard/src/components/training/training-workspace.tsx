@@ -14,59 +14,437 @@ import { Badge } from '@/components/ui/badge';
 import { SafeProductImage } from '@/components/ui/safe-product-image';
 import { ImageUpload } from '@/components/ui/image-upload';
 import { formatCurrency, stockLabel } from '@/lib/currency';
+import { TrainingReadiness } from './training-readiness';
 
 const labels: Record<string, string> = {
     not_started: 'Not started', learning: 'Learning', needs_review: 'Needs review', ready: 'Ready', syncing: 'Syncing', error: 'Failed',
-    ready_item: 'Ready', possible_duplicate: 'Possible duplicate', conflict: 'Conflict', needs_attention: 'Needs attention', imported: 'Imported', rejected: 'Rejected', partial: 'Needs attention',
+    ready_item: 'Ready', possible_duplicate: 'Possible duplicate', conflict: 'Variant conflict', needs_attention: 'Needs review', imported: 'Confirmed', approved: 'Confirmed', rejected: 'Rejected', partial: 'Needs review', failed: 'Could not verify',
 };
 
 type SetupQuestion = { id: string; question: string; priority: 'CRITICAL'|'IMPORTANT'|'OPTIONAL'; domain: string; control: string; suggestions: string[]; customLabel?: string };
 
-function QuickBusinessSetup({ businessType, questions, answers, onSaved }: { businessType: string; questions: SetupQuestion[]; answers: Record<string, { value: string | string[] }>; onSaved: () => void }) {
-    const [selected, setSelected] = useState<Record<string, string[]>>({});
-    const [customKey, setCustomKey] = useState('');
-    const [customValue, setCustomValue] = useState('');
-    const [showMore, setShowMore] = useState(false);
-    const [savedKey, setSavedKey] = useState('');
+function GuidedBusinessWizard({ businessType, questions, answers, onSaved }: { businessType: string; questions: SetupQuestion[]; answers: Record<string, { value: string | string[] }>; onSaved: () => void }) {
     const [editingKey, setEditingKey] = useState('');
-    useEffect(() => { setSelected({}); setCustomKey(''); setCustomValue(''); setShowMore(false); setSavedKey(''); setEditingKey(''); }, [businessType]);
+    const [customMode, setCustomMode] = useState(false);
+    const [customValue, setCustomValue] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [savingOption, setSavingOption] = useState('');
+    const [savedOption, setSavedOption] = useState('');
+    const [isExiting, setIsExiting] = useState(false);
+    const [saveError, setSaveError] = useState('');
+    const [showReview, setShowReview] = useState(false);
+    const customInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+
+    useEffect(() => {
+        setEditingKey('');
+        setCustomMode(false);
+        setCustomValue('');
+        setIsSaving(false);
+        setSavingOption('');
+        setSavedOption('');
+        setIsExiting(false);
+        setSaveError('');
+    }, [businessType]);
+
     const unanswered = questions.filter((question) => !answers[question.id]);
     const answered = questions.filter((question) => Boolean(answers[question.id]));
-    const editingQuestion = questions.find((question) => question.id === editingKey);
-    const visible = editingQuestion ? [editingQuestion] : (showMore ? unanswered : unanswered.slice(0, 3));
-    const completed = questions.length - unanswered.length;
+    const total = questions.length;
+    const completed = answered.length;
+
+    const activeQuestion = editingKey
+        ? questions.find((q) => q.id === editingKey)
+        : unanswered[0] || null;
+
+    useEffect(() => {
+        if (customMode && customInputRef.current) {
+            customInputRef.current.focus();
+        }
+    }, [customMode, activeQuestion?.id]);
+
     const saveFact = useMutation({
         mutationFn: ({ key, value }: { key: string; value: string | string[] }) => trainingApi.saveBusinessFact(key, value),
-        onSuccess: (_result, variables) => {
-            setSavedKey(variables.key); setSelected((current) => ({ ...current, [variables.key]: [] })); setCustomKey(''); setCustomValue(''); setEditingKey(''); onSaved();
-            window.setTimeout(() => setSavedKey(''), 1800);
-        },
     });
-    const choose = (question: SetupQuestion, value: string) => setSelected((current) => {
-        const currentValues = current[question.id] || [];
-        return { ...current, [question.id]: question.control === 'multi' ? (currentValues.includes(value) ? currentValues.filter((item) => item !== value) : [...currentValues, value]) : [value] };
-    });
-    if (!businessType) return <Card className="training-panel"><CardContent className="p-6 text-sm text-muted-foreground">Choose your business type to see the three most useful setup questions.</CardContent></Card>;
-    return <Card className="training-panel overflow-hidden" key={businessType}>
-        <CardHeader className="border-b bg-primary/[0.03]"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-primary">Business knowledge</p><CardTitle className="mt-1">Help SellPilot understand your business</CardTitle><p className="mt-1 text-sm text-muted-foreground">{unanswered.length ? `${Math.min(3, unanswered.length)} quick questions` : 'Your important setup details are covered.'}</p></div><div className="min-w-44"><p className="mb-1 text-xs text-muted-foreground">{completed} of {questions.length} details added</p><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="training-progress h-full rounded-full bg-primary" style={{ width: `${questions.length ? completed / questions.length * 100 : 0}%` }}/></div></div></div></CardHeader>
-        <CardContent className="space-y-4 p-5">
-            {visible.map((question, index) => {
-                const chosen = selected[question.id] || [];
-                const isCustom = customKey === question.id;
-                const canSave = isCustom ? customValue.trim().length > 0 : chosen.length > 0;
-                const saving = saveFact.isPending && saveFact.variables?.key === question.id;
-                return <div key={question.id} className="training-question rounded-2xl border bg-card p-4 shadow-sm" style={{ animationDelay: `${index * 55}ms` }}>
-                    <div className="flex gap-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{index + 1}</span><div className="min-w-0 flex-1"><h3 className="font-semibold">{question.question}</h3><div className="mt-3 flex flex-wrap gap-2">{question.suggestions.map((suggestion) => <button type="button" key={suggestion} aria-pressed={chosen.includes(suggestion)} onClick={() => { setCustomKey(''); choose(question, suggestion); }} className={`answer-chip rounded-full border px-3 py-2 text-sm ${chosen.includes(suggestion) ? 'selected border-primary bg-primary/10 text-primary' : 'hover:border-primary/50 hover:bg-muted/60'}`}>{chosen.includes(suggestion) && <Check className="mr-1 inline h-3.5 w-3.5"/>}{suggestion}</button>)}<button type="button" aria-pressed={isCustom} onClick={() => { setCustomKey(question.id); setSelected((current) => ({ ...current, [question.id]: [] })); }} className={`answer-chip rounded-full border px-3 py-2 text-sm ${isCustom ? 'selected border-primary bg-primary/10 text-primary' : 'hover:border-primary/50 hover:bg-muted/60'}`}>Custom</button></div>
-                    {isCustom && <div className="training-question mt-3"><label className="mb-1 block text-xs font-medium text-muted-foreground">{question.customLabel || 'Your answer'}</label>{['textarea','schedule'].includes(question.control) ? <textarea autoFocus className="min-h-24 w-full rounded-xl border bg-background p-3 text-sm" value={customValue} onChange={(event) => setCustomValue(event.target.value)}/> : <Input autoFocus type={question.control === 'currency' ? 'text' : question.control === 'date' ? 'date' : 'text'} value={customValue} onChange={(event) => setCustomValue(event.target.value)} placeholder={question.control === 'currency' ? 'Example: Inside Dhaka ৳80, outside Dhaka ৳130' : 'Type your answer'}/>}</div>}
-                    <div className="mt-3 flex items-center gap-3"><Button size="sm" disabled={!canSave || saving} onClick={() => saveFact.mutate({ key: question.id, value: isCustom ? customValue.trim() : (question.control === 'multi' ? chosen : chosen[0]) })}>{saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : savedKey === question.id ? <><Check className="mr-2 h-4 w-4"/>Saved</> : 'Save answer'}</Button>{savedKey === question.id && <span className="learned-reveal text-sm font-medium text-emerald-600">SellPilot learned this</span>}{saveFact.isError && saveFact.variables?.key === question.id && <span className="text-sm text-destructive">{saveFact.error instanceof Error ? saveFact.error.message : 'Could not save'}</span>}</div></div></div>
-                </div>;
-            })}
-            {answered.length > 0 && <div className="space-y-2 rounded-2xl border bg-muted/20 p-4"><h3 className="text-sm font-semibold">Learned details</h3>{answered.filter((question) => question.id !== editingKey).map((question) => { const stored = answers[question.id]?.value; const display = Array.isArray(stored) ? stored.join(', ') : stored; return <div key={question.id} className="flex items-start justify-between gap-3 rounded-xl bg-background p-3 text-sm"><div className="flex min-w-0 gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"/><div><b>{question.question}</b><p className="mt-0.5 break-words text-muted-foreground">{display}</p></div></div><Button size="sm" variant="ghost" onClick={() => { setEditingKey(question.id); setCustomKey(question.id); setCustomValue(Array.isArray(stored) ? stored.join(', ') : String(stored || '')); setSelected((current) => ({ ...current, [question.id]: [] })); }}>Edit</Button></div>; })}</div>}
-            {!unanswered.length && <div className="learned-reveal flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-700 dark:text-emerald-300"><Check className="h-5 w-5"/><span className="font-medium">SellPilot has the important details for this business type.</span></div>}
-            {unanswered.length > 3 && <Button variant="ghost" className="w-full" onClick={() => setShowMore((value) => !value)}>{showMore ? 'Show only priority questions' : `Show ${unanswered.length - 3} more details`}<ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showMore ? 'rotate-180' : ''}`}/></Button>}
-        </CardContent>
-    </Card>;
+
+    const handleSelectPredefined = async (suggestion: string) => {
+        if (isSaving || !activeQuestion) return;
+        setIsSaving(true);
+        setSavingOption(suggestion);
+        setSaveError('');
+        try {
+            await saveFact.mutateAsync({ key: activeQuestion.id, value: suggestion });
+            setSavedOption(suggestion);
+            window.setTimeout(() => {
+                setIsExiting(true);
+                window.setTimeout(() => {
+                    setIsExiting(false);
+                    setSavingOption('');
+                    setSavedOption('');
+                    setIsSaving(false);
+                    setCustomMode(false);
+                    setCustomValue('');
+                    if (editingKey) setEditingKey('');
+                    onSaved();
+                }, 180);
+            }, 220);
+        } catch (err) {
+            setIsSaving(false);
+            setSavingOption('');
+            setSaveError(err instanceof Error ? err.message : 'Could not save this answer. Please try again.');
+        }
+    };
+
+    const handleSaveCustom = async () => {
+        if (isSaving || !activeQuestion || !customValue.trim()) return;
+        setIsSaving(true);
+        setSavingOption('__custom__');
+        setSaveError('');
+        try {
+            await saveFact.mutateAsync({ key: activeQuestion.id, value: customValue.trim() });
+            setSavedOption('__custom__');
+            window.setTimeout(() => {
+                setIsExiting(true);
+                window.setTimeout(() => {
+                    setIsExiting(false);
+                    setSavingOption('');
+                    setSavedOption('');
+                    setIsSaving(false);
+                    setCustomMode(false);
+                    setCustomValue('');
+                    if (editingKey) setEditingKey('');
+                    onSaved();
+                }, 180);
+            }, 220);
+        } catch (err) {
+            setIsSaving(false);
+            setSavingOption('');
+            setSaveError(err instanceof Error ? err.message : 'Could not save this answer. Please try again.');
+        }
+    };
+
+    const startEditing = (questionId: string) => {
+        const q = questions.find((item) => item.id === questionId);
+        if (!q) return;
+        setEditingKey(questionId);
+        setSaveError('');
+        const existingVal = answers[questionId]?.value;
+        const valStr = Array.isArray(existingVal) ? existingVal.join(', ') : String(existingVal || '');
+        if (q.suggestions.includes(valStr)) {
+            setCustomMode(false);
+            setCustomValue('');
+        } else {
+            setCustomMode(true);
+            setCustomValue(valStr);
+        }
+    };
+
+    if (!businessType) {
+        return (
+            <Card className="wizard-card">
+                <CardContent className="p-6 text-sm text-muted-foreground text-center">
+                    Choose your business type above to start teaching SellPilot.
+                </CardContent>
+            </Card>
+        );
+    }
+
+    const currentStepNumber = editingKey
+        ? questions.findIndex((q) => q.id === editingKey) + 1
+        : total > 0
+          ? Math.min(completed + 1, total)
+          : 0;
+
+    const progressPercentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    return (
+        <div className="space-y-4" key={businessType}>
+            <div className="wizard-card">
+                <div className="wizard-card-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <p className="text-xs font-bold uppercase tracking-[.18em] text-primary">Guided AI Setup</p>
+                            {editingKey ? (
+                                <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px]">Editing answer</Badge>
+                            ) : (
+                                <Badge variant="secondary" className="text-[10px] font-medium">Question {currentStepNumber} of {total}</Badge>
+                            )}
+                        </div>
+                        <h2 className="mt-1 text-base sm:text-lg font-semibold text-foreground">
+                            {editingKey ? 'Update your business answer' : 'Teach SellPilot your business rules'}
+                        </h2>
+                    </div>
+                    <div className="min-w-44 sm:text-right">
+                        <div className="flex items-center justify-between sm:justify-end gap-2 mb-1">
+                            <span className="text-xs text-muted-foreground">{completed} of {total} details taught</span>
+                            <span className="text-xs font-bold text-primary">{progressPercentage}%</span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                            <div className="training-progress h-full rounded-full bg-primary" style={{ width: `${progressPercentage}%` }} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="wizard-question-content">
+                    {activeQuestion ? (
+                        <div key={activeQuestion.id} className={`${isExiting ? 'wizard-question-exit' : 'wizard-question-enter'} space-y-4`}>
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                                            {currentStepNumber}
+                                        </span>
+                                        <Badge variant="outline" className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                                            {activeQuestion.domain.replaceAll('_', ' ')}
+                                        </Badge>
+                                    </div>
+                                    <h3 className="text-base sm:text-lg font-semibold text-foreground pt-1">
+                                        {activeQuestion.question}
+                                    </h3>
+                                </div>
+                                {editingKey && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-xs text-muted-foreground"
+                                        onClick={() => {
+                                            setEditingKey('');
+                                            setCustomMode(false);
+                                            setCustomValue('');
+                                            setSaveError('');
+                                        }}
+                                    >
+                                        Done editing
+                                    </Button>
+                                )}
+                            </div>
+
+                            <p className="text-xs text-muted-foreground">
+                                Tap an option below to autosave, or provide your custom policy:
+                            </p>
+
+                            <div className="flex flex-wrap gap-2.5 pt-1">
+                                {activeQuestion.suggestions.map((suggestion) => {
+                                    const isSavingThis = isSaving && savingOption === suggestion;
+                                    const isSavedThis = savedOption === suggestion;
+                                    const isCurrentAnswer = answers[activeQuestion.id]?.value === suggestion;
+                                    return (
+                                        <button
+                                            type="button"
+                                            key={suggestion}
+                                            disabled={isSaving}
+                                            aria-pressed={isSavedThis || isCurrentAnswer}
+                                            onClick={() => void handleSelectPredefined(suggestion)}
+                                            className={`wizard-option-btn ${isSavedThis || isCurrentAnswer ? 'selected' : ''}`}
+                                        >
+                                            {isSavingThis ? (
+                                                <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                                            ) : isSavedThis || isCurrentAnswer ? (
+                                                <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                            ) : null}
+                                            <span>{suggestion}</span>
+                                        </button>
+                                    );
+                                })}
+                                <button
+                                    type="button"
+                                    disabled={isSaving}
+                                    aria-pressed={customMode}
+                                    onClick={() => {
+                                        setCustomMode(true);
+                                        setSaveError('');
+                                    }}
+                                    className={`wizard-option-btn ${customMode ? 'selected' : ''}`}
+                                >
+                                    {savedOption === '__custom__' ? (
+                                        <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                    ) : null}
+                                    <span>Custom answer</span>
+                                </button>
+                            </div>
+
+                            {customMode && (
+                                <div className="mt-3 pt-3 border-t border-border/70 space-y-3 animate-in fade-in-50 duration-200">
+                                    <label className="block text-xs font-medium text-muted-foreground">
+                                        {activeQuestion.customLabel || 'Type your specific policy or answer:'}
+                                    </label>
+                                    {['textarea', 'schedule'].includes(activeQuestion.control) ? (
+                                        <textarea
+                                            ref={customInputRef as any}
+                                            rows={3}
+                                            className="w-full rounded-xl border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
+                                            value={customValue}
+                                            onChange={(e) => setCustomValue(e.target.value)}
+                                            placeholder="Type your policy or answer"
+                                            disabled={isSaving}
+                                        />
+                                    ) : (
+                                        <Input
+                                            ref={customInputRef as any}
+                                            type={activeQuestion.control === 'currency' ? 'text' : activeQuestion.control === 'date' ? 'date' : 'text'}
+                                            value={customValue}
+                                            onChange={(e) => setCustomValue(e.target.value)}
+                                            placeholder={activeQuestion.control === 'currency' ? 'Example: Inside Dhaka ৳80, outside Dhaka ৳130' : 'Type your answer'}
+                                            disabled={isSaving}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    void handleSaveCustom();
+                                                }
+                                            }}
+                                            className="h-11"
+                                        />
+                                    )}
+                                    <div className="flex flex-wrap items-center gap-2.5">
+                                        <Button
+                                            size="sm"
+                                            disabled={isSaving || !customValue.trim()}
+                                            onClick={() => void handleSaveCustom()}
+                                            className="min-w-28"
+                                        >
+                                            {isSaving && savingOption === '__custom__' ? (
+                                                <>
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    Saving...
+                                                </>
+                                            ) : savedOption === '__custom__' ? (
+                                                <>
+                                                    <Check className="mr-2 h-4 w-4" />
+                                                    Saved
+                                                </>
+                                            ) : (
+                                                'Save answer'
+                                            )}
+                                        </Button>
+                                        {!editingKey && (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                disabled={isSaving}
+                                                onClick={() => {
+                                                    setCustomMode(false);
+                                                    setCustomValue('');
+                                                    setSaveError('');
+                                                }}
+                                            >
+                                                Cancel
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {saveError && (
+                                <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                                    <span>{saveError}</span>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 text-xs border-destructive/40 text-destructive hover:bg-destructive/10"
+                                        onClick={() => {
+                                            if (customMode) void handleSaveCustom();
+                                            else if (savingOption) void handleSelectPredefined(savingOption);
+                                        }}
+                                    >
+                                        Retry
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="py-6 text-center space-y-4 animate-in fade-in duration-300">
+                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                <Sparkles className="h-7 w-7" />
+                            </div>
+                            <div className="space-y-1.5 max-w-md mx-auto">
+                                <h3 className="text-lg font-bold text-foreground">SellPilot has learned your key business policies!</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    All {total} core setup details are configured. Your assistant is now trained to answer customer questions accurately.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                                <Button asChild size="sm" className="gap-2">
+                                    <Link href="/assistant">
+                                        <Bot className="h-4 w-4" />
+                                        Open AI Assistant
+                                    </Link>
+                                </Button>
+                                {answered.length > 0 && (
+                                    <Button variant="outline" size="sm" onClick={() => setShowReview((prev) => !prev)}>
+                                        {showReview ? 'Hide review' : `Review answers (${completed})`}
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {answered.length > 0 && (
+                <div className="rounded-2xl border border-border bg-card/60 overflow-hidden shadow-sm">
+                    <button
+                        type="button"
+                        onClick={() => setShowReview((prev) => !prev)}
+                        className="flex w-full items-center justify-between p-4 text-left text-sm font-semibold hover:bg-muted/30 transition-colors"
+                    >
+                        <div className="flex items-center gap-2.5">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                                <Check className="h-3 w-3" />
+                            </span>
+                            <span>Learned business details ({answered.length})</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground font-normal">
+                            <span>{showReview ? 'Collapse' : 'Expand to review & edit'}</span>
+                            <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showReview ? 'rotate-180' : ''}`} />
+                        </div>
+                    </button>
+                    {showReview && (
+                        <div className="divide-y divide-border/50 border-t border-border/60 bg-background/50 p-2 sm:p-3 space-y-1">
+                            {answered.map((question) => {
+                                const stored = answers[question.id]?.value;
+                                const display = Array.isArray(stored) ? stored.join(', ') : stored;
+                                const isCurrentlyEditing = editingKey === question.id;
+                                return (
+                                    <div
+                                        key={question.id}
+                                        className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 rounded-xl p-3 text-sm transition-colors ${
+                                            isCurrentlyEditing ? 'bg-primary/10 border border-primary/30' : 'hover:bg-muted/40'
+                                        }`}
+                                    >
+                                        <div className="flex min-w-0 gap-2.5">
+                                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                            <div className="min-w-0">
+                                                <p className="font-medium text-foreground">{question.question}</p>
+                                                <p className="mt-0.5 break-words text-xs text-muted-foreground">{display}</p>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            variant={isCurrentlyEditing ? 'default' : 'ghost'}
+                                            className="self-end sm:self-center h-8 text-xs shrink-0"
+                                            onClick={() => {
+                                                if (isCurrentlyEditing) {
+                                                    setEditingKey('');
+                                                    setCustomMode(false);
+                                                    setCustomValue('');
+                                                } else {
+                                                    startEditing(question.id);
+                                                }
+                                            }}
+                                        >
+                                            {isCurrentlyEditing ? 'Editing now' : 'Edit'}
+                                        </Button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 }
+
+const QuickBusinessSetup = GuidedBusinessWizard;
 
 function CandidateCard({ candidate, refresh, selected, onSelect }: { candidate: TrainingCandidate; refresh: () => void; selected?: boolean; onSelect?: (checked: boolean) => void }) {
     const [editing, setEditing] = useState(false);
@@ -93,6 +471,12 @@ function CandidateCard({ candidate, refresh, selected, onSelect }: { candidate: 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0"><div className="flex flex-wrap items-center gap-2">{candidate.kind === 'product' && !['imported','approved'].includes(candidate.status) && <input aria-label={`Select ${candidate.title}`} type="checkbox" checked={Boolean(selected)} onChange={(event) => onSelect?.(event.target.checked)} className="h-4 w-4"/>}<b className="truncate">{candidate.title}</b><Badge variant="outline">{labels[candidate.status === 'ready' ? 'ready_item' : candidate.status] || candidate.status}</Badge><Badge variant="secondary">{candidate.kind}</Badge></div>
                 <p className="mt-1 text-xs text-muted-foreground">From {candidate.source.type}{candidate.source.url ? ` · ${candidate.source.url}` : ''}</p>
+                {candidate.reviewReason && (
+                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>Why review needed: {candidate.reviewReason}</span>
+                    </div>
+                )}
                 {candidate.kind === 'product' && <p className="mt-2 text-sm">{candidate.payload.basePrice !== undefined && candidate.payload.currency ? formatCurrency(candidate.payload.basePrice, candidate.payload.currency) : 'Price or currency missing'}{typeof candidate.payload.salePrice === 'number' && Number.isFinite(candidate.payload.salePrice) && candidate.payload.currency ? ` · Offer ${formatCurrency(candidate.payload.salePrice, candidate.payload.currency)}` : ''} · {stockLabel(candidate.payload)}{candidate.payload.basePrice > 0 && typeof candidate.payload.salePrice === 'number' && Number.isFinite(candidate.payload.salePrice) && candidate.payload.salePrice >= 0 && candidate.payload.salePrice < candidate.payload.basePrice ? ` · ${Math.round((1 - candidate.payload.salePrice / candidate.payload.basePrice) * 100)}% off` : ''}</p>}
                 {candidate.kind === 'product' && images.length > 0 && <div className="mt-3 flex gap-2 overflow-x-auto">{images.slice(0, 5).map((url, index) => <div key={`${url}-${index}`} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border bg-muted"><SafeProductImage src={url} alt={`${candidate.title} image ${index + 1}`}/>{index === 0 && <span className="absolute bottom-1 left-1 rounded bg-background/90 px-1.5 py-0.5 text-[10px]">Primary</span>}</div>)}{images.length > 5 && <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border bg-muted text-xs">+{images.length - 5} more</div>}</div>}
                 {candidate.kind === 'knowledge' && <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{candidate.payload.content}</p>}
@@ -113,6 +497,7 @@ export function TrainingWorkspace({ onboarding = false, onFinish }: { onboarding
     const client = useQueryClient(); const [website, setWebsite] = useState(''); const [reference, setReference] = useState(''); const [facebookConnectionId, setFacebookConnectionId] = useState(''); const [error, setError] = useState('');
     const [sourceFeedback, setSourceFeedback] = useState(''); const [profileFeedback, setProfileFeedback] = useState('');
     const [businessType, setBusinessType] = useState(''); const [businessSubType, setBusinessSubType] = useState(''); const [customBusinessType, setCustomBusinessType] = useState('');
+    const [showBusinessTypeEditor, setShowBusinessTypeEditor] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null); const [uploadedSourceId, setUploadedSourceId] = useState('');
     const [uploadSummary, setUploadSummary] = useState<{ products: number; knowledge: number; warnings: string[] } | null>(null);
     const [manualKind, setManualKind] = useState<'faq'|'information'|null>(null); const [manualTitle, setManualTitle] = useState(''); const [manualContent, setManualContent] = useState('');
@@ -137,7 +522,7 @@ export function TrainingWorkspace({ onboarding = false, onFinish }: { onboarding
     const offeringCandidatesQuery = useQuery({ queryKey: ['training-candidates', 'offering'], queryFn: () => trainingApi.candidates({ kind: 'offering', page: 1, limit: 100 }) });
     const refresh = () => { client.invalidateQueries({ queryKey: ['training-status'] }); client.invalidateQueries({ queryKey: ['training-candidates'] }); };
     const sourceMutation = useMutation({ mutationFn: async ({ action }: { kind: string; action: () => Promise<unknown> }) => action(), onMutate: () => { setError(''); setSourceFeedback(''); }, onSuccess: (_result, variables) => { setSourceFeedback(variables.kind.startsWith('preference-') ? 'Import preference saved.' : variables.kind.startsWith('rescan-') || variables.kind.startsWith('retry-') ? 'Source queued for learning.' : 'Source connected and queued for learning.'); refresh(); }, onError: (reason) => setError(reason instanceof Error ? reason.message : 'Could not start learning') });
-    const profileMutation = useMutation({ mutationFn: (nextType: string) => trainingApi.updateBusinessProfile({ businessType: nextType, businessSubType, customBusinessType }), onMutate: (nextType) => { pendingBusinessType.current = nextType; setError(''); setProfileFeedback(''); }, onSuccess: () => { setProfileFeedback('Business details saved.'); refresh(); }, onError: (reason) => { pendingBusinessType.current = ''; setError(reason instanceof Error ? reason.message : 'Could not save the business type'); void statusQuery.refetch(); } });
+    const profileMutation = useMutation({ mutationFn: (nextType: string) => trainingApi.updateBusinessProfile({ businessType: nextType, businessSubType, customBusinessType }), onMutate: (nextType) => { pendingBusinessType.current = nextType; setError(''); setProfileFeedback(''); }, onSuccess: () => { setProfileFeedback('Business details saved.'); setShowBusinessTypeEditor(false); refresh(); }, onError: (reason) => { pendingBusinessType.current = ''; setError(reason instanceof Error ? reason.message : 'Could not save the business type'); void statusQuery.refetch(); } });
     const fileMutation = useMutation({
         mutationFn: (file: File) => trainingApi.uploadFile(file),
         onMutate: () => { setError(''); setUploadSummary(null); },
@@ -181,6 +566,9 @@ export function TrainingWorkspace({ onboarding = false, onFinish }: { onboarding
     return <div className="space-y-6">
         <PageHeader title="AI Training" description="Connect your sources, review the details, and test your assistant."
             actions={<Badge variant={overview?.training.status === 'ready' ? 'default' : 'secondary'}>{labels[overview?.training.status || 'not_started']}</Badge>} />
+        {statusQuery.isError && <p role="alert" className="rounded-xl border border-destructive/30 p-4 text-sm text-destructive">Training status could not be loaded. <button className="underline" onClick={() => statusQuery.refetch()}>Try again</button></p>}
+        {statusQuery.isLoading && <p role="status" className="text-sm text-muted-foreground">Loading saved training progress…</p>}
+        {overview && <TrainingReadiness overview={overview} />}
         <div className="grid items-start gap-6 xl:grid-cols-[200px_minmax(0,1fr)]">
             <nav aria-label="Training workflow" className="work-panel flex flex-wrap gap-1.5 sm:gap-2 p-2.5 sm:p-3 xl:sticky xl:top-0 xl:flex-col">
                 {[
@@ -193,8 +581,119 @@ export function TrainingWorkspace({ onboarding = false, onFinish }: { onboarding
             </nav>
             <div className="min-w-0 space-y-6">
         {error && <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
-        <section id="training-business" className="scroll-mt-6 space-y-5"><Card className="training-panel"><CardHeader><p className="text-xs font-semibold text-primary">Business context</p><CardTitle>Choose your business type</CardTitle></CardHeader><CardContent className="space-y-4"><p className="text-sm text-muted-foreground">SellPilot immediately adapts its questions. Changing type keeps every approved fact safely stored.</p>{overview?.businessProfile.status === 'inferred' && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">SellPilot inferred this from your sources ({Math.round((overview.businessProfile.inference?.confidence || 0) * 100)}% confidence). Please confirm or change it.</div>}<div className="grid gap-3 md:grid-cols-3"><select className="rounded-md border bg-background px-3 py-2" value={businessType} onChange={(event) => { const value = event.target.value; setBusinessType(value); if (value) profileMutation.mutate(value); }}><option value="">Choose business type</option>{overview?.businessTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><Input value={businessSubType} onChange={(event) => setBusinessSubType(event.target.value)} placeholder="Subtype (optional)"/>{businessType === 'OTHER' && <Input value={customBusinessType} onChange={(event) => setCustomBusinessType(event.target.value)} placeholder="What do you sell or provide?"/>}</div><div className="flex flex-wrap items-center gap-3"><Button disabled={!businessType || profileMutation.isPending} onClick={() => profileMutation.mutate(businessType)}>{profileMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : overview?.businessProfile.status === 'inferred' ? 'Confirm business type' : 'Save details'}</Button>{profileFeedback && <span className="learned-reveal text-sm font-medium text-emerald-600"><Check className="mr-1 inline h-4 w-4"/>{profileFeedback}</span>}</div></CardContent></Card>
-        <QuickBusinessSetup businessType={businessType} questions={setupQuestions} answers={overview?.setupAnswers || {}} onSaved={refresh}/>
+        <section id="training-business" className="scroll-mt-6 space-y-5">
+            {businessType && overview?.businessProfile.status !== 'inferred' && !showBusinessTypeEditor ? (
+                <div className="training-panel rounded-2xl border bg-card p-4 sm:p-5 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-start gap-3.5">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                <Sparkles className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <p className="text-[11px] font-bold uppercase tracking-[.16em] text-primary">Business Model</p>
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                                        <Check className="h-3 w-3" /> Confirmed
+                                    </span>
+                                </div>
+                                <h3 className="mt-1 text-base font-semibold">
+                                    {overview?.businessTypeOptions.find((o) => o.value === businessType)?.label || businessType}
+                                    {businessSubType ? <span className="ml-2 font-normal text-muted-foreground">({businessSubType})</span> : null}
+                                    {businessType === 'OTHER' && customBusinessType ? <span className="ml-2 font-normal text-muted-foreground">({customBusinessType})</span> : null}
+                                </h3>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                    SellPilot tailors conversational questions, product retrieval, and policy answers to this business model.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                            <Button variant="outline" size="sm" onClick={() => setShowBusinessTypeEditor(true)}>
+                                Change
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <Card className="training-panel">
+                    <CardHeader className="flex flex-row items-center justify-between pb-3">
+                        <div>
+                            <p className="text-xs font-semibold text-primary">Business context</p>
+                            <CardTitle className="mt-1">
+                                {overview?.businessProfile.status === 'inferred' ? 'Confirm your business type' : 'Choose your business type'}
+                            </CardTitle>
+                        </div>
+                        {businessType && overview?.businessProfile.status !== 'inferred' && (
+                            <Button variant="ghost" size="sm" onClick={() => setShowBusinessTypeEditor(false)}>
+                                Cancel
+                            </Button>
+                        )}
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                            SellPilot immediately adapts its questions. Changing type keeps every approved fact safely stored.
+                        </p>
+                        {overview?.businessProfile.status === 'inferred' && (
+                            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+                                SellPilot inferred this from your sources ({Math.round((overview.businessProfile.inference?.confidence || 0) * 100)}% confidence). Please confirm or change it.
+                            </div>
+                        )}
+                        <div className="grid gap-3 md:grid-cols-3">
+                            <select
+                                className="rounded-md border bg-background px-3 py-2 text-sm"
+                                value={businessType}
+                                onChange={(event) => {
+                                    const value = event.target.value;
+                                    setBusinessType(value);
+                                    if (value) profileMutation.mutate(value);
+                                }}
+                            >
+                                <option value="">Choose business type</option>
+                                {overview?.businessTypeOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <Input
+                                value={businessSubType}
+                                onChange={(event) => setBusinessSubType(event.target.value)}
+                                placeholder="Subtype (optional)"
+                            />
+                            {businessType === 'OTHER' && (
+                                <Input
+                                    value={customBusinessType}
+                                    onChange={(event) => setCustomBusinessType(event.target.value)}
+                                    placeholder="What do you sell or provide?"
+                                />
+                            )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <Button
+                                disabled={!businessType || profileMutation.isPending}
+                                onClick={() => profileMutation.mutate(businessType)}
+                            >
+                                {profileMutation.isPending ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Saving...
+                                    </>
+                                ) : overview?.businessProfile.status === 'inferred' ? (
+                                    'Confirm business type'
+                                ) : (
+                                    'Save details'
+                                )}
+                            </Button>
+                            {profileFeedback && (
+                                <span className="learned-reveal text-sm font-medium text-emerald-600">
+                                    <Check className="mr-1 inline h-4 w-4" />
+                                    {profileFeedback}
+                                </span>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+            <QuickBusinessSetup businessType={businessType} questions={setupQuestions} answers={overview?.setupAnswers || {}} onSaved={refresh}/>
         </section><section id="training-sources" className="scroll-mt-6 space-y-5"><Card className="training-panel"><CardHeader><p className="text-xs font-semibold text-primary">Source connections</p><CardTitle>Connect your business sources</CardTitle></CardHeader><CardContent className="grid gap-4 lg:grid-cols-2">
             {sourceFeedback && <div className="learned-reveal flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm font-medium text-emerald-700 lg:col-span-2"><Check className="h-4 w-4"/>{sourceFeedback}</div>}
             <div className="training-question rounded-2xl border p-4 sm:p-5"><Globe2 className="h-6 w-6 text-primary"/><h3 className="mt-3 font-bold">Website</h3><p className="mb-4 text-sm text-muted-foreground">Products, FAQs, contact details and policies.</p><div className="flex flex-col sm:flex-row gap-2"><Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="yourbusiness.com or a specific page"/><Button className="w-full sm:w-auto shrink-0" disabled={!website.trim() || sourceMutation.isPending} onClick={() => sourceMutation.mutate({ kind: 'website', action: () => trainingApi.connectWebsite(website) })}>{sourceMutation.isPending && sourceMutation.variables?.kind === 'website' ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Analyzing...</> : 'Learn'}</Button></div></div>
@@ -206,8 +705,8 @@ export function TrainingWorkspace({ onboarding = false, onFinish }: { onboarding
             {overview?.sources?.length ? <Card><CardHeader><CardTitle>Connected sources</CardTitle></CardHeader><CardContent className="space-y-3">{overview.sources.map((source) => <div key={source._id} className={`flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${source.status === 'error' ? 'border-rose-500/30 bg-rose-500/5' : ''}`}><div><b>{source.name}</b><p className="text-sm text-muted-foreground">{source.type} · {labels[source.status] || source.status.replace('_',' ')}{source.lastSyncedAt ? ` · ${new Date(source.lastSyncedAt).toLocaleString()}` : ''}</p>{source.errorMessage && <p className="mt-1 text-sm text-destructive">{source.errorMessage}</p>}</div>{source.type === 'website' && <div className="flex flex-wrap items-center gap-2"><label className="text-xs">Import products <select className="ml-1 rounded border bg-background p-2" value={source.importPreference || 'ask_during_review'} onChange={(event) => { const value = event.target.value as 'in_stock_only'|'all'|'ask_during_review'; if (value === 'in_stock_only') setAvailability('in_stock'); else if (value === 'all') setAvailability('all'); sourceMutation.mutate({ kind: `preference-${source._id}`, action: () => trainingApi.setImportPreference(source._id, value) }); }}><option value="in_stock_only">In-stock only</option><option value="all">All products</option><option value="ask_during_review">Ask during review</option></select></label>{source.stats?.failed > 0 && <Button variant="outline" size="sm" disabled={sourceMutation.isPending} onClick={() => sourceMutation.mutate({ kind: `retry-${source._id}`, action: () => trainingApi.retryFailed(source._id) })}>Retry {source.stats.failed} failed</Button>}<Button variant="outline" size="sm" disabled={sourceMutation.isPending} onClick={() => sourceMutation.mutate({ kind: `rescan-${source._id}`, action: () => trainingApi.rescan(source._id) })}>{sourceMutation.isPending && sourceMutation.variables?.kind === `rescan-${source._id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <RefreshCw className="mr-2 h-4 w-4"/>}{sourceMutation.isPending && sourceMutation.variables?.kind === `rescan-${source._id}` ? 'Analyzing...' : source.status === 'error' ? 'Retry' : 'Rescan'}</Button></div>}</div>)}</CardContent></Card> : null}
         {overview?.latestRun && <Card className={runFailed ? 'border-rose-500/30' : ''}><CardHeader><CardTitle>Learning progress</CardTitle></CardHeader><CardContent><div className="flex items-center gap-3">{learning ? <Loader2 className="h-5 w-5 animate-spin text-primary"/> : runFailed || overview.latestRun.status === 'partial' ? <AlertTriangle className="h-5 w-5 text-amber-600"/> : <Check className="h-5 w-5 text-emerald-600"/>}<div><b>{overview.latestRun.stage}</b>{runFailed && overview.latestRun.errorMessage && <p className="mt-1 text-sm text-rose-700">{overview.latestRun.errorMessage}</p>}</div></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full transition-all ${runFailed ? 'bg-rose-500' : 'bg-primary'}`} style={{width:`${runFailed ? 0 : overview.latestRun.progress}%`}}/></div><div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">{(['discovered','pages','productUrls','products','remaining','failed'] as const).map((key) => <div key={key} className="rounded-xl bg-muted/50 p-3"><b className="block text-lg">{overview.latestRun?.stats?.[key] ?? 0}</b>{key === 'pages' ? 'processed' : key.replace(/([A-Z])/g,' $1')}</div>)}</div></CardContent></Card>}
         </section><section id="training-review-start" className="scroll-mt-6 space-y-5"><h2 className="text-lg font-semibold">Review &amp; approve</h2><p className="text-sm leading-6 text-muted-foreground">Check what SellPilot found before making it available to customers.</p>
-        {(candidates.length > 0 || candidatesQuery.data?.pagination.total) && <Card id="training-review"><CardHeader><div className="space-y-4"><div><CardTitle>Staged details</CardTitle><p className="mt-1 text-sm text-muted-foreground">Product truth remains staged until approval. Filters also scope bulk selection.</p></div><div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2"><Input value={search} onChange={(event) => { setSearch(event.target.value); setSelected(new Set()); setAllMatching(false); }} placeholder="Search products"/><select className="rounded-md border bg-background px-3" value={availability} onChange={(event) => { setAvailability(event.target.value); setSelected(new Set()); setAllMatching(false); }}><option value="all">All availability</option><option value="in_stock">In Stock ({candidatesQuery.data?.availabilityCounts.in_stock || 0})</option><option value="out_of_stock">Out of Stock ({candidatesQuery.data?.availabilityCounts.out_of_stock || 0})</option><option value="unknown">Unknown ({candidatesQuery.data?.availabilityCounts.unknown || 0})</option></select><select className="rounded-md border bg-background px-3" value={category} onChange={(event) => { setCategory(event.target.value); setSelected(new Set()); setAllMatching(false); }}><option value="all">All categories</option>{candidatesQuery.data?.categories.map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="rounded-md border bg-background px-3" value={reviewStatus} onChange={(event) => { setReviewStatus(event.target.value); setSelected(new Set()); setAllMatching(false); }}><option value="all">All review statuses</option><option value="ready">Ready</option><option value="needs_attention">Needs Review</option><option value="possible_duplicate">Duplicate</option><option value="conflict">Conflict</option><option value="imported">Approved</option><option value="rejected">Rejected</option><option value="failed">Failed</option></select></div><div className="flex flex-wrap items-center gap-1.5 sm:gap-2"><Button size="sm" variant="outline" onClick={() => { setSelected(new Set(candidates.filter((item) => item.kind === 'product' && !['imported','approved'].includes(item.status)).map((item) => item._id))); setAllMatching(false); }}>Select visible page</Button><Button size="sm" variant="outline" onClick={() => { setSelected(new Set()); setAllMatching(true); }}>Select all {candidatesQuery.data?.pagination.total || 0} matching</Button><Button size="sm" disabled={safeMutation.isPending || (!allMatching && !selected.size)} onClick={() => safeMutation.mutate(undefined)}>{safeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4"/>}Approve {allMatching ? 'All Matching' : `Selected (${selected.size})`}</Button><Button size="sm" variant="outline" disabled={clearMutation.isPending || !selected.size} onClick={() => clearMutation.mutate('selected')}><Trash2 className="mr-1 h-4 w-4"/>Clear Selected</Button><Button size="sm" variant="outline" onClick={() => clearMutation.mutate('filtered')}>Clear Filtered</Button><Button size="sm" variant="outline" onClick={() => clearMutation.mutate('rejected')}>Clear Rejected</Button><Button size="sm" variant="outline" onClick={() => clearMutation.mutate('failed')}>Clear Failed</Button><Button size="sm" variant="destructive" onClick={() => clearMutation.mutate('all')}>Clear All Staged</Button></div>{approvalProgress && <div className="rounded-xl border bg-muted/30 p-3 text-sm"><b>{safeMutation.isPending ? `Approving ${approvalProgress.processed} / ${approvalProgress.total}` : `Approved: ${approvalProgress.approved} · Failed: ${approvalProgress.failed}`}</b><div className="mt-2 h-2 overflow-hidden rounded bg-muted"><div className="h-full bg-primary" style={{ width: `${approvalProgress.total ? Math.min(100, approvalProgress.processed / approvalProgress.total * 100) : 0}%` }}/></div>{!safeMutation.isPending && approvalProgress.failedIds.length > 0 && <Button className="mt-2" size="sm" variant="outline" onClick={() => safeMutation.mutate(approvalProgress.failedIds)}>Retry Failed</Button>}</div>}</div></CardHeader><CardContent className="space-y-6">
-            {([['Ready',review.ready],['Possible duplicates',review.duplicates],['Conflicts',review.conflicts],['Needs attention',review.attention],['Failed',review.failed]] as const).map(([title,items]) => items.length ? <section key={title}><h3 className="mb-3 flex items-center gap-2 font-bold">{title === 'Conflicts' && <AlertTriangle className="h-4 w-4 text-rose-500"/>}{title} <Badge variant="secondary">{items.length}</Badge></h3><div className="space-y-3">{items.map((candidate) => <CandidateCard key={candidate._id} candidate={candidate} refresh={refresh} selected={selected.has(candidate._id)} onSelect={(checked) => setSelected((current) => { const next = new Set(current); if (checked) next.add(candidate._id); else next.delete(candidate._id); setAllMatching(false); return next; })}/>)}</div></section> : null)}
+        {(candidates.length > 0 || candidatesQuery.data?.pagination.total) && <Card id="training-review"><CardHeader><div className="space-y-4"><div><CardTitle>Staged details</CardTitle><p className="mt-1 text-sm text-muted-foreground">Product truth remains staged until approval. Filters also scope bulk selection.</p></div><div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2"><Input value={search} onChange={(event) => { setSearch(event.target.value); setSelected(new Set()); setAllMatching(false); }} placeholder="Search products"/><select className="rounded-md border bg-background px-3" value={availability} onChange={(event) => { setAvailability(event.target.value); setSelected(new Set()); setAllMatching(false); }}><option value="all">All availability</option><option value="in_stock">In Stock ({candidatesQuery.data?.availabilityCounts.in_stock || 0})</option><option value="out_of_stock">Out of Stock ({candidatesQuery.data?.availabilityCounts.out_of_stock || 0})</option><option value="unknown">Unknown ({candidatesQuery.data?.availabilityCounts.unknown || 0})</option></select><select className="rounded-md border bg-background px-3" value={category} onChange={(event) => { setCategory(event.target.value); setSelected(new Set()); setAllMatching(false); }}><option value="all">All categories</option>{candidatesQuery.data?.categories.map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="rounded-md border bg-background px-3" value={reviewStatus} onChange={(event) => { setReviewStatus(event.target.value); setSelected(new Set()); setAllMatching(false); }}><option value="all">All review statuses</option><option value="ready">Ready</option><option value="needs_attention">Needs Review</option><option value="possible_duplicate">Possible Duplicate</option><option value="conflict">Variant Conflict</option><option value="imported">Confirmed</option><option value="rejected">Rejected</option><option value="failed">Could Not Verify</option></select></div><div className="flex flex-wrap items-center gap-1.5 sm:gap-2"><Button size="sm" variant="outline" onClick={() => { setSelected(new Set(candidates.filter((item) => item.kind === 'product' && !['imported','approved'].includes(item.status)).map((item) => item._id))); setAllMatching(false); }}>Select visible page</Button><Button size="sm" variant="outline" onClick={() => { setSelected(new Set()); setAllMatching(true); }}>Select all {candidatesQuery.data?.pagination.total || 0} matching</Button><Button size="sm" disabled={safeMutation.isPending || (!allMatching && !selected.size)} onClick={() => safeMutation.mutate(undefined)}>{safeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4"/>}Approve {allMatching ? 'All Matching' : `Selected (${selected.size})`}</Button><Button size="sm" variant="outline" disabled={clearMutation.isPending || !selected.size} onClick={() => clearMutation.mutate('selected')}><Trash2 className="mr-1 h-4 w-4"/>Clear Selected</Button><Button size="sm" variant="outline" onClick={() => clearMutation.mutate('filtered')}>Clear Filtered</Button><Button size="sm" variant="outline" onClick={() => clearMutation.mutate('rejected')}>Clear Rejected</Button><Button size="sm" variant="outline" onClick={() => clearMutation.mutate('failed')}>Clear Could Not Verify</Button><Button size="sm" variant="destructive" onClick={() => clearMutation.mutate('all')}>Clear All Staged</Button></div>{approvalProgress && <div className="rounded-xl border bg-muted/30 p-3 text-sm"><b>{safeMutation.isPending ? `Approving ${approvalProgress.processed} / ${approvalProgress.total}` : `Approved: ${approvalProgress.approved} · Failed: ${approvalProgress.failed}`}</b><div className="mt-2 h-2 overflow-hidden rounded bg-muted"><div className="h-full bg-primary" style={{ width: `${approvalProgress.total ? Math.min(100, approvalProgress.processed / approvalProgress.total * 100) : 0}%` }}/></div>{!safeMutation.isPending && approvalProgress.failedIds.length > 0 && <Button className="mt-2" size="sm" variant="outline" onClick={() => safeMutation.mutate(approvalProgress.failedIds)}>Retry Failed</Button>}</div>}</div></CardHeader><CardContent className="space-y-6">
+            {([['Ready',review.ready],['Possible duplicates',review.duplicates],['Variant conflicts',review.conflicts],['Needs review',review.attention],['Could not verify',review.failed]] as const).map(([title,items]) => items.length ? <section key={title}><h3 className="mb-3 flex items-center gap-2 font-bold">{title === 'Variant conflicts' && <AlertTriangle className="h-4 w-4 text-rose-500"/>}{title} <Badge variant="secondary">{items.length}</Badge></h3><div className="space-y-3">{items.map((candidate) => <CandidateCard key={candidate._id} candidate={candidate} refresh={refresh} selected={selected.has(candidate._id)} onSelect={(checked) => setSelected((current) => { const next = new Set(current); if (checked) next.add(candidate._id); else next.delete(candidate._id); setAllMatching(false); return next; })}/>)}</div></section> : null)}
         </CardContent></Card>}
         <Card><CardHeader><CardTitle>More details to improve your AI</CardTitle></CardHeader><CardContent className="space-y-4">{remainingGaps.length ? <div className="space-y-4">{(['CRITICAL','IMPORTANT','OPTIONAL'] as const).map((priority) => remainingGaps.some((gap) => gap.priority === priority) && <section key={priority}><h3 className="mb-2 text-sm font-semibold">{priority === 'CRITICAL' ? 'Required before AI is ready' : priority === 'IMPORTANT' ? 'Important next' : 'Optional improvements'}</h3><div className="grid gap-2 sm:grid-cols-2">{remainingGaps.filter((gap) => gap.priority === priority).map((gap) => <button key={gap.id} type="button" onClick={() => { setManualKind('information'); setManualTitle(gap.question); }} className="rounded-xl border p-3 text-left text-sm hover:bg-muted/40"><Badge className="mr-2" variant={priority === 'CRITICAL' ? 'destructive' : 'secondary'}>{gap.domain.replaceAll('_',' ')}</Badge>{gap.question}<ChevronRight className="ml-2 inline h-4 w-4"/></button>)}</div></section>)}</div> : <p className="text-sm text-emerald-700">No additional structured gaps detected. You can still add a custom detail or approved answer.</p>}<div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setManualKind('information')}>+ Add custom business information</Button><Button variant="outline" onClick={() => setManualKind('faq')}>+ Add custom question &amp; answer</Button></div>{manualKind && <div className="grid gap-3 rounded-xl border bg-muted/20 p-4"><Input value={manualTitle} onChange={(event) => setManualTitle(event.target.value)} placeholder={manualKind === 'faq' ? 'Customer question' : 'Information title'}/><textarea className="min-h-24 rounded-md border bg-background p-3 text-sm" value={manualContent} onChange={(event) => setManualContent(event.target.value)} placeholder={manualKind === 'faq' ? 'Approved answer' : 'Business information'}/><div className="flex gap-2"><Button disabled={manualMutation.isPending || manualTitle.trim().length < 3 || manualContent.trim().length < 3} onClick={() => manualMutation.mutate()}>{manualMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}Add for review</Button><Button variant="ghost" onClick={() => setManualKind(null)}>Cancel</Button></div></div>}</CardContent></Card>
         </section><section id="training-test" className="scroll-mt-6"><Card><CardHeader><CardTitle>Continue in your AI Assistant</CardTitle></CardHeader><CardContent><p className="mb-4 text-muted-foreground">Approved products, offerings, and business knowledge are immediately available across live customer conversations.</p>{overview?.suggestedQuestions?.length ? <div className="mb-4 flex flex-wrap gap-2">{overview.suggestedQuestions.map((question) => <Badge key={question} variant="outline" className="px-3 py-2">{question}</Badge>)}</div> : null}<div className="flex flex-wrap gap-3"><Button asChild><Link href="/assistant"><Bot className="mr-2 h-4 w-4"/>Open AI Assistant</Link></Button>{onboarding && onFinish && <Button variant="outline" onClick={() => onFinish()}>Finish setup</Button>}</div></CardContent></Card>

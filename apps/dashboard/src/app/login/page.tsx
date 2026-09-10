@@ -19,6 +19,7 @@ export default function LoginPage() {
   const [businessId, setBusinessId] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showBusinessId, setShowBusinessId] = useState(false);
   const [callbackUrl, setCallbackUrl] = useState('/');
   const router = useRouter();
 
@@ -60,7 +61,22 @@ export default function LoginPage() {
         return;
       }
       const result = await signIn('credentials', { redirect: false, email, password, businessId });
-      if (result?.error) throw new Error('Invalid email or password.');
+      if (result?.error) {
+        if (result.error === 'EMAIL_NOT_VERIFIED') {
+          throw new Error('Please verify your email before signing in. Check your inbox or click "Resend verification" below.');
+        }
+        if (result.error === 'BUSINESS_ID_REQUIRED') {
+          setShowBusinessId(true);
+          throw new Error('Your account is associated with multiple businesses. Please enter your Business ID under "Signing in to a specific business?".');
+        }
+        if (result.error === 'BUSINESS_INACTIVE') {
+          throw new Error('This business workspace is currently inactive.');
+        }
+        if (result.error === 'BACKEND_UNAVAILABLE') {
+          throw new Error('Unable to connect to the authentication service. Please check your connection and try again.');
+        }
+        throw new Error('Invalid email or password.');
+      }
       router.push(callbackUrl);
       router.refresh();
     } catch (cause) {
@@ -76,7 +92,7 @@ export default function LoginPage() {
     {access === 'merchant' ? <OAuthButtons/> : <p className="auth-access-note">Internal platform access. Merchant accounts cannot access administration tools.</p>}
     {access === 'merchant' && <div className="my-6 text-center text-[10px] tracking-widest text-[#9293a5]">OR USE YOUR EMAIL</div>}
     <form onSubmit={submit} className="space-y-5">{error && <p role="alert" className="auth-error">{error}</p>}<label>Email address<Input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label><label>Password<Input type="password" autoComplete="current-password" minLength={PASSWORD_MIN_LENGTH} value={password} onChange={event => setPassword(event.target.value)} required/></label>
-      {access === 'merchant' && <><details><summary className="cursor-pointer text-xs text-[#818197]">Signing in to a specific business?</summary><label className="mt-3">Business ID<Input value={businessId} onChange={event => setBusinessId(event.target.value)}/></label></details><div className="auth-links"><Link href="/resend-verification">Resend verification</Link><Link href="/forgot-password">Forgot password?</Link></div></>}
+      {access === 'merchant' && <><details open={showBusinessId || Boolean(businessId)} onToggle={event => setShowBusinessId((event.target as HTMLDetailsElement).open)}><summary className="cursor-pointer text-xs text-[#818197]">Signing in to a specific business?</summary><label className="mt-3">Business ID<Input value={businessId} onChange={event => setBusinessId(event.target.value)}/></label></details><div className="auth-links"><Link href="/resend-verification">Resend verification</Link><Link href="/forgot-password">Forgot password?</Link></div></>}
       <Button className="w-full" disabled={loading}>{loading ? 'Signing in…' : access === 'admin' ? 'Sign in to platform' : 'Sign in to workspace'}</Button>
     </form>
     {access === 'merchant' && <p className="mt-8 border-t border-[#e3e1ed] pt-6 text-sm text-[#77798e]">New to SellPilot? <Link href="/signup">Create your account</Link></p>}

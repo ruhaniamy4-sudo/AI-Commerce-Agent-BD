@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/select';
 import { CreateOrderDialog } from '@/components/orders/create-order-dialog';
 import { OrderAnalytics } from '@/components/orders/order-analytics';
+import { downloadOrderInvoice } from '@/lib/order-invoice';
 
 interface PopulatedOrder extends Omit<Order, 'customerId'> {
     customerId: Customer;
@@ -127,7 +128,7 @@ return (<div><PageHeader title="Orders" description="From confirmation to fulfil
                                             <div className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20 flex items-center gap-2">
                                                 <ShieldCheck className="h-3 w-3 text-primary" />
                                                 <span className="text-[10px] font-semibold tracking-normal text-primary">
-                                                    Verified Transaction
+                                                    Payment: {selectedOrder.paymentStatus}
                                                 </span>
                                             </div>
                                             <span className="text-[10px] text-muted-foreground font-mono tracking-normal italic" >
@@ -137,6 +138,7 @@ return (<div><PageHeader title="Orders" description="From confirmation to fulfil
                                         <DialogTitle className="text-xl sm:text-2xl font-semibold text-foreground tracking-tighter" >
                                             Order #{selectedOrder._id.slice(-8).toUpperCase()}
                                         </DialogTitle>
+                                        <Button size="sm" variant="outline" className="mt-3" onClick={() => downloadOrderInvoice(selectedOrder)}>Download order invoice</Button>
                                         <DialogDescription className="text-muted-foreground font-medium mt-2 flex items-center gap-4" >
                                             <span className="flex items-center gap-1.5 text-xs sm:text-sm" >
                                                 <Calendar className="h-4 w-4 opacity-40" />{' '}
@@ -207,7 +209,7 @@ return (<div><PageHeader title="Orders" description="From confirmation to fulfil
                                                                         {item.productName}
                                                                     </span>
                                                                     <span className="text-[10px] text-muted-foreground font-mono mt-1 opacity-40 italic">
-                                                                        {item.sku || 'SKU-GEN-001'}
+                                                                        {item.sku || 'No SKU recorded'}
                                                                     </span>
                                                                 </div>
                                                             </TableCell>

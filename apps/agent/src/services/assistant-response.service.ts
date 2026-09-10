@@ -7,7 +7,8 @@ export interface NormalizedAssistantResponse {
     [key: string]: unknown;
 }
 
-export const SAFE_ASSISTANT_RESPONSE_FALLBACK = 'I could not format that response safely. Please try again.';
+export const SAFE_ASSISTANT_RESPONSE_FALLBACK = 'দুঃখিত, উত্তরটা ঠিকভাবে তৈরি হয়নি। আরেকবার চেষ্টা করবেন?';
+export const SAFE_ASSISTANT_RESPONSE_FALLBACK_EN = "I'm sorry, I couldn't format that response properly. Could you please try again?";
 
 function contentText(content: unknown): string {
     if (typeof content === 'string') return content;
@@ -73,7 +74,15 @@ function extractFieldRegex(text: string, fieldName: string): string | undefined 
     const singleMatch = text.match(singlePattern);
     if (singleMatch && singleMatch[1].trim()) return singleMatch[1].trim();
 
-    // 3. Truncated open-quote pattern:
+    // 3. Multiline or unclosed quote pattern up to next delimiter
+    const loosePattern = new RegExp(`["']${fieldName}["']\\s*:\\s*["']?([\\s\\S]*?)(?:["']\\s*[,\\}]|$)`, 'i');
+    const looseMatch = text.match(loosePattern);
+    if (looseMatch && looseMatch[1].trim()) {
+        const cleaned = looseMatch[1].replace(/["'}\]\s]+$/, '').trim();
+        if (cleaned) return cleaned;
+    }
+
+    // 4. Truncated open-quote pattern:
     const openQuotePattern = new RegExp(`["']${fieldName}["']\\s*:\\s*"([\\s\\S]*)$`, 'i');
     const openMatch = text.match(openQuotePattern);
     if (openMatch && openMatch[1].trim()) return openMatch[1].replace(/["'}\]\s]+$/, '').trim();
@@ -126,8 +135,18 @@ function safeMessageText(value: unknown): string {
     // Plain text / Banglish: strip any surrounding fences
     const clean = stripFences(text).trim();
 
-    // Guard: only return fallback if it's unparseable raw JSON syntax that still contains raw property keys or opening braces
+    // If unparseable raw JSON syntax still contains raw property keys or opening braces,
+    // attempt to rescue readable prose if present, otherwise return graceful fallback
     if (/["'](?:message_text|action|language)["']\s*:/.test(clean) || /^\s*\{/.test(clean)) {
+        const rescued = clean
+            .replace(/\{?\s*["'](?:message_text|action|language|action_payload|quick_replies|suggested_products)["']\s*:\s*/gi, ' ')
+            .replace(/["']\s*[,}]\s*$/g, '')
+            .replace(/["']\s*,\s*["'][a-z_]+["']\s*:\s*/gi, ' ')
+            .replace(/["'\}\]]+/g, ' ')
+            .trim();
+        if (rescued && rescued.length > 5 && !/^[,\s\{\}\[\]:]+$/.test(rescued)) {
+            return rescued;
+        }
         return SAFE_ASSISTANT_RESPONSE_FALLBACK;
     }
 
@@ -161,9 +180,15 @@ export function normalizeAssistantResponse(content: unknown): NormalizedAssistan
         if (Array.isArray(parsedProducts)) suggestedProducts = parsedProducts.slice(0, 10);
     }
 
+    const lang = extractedLang || 'bn';
+    let text = safeMessageText(extractedText !== undefined ? extractedText : raw);
+    if (lang === 'en' && text === SAFE_ASSISTANT_RESPONSE_FALLBACK) {
+        text = SAFE_ASSISTANT_RESPONSE_FALLBACK_EN;
+    }
+
     return {
-        language: extractedLang || 'bn',
-        message_text: safeMessageText(extractedText !== undefined ? extractedText : raw),
+        language: lang,
+        message_text: text,
         action: extractedAction || 'none',
         action_payload: {},
         quick_replies: [],

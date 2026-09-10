@@ -60,5 +60,21 @@ describe('normalizeAssistantResponse', () => {
         const input = '{"message_text": ';
         const result = normalizeAssistantResponse(input);
         expect(result.message_text).toBe(SAFE_ASSISTANT_RESPONSE_FALLBACK);
+        expect(result.message_text).not.toContain('I could not format that response safely');
+    });
+
+    it('gracefully degrades malformed rich JSON to safe customer text without technical errors', () => {
+        const input = '{"message_text": "Hoodie currently stock-e nei, tobe jacket available ache.", "suggested_products": [broken-json';
+        const result = normalizeAssistantResponse(input);
+        expect(result.message_text).toBe('Hoodie currently stock-e nei, tobe jacket available ache.');
+        expect(result.message_text).not.toContain('broken-json');
+        expect(result.message_text).not.toContain('I could not format');
+    });
+
+    it('uses English customer fallback when English language is detected on unparseable input', () => {
+        const input = '{"language": "en", "message_text": ';
+        const result = normalizeAssistantResponse(input);
+        expect(result.message_text).toContain("I'm sorry");
+        expect(result.message_text).not.toContain('I could not format that response safely');
     });
 });

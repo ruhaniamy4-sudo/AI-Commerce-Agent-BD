@@ -13,7 +13,7 @@ const navigation:NavigationItem[]=[
  {name:"Dashboard",href:"/",icon:LayoutDashboard,group:"Workspace"},
  {name:"Conversations",href:"/conversations",icon:MessageSquare,group:"Workspace"},
  {name:"Customers",href:"/customers",icon:Users,group:"Workspace"},
- {name:"Products",href:"/products",icon:ShoppingCart,group:"Commerce",children:[{name:"Categories",href:"/categories",icon:ShoppingCart},{name:"Store Builder",href:"/store-builder",icon:Store}]},
+ {name:"Products",href:"/products",icon:ShoppingCart,group:"Commerce",children:[{name:"Inventory",href:"/inventory",icon:Package},{name:"Categories",href:"/categories",icon:ShoppingCart},{name:"Store Builder",href:"/store-builder",icon:Store}]},
  {name:"Orders",href:"/orders",icon:Package,group:"Commerce"},
  {name:"Train AI",href:"/training",icon:Sparkles,group:"AI & insights",children:[{name:"Business Knowledge",href:"/knowledge",icon:BookOpen},{name:"Test AI",href:"/assistant",icon:Bot}]},
  {name:"Analytics",href:"/admin/analytics",icon:BarChart3,group:"AI & insights"},

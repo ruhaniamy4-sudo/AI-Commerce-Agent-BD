@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Globe, KeyRound, Loader2, MessageCircle, PlugZap, ShieldCheck, Unplug } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
@@ -71,14 +72,17 @@ export default function IntegrationsPage() {
         return <div className="space-y-8"><PageHeader title="Integrations" description="Manage business-scoped courier connections." /><Card className="max-w-2xl"><CardContent className="pt-6 text-sm text-muted-foreground">Owner or Admin access is required to manage courier credentials.</CardContent></Card></div>;
     }
 
+    if (sessionStatus === 'loading') return <p role="status" className="p-6 text-muted-foreground">Loading integration access…</p>;
     return <div className="space-y-8">
         <PageHeader title="Integrations" description="Connect customer channels and business-scoped services." />
+        <nav aria-label="Integration setup" className="flex flex-wrap gap-2 text-sm">{[['messenger','Messenger'],['website','Website chat'],['courier','Courier'],['payments','Payments']].map(([id,label]) => <a key={id} href={`#${id}`} className="rounded-xl border px-4 py-2 hover:bg-muted">{label}</a>)}</nav>
+        {(statusQuery.isError || channelsQuery.isError || facebookQuery.isError) && <div role="alert" className="rounded-xl border border-destructive/30 p-4 text-sm">Some connection statuses could not be loaded. <button className="underline" onClick={() => { void statusQuery.refetch(); void channelsQuery.refetch(); void facebookQuery.refetch(); }}>Retry status check</button></div>}
         <div className="grid gap-4 md:grid-cols-3">
-            <IntegrationCard icon={MessageCircle} name="Facebook Messenger" status={facebookQuery.data?.some(connection => connection.connectionStatus === 'CONNECTED') ? 'Connected' : 'Not connected'} />
-            <IntegrationCard icon={Globe} name="Website Chat" status={channelsQuery.data?.some(channel => channel.platform === 'web' && channel.status === 'active') ? 'Connected' : 'Available'} />
+            <IntegrationCard icon={MessageCircle} name="Facebook Messenger" status={facebookQuery.isError ? 'Status unavailable' : facebookQuery.isLoading ? 'Checking…' : facebookQuery.data?.some(connection => connection.connectionStatus === 'CONNECTED') ? 'Connected' : 'Not connected'} />
+            <IntegrationCard icon={Globe} name="Website Chat" status={channelsQuery.isError ? 'Status unavailable' : channelsQuery.isLoading ? 'Checking…' : channelsQuery.data?.some(channel => channel.platform === 'web' && channel.status === 'active') ? 'Channel active' : 'Not configured'} />
             <IntegrationCard icon={MessageCircle} name="WhatsApp" status="Coming soon" muted />
         </div>
-        <Card className="max-w-3xl border-border shadow-premium">
+        <Card id="messenger" className="scroll-mt-6 max-w-3xl border-border shadow-premium">
             <CardHeader className="border-b border-border"><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4"><div className="flex gap-4"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-500/10"><MessageCircle className="h-5 w-5 text-blue-500" /></div><div><CardTitle>Facebook Messenger</CardTitle><CardDescription className="mt-1">Authorize Pages you manage. SellPilot stores one encrypted Page token per business connection.</CardDescription></div></div><Button className="w-full sm:w-auto shrink-0" onClick={() => startFacebook.mutate(false)} disabled={startFacebook.isPending}>{startFacebook.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlugZap className="mr-2 h-4 w-4" />}Connect Facebook</Button></div></CardHeader>
             <CardContent className="space-y-4 pt-6">
                 {facebookMessage && <p className="rounded-xl border bg-muted/30 p-3 text-sm">{facebookMessage}</p>}
@@ -88,11 +92,11 @@ export default function IntegrationsPage() {
                 <div className="flex gap-3 rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" /><p>Core authorization requests Page listing, Messenger replies, and webhook management only. Page-content learning is optional and remains unavailable until its separate permission and App Review are approved.</p></div>
             </CardContent>
         </Card>
-        <Card className="max-w-3xl border-border shadow-premium">
+        <Card id="courier" className="scroll-mt-6 max-w-3xl border-border shadow-premium">
             <CardHeader className="border-b border-border">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                     <div className="flex gap-4"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10"><PlugZap className="h-5 w-5 text-primary" /></div><div><CardTitle>Steadfast Courier</CardTitle><CardDescription className="mt-1">Create and track Bangladesh deliveries after merchant approval.</CardDescription></div></div>
-                    <Badge variant={status?.connected ? 'default' : 'secondary'} className="self-start sm:self-auto">{status?.connected ? 'Connected' : 'Not connected'}</Badge>
+                    <Badge variant={status?.connected ? 'default' : 'secondary'} className="self-start sm:self-auto">{statusQuery.isError ? 'Status unavailable' : statusQuery.isLoading ? 'Checking…' : status?.connected ? 'Connected' : 'Not connected'}</Badge>
                 </div>
             </CardHeader>
             <CardContent className="space-y-6 pt-6">
@@ -105,10 +109,14 @@ export default function IntegrationsPage() {
                 <div className="flex flex-wrap gap-3">
                     <Button className="w-full sm:w-auto" onClick={() => save.mutate()} disabled={busy || !apiKey || !secretKey}>{save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}Save & validate</Button>
                     <Button className="w-full sm:w-auto" variant="outline" onClick={() => test.mutate()} disabled={busy || !status?.configured}>Test connection</Button>
-                    <Button className="w-full sm:w-auto" variant="destructive" onClick={() => disconnect.mutate()} disabled={busy || !status?.configured}><Unplug className="mr-2 h-4 w-4" />Disconnect</Button>
+                    <Button className="w-full sm:w-auto" variant="destructive" onClick={() => { if (window.confirm('Disconnect Steadfast and remove the saved courier credentials?')) disconnect.mutate(); }} disabled={busy || !status?.configured}><Unplug className="mr-2 h-4 w-4" />Disconnect</Button>
                 </div>
             </CardContent>
         </Card>
+        <div className="grid max-w-5xl gap-5 lg:grid-cols-2">
+            <Card id="website" className="scroll-mt-6"><CardHeader><CardTitle>Website chat</CardTitle><CardDescription>Prepare your catalog and business answers, then test the customer experience.</CardDescription></CardHeader><CardContent className="space-y-4"><ol className="list-inside list-decimal space-y-2 text-sm text-muted-foreground"><li>Import products and approve business knowledge.</li><li>Test customer questions in the AI Assistant.</li><li>Review your storefront and channel settings.</li></ol><p className="text-sm text-muted-foreground">An active test channel does not confirm that a widget is installed on an external website. External widget installation still requires rollout validation.</p><div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link href="/assistant">Test the assistant</Link></Button><Button asChild variant="outline"><Link href="/store-builder">Open Store Builder</Link></Button></div></CardContent></Card>
+            <Card id="payments" className="scroll-mt-6"><CardHeader><CardTitle>Payments · bKash</CardTitle><CardDescription>Set accepted payment methods separately from your SellPilot subscription.</CardDescription></CardHeader><CardContent className="space-y-4"><Badge variant="secondary">Gateway not connected</Badge><p className="text-sm leading-6 text-muted-foreground">bKash is the selected gateway direction. Listing bKash as an accepted payment method does not enable automatic collection or verification. Online gateway activation and sandbox verification are pending.</p><div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link href="/settings/business#ordering">Payment preferences</Link></Button><Button asChild variant="outline"><Link href="/settings/billing">Billing & plan</Link></Button></div></CardContent></Card>
+        </div>
     </div>;
 }
 

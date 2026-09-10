@@ -142,12 +142,65 @@ describe('zero-LLM canonical fast paths', () => {
         expect(switched.memory.preferredLanguage).toBe('en');
     });
 
-    it('uses a safe clarification instead of claiming the catalog has no matching product', async () => {
+    it('politely informs customer when a requested product is not in catalog instead of demanding SKU', async () => {
         conversation();
         vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([]) }) }) } as never);
         const result: any = await tenant(() => getDeterministicResponse(businessId, 'show galaxy ultra', { conversationId: 'c' }));
-        expect(result.message_text).toMatch(/product, model, or SKU/i);
-        expect(result.message_text).not.toMatch(/do not have|not available|no product/i);
+        expect(result.message_text).toMatch(/not available|available নেই/i);
+        expect(result.message_text).not.toMatch(/product, model, or SKU/i);
+    });
+
+    it('does not hallucinate clothing inventory for a non-commerce visa consultancy and grounds response in services', async () => {
+        conversation();
+        vi.spyOn(Business, 'findById').mockReturnValue({ select: () => ({ lean: () => Promise.resolve({ name: 'Global Visa Hub', businessType: 'VISA_CONSULTANCY' }) }) } as never);
+        vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([]) }) }) } as never);
+        vi.spyOn(Offering, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([{ name: 'Canada Student Visa Consultation' }]) }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'black hoodie ache?', { conversationId: 'c' }));
+        expect(result.message_text).toMatch(/hoodie নেই|পোশাক|do not offer/i);
+        expect(result.message_text).toMatch(/Global Visa Hub|Visa consultancy|Canada Student Visa/i);
+    });
+
+    it('offers available White variant when requested Black variant is out of stock', async () => {
+        conversation();
+        const hoodieWithVariants = {
+            _id: 'hoodie-1',
+            name: 'Classic Pullover Hoodie',
+            basePrice: 1600,
+            salePrice: 1490,
+            currency: 'BDT',
+            variants: [
+                { variantId: 'v-black', name: 'Black', sku: 'HOODIE-BLK', price: 1490, stock: 0, availability: 'out_of_stock' },
+                { variantId: 'v-white', name: 'White', sku: 'HOODIE-WHT', price: 1490, stock: 4, availability: 'in_stock' },
+            ],
+            aiSellingStatus: 'active',
+        };
+        // First findProducts call with both black and hoodie returns empty (black is out of stock)
+        // Core search for "hoodie" returns hoodieWithVariants with available White variant
+        vi.spyOn(Product, 'find')
+            .mockReturnValueOnce({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([]) }) }) } as never)
+            .mockReturnValueOnce({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([hoodieWithVariants]) }) }) } as never);
+
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'black hoodie ache?', { conversationId: 'c' }));
+        expect(result.intent).toBe('PRODUCT_VARIANT');
+        expect(result.message_text).toMatch(/White.*variant.*ache|White/i);
+        expect(result.suggested_products[0].relevantVariant?.name).toBe('White');
+    });
+
+    it('resolves available sizes for the active product on follow-up question without asking which product', async () => {
+        conversation({ activeProductId: product._id });
+        const productWithSizes = {
+            ...product,
+            variants: [
+                { variantId: 'v1', name: 'M', stock: 2, availability: 'in_stock' },
+                { variantId: 'v2', name: 'L', stock: 5, availability: 'in_stock' },
+                { variantId: 'v3', name: 'XL', stock: 1, availability: 'in_stock' },
+            ],
+        };
+        vi.spyOn(Product, 'findOne').mockReturnValue({ select: () => ({ lean: () => Promise.resolve(productWithSizes) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'size ki ki?', { conversationId: 'c' }));
+        expect(result.intent).toBe('PRODUCT_VARIANT');
+        expect(result.message_text).toContain('M, L, XL');
+        expect(result.message_text).not.toMatch(/which product|model|SKU/i);
     });
 
     it('answers standard greetings without an LLM but leaves a custom brand voice to the styled path', async () => {

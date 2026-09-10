@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { onboardingApi } from "@/lib/api";
+import { OnboardingPaymentStep } from "@/components/onboarding-payment-step";
 import { TrainingWorkspace } from "@/components/training/training-workspace";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,12 +24,15 @@ const businessTypes = [
 ] as const;
 
 export default function OnboardingPage() {
-  const { data: session, update } = useSession();
+  const { data: session, status, update } = useSession();
   const router = useRouter();
   const [businessCreated, setBusinessCreated] = useState(
     Boolean(session?.businessId),
   );
   const [busy, setBusy] = useState(false);
+  const [setupStage, setSetupStage] = useState<"payments" | "training">("payments");
+  const [finishing, setFinishing] = useState(false);
+  useEffect(() => { if (session?.businessId) setBusinessCreated(true); }, [session?.businessId]);
   const [error, setError] = useState("");
   const [business, setBusiness] = useState({
     name: "",
@@ -99,12 +103,28 @@ export default function OnboardingPage() {
     }
   }
   async function finish() {
-    await onboardingApi.complete();
-    await update({ onboardingComplete: true });
-    router.push("/assistant");
-    router.refresh();
+    setFinishing(true);
+    setError("");
+    try {
+      await onboardingApi.complete();
+      await update({ onboardingComplete: true });
+      router.push("/");
+      router.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not finish setup. Your saved work is preserved.");
+    } finally { setFinishing(false); }
   }
-  if (businessCreated) return <main className="min-h-screen bg-background p-4 md:p-10"><TrainingWorkspace onboarding onFinish={finish} /></main>;
+  if (status === "loading") return <main className="grid min-h-screen place-items-center"><p role="status">Opening your workspace setup…</p></main>;
+  if (businessCreated) return <main className="min-h-screen bg-background p-4 md:p-10"><div className="mx-auto max-w-7xl space-y-6">
+    <nav aria-label="Onboarding progress" className="flex flex-wrap gap-2 rounded-2xl border bg-card p-4 text-sm">
+      <span className="rounded-lg bg-primary/10 px-3 py-2 text-primary">✓ Business details</span>
+      <button onClick={() => setSetupStage("payments")} aria-current={setupStage === "payments" ? "step" : undefined} className="rounded-lg border px-3 py-2">1 · Payment preferences</button>
+      <button onClick={() => setSetupStage("training")} aria-current={setupStage === "training" ? "step" : undefined} className="rounded-lg border px-3 py-2">2 · Product import & AI training</button>
+      <span className="px-3 py-2 text-muted-foreground">3 · Dashboard ready</span>
+    </nav>
+    {error && <p role="alert" className="rounded-xl border border-destructive/30 p-4 text-destructive">{error}</p>}
+    {setupStage === "payments" ? <OnboardingPaymentStep onContinue={() => setSetupStage("training")} /> : <div aria-busy={finishing}><TrainingWorkspace onboarding onFinish={finishing ? undefined : finish} /></div>}
+  </div></main>;
   return <main className="auth-reset">
     <AuthVisual mode="signup" />
     <section className="auth-reset-form"><div>

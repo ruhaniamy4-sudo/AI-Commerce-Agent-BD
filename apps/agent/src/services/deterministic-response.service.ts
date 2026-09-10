@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Business } from '../models/Business';
 import { Conversation } from '../models/Conversation';
 import { Knowledge } from '../models/Knowledge';
@@ -9,12 +10,40 @@ import { ConversationLanguage, resolveConversationLanguage } from './conversatio
 import { retrieveRelevantAwareness } from './business-awareness.service';
 import { classifyLightweightIntent, detectExplicitLanguagePreference, extractBudget, extractLightweightMemory, LightweightIntent, parseSearchTerms } from './turn-routing.service';
 import { setupQuestionStorageKey } from './business-setup.service';
+import { businessTypeLabel } from './adaptive-training.service';
 
 export interface CompactProductCard { id: string; sku?: string; name: string; price: number; currency: string; salePrice?: number; availability: string; stock?: number | null; image?: string; relevantVariant?: { id: string; name: string; price: number; currency: string; availability: string; stock?: number | null; image?: string }; }
 export interface DeterministicTurnResponse { message_text: string; suggested_products?: CompactProductCard[]; intent: LightweightIntent; memory?: Record<string, unknown>; }
 
+async function getBusinessSafe(businessId: string) {
+    if (mongoose.connection.readyState !== 1 && !(Business.findById as any)?.mock) return null;
+    try { return await Business.findById(businessId).select('name businessType businessSubType brandVoice phone').lean(); } catch { return null; }
+}
+
+async function getOfferingsSafe(businessId: string) {
+    if (mongoose.connection.readyState !== 1 && !(Offering.find as any)?.mock) return [];
+    try { return await Offering.find({ businessId, status: 'active', merchantConfirmed: { $ne: false } }).select('name offeringType').limit(3).lean(); } catch { return []; }
+}
+
 const deliveryIntent = /status|where|track|parcel|delivery|koi|kothay|hoise|অবস্থা|কোথায়|পার্সেল|ডেলিভারি/i;
-const followupWords = /^(?:etar|etaar|eta|this|it|this one|ওটার|এটার|এটি|এইটার)?\s*(?:price|dam|দাম|stock|available|availability|ache|ase|আছে|ছবি|picture|photo|image|pic|black|white|blue|red|size).{0,20}$/i;
+const followupWords = /^(?:etar|etaar|eta|this|it|this one|ওটার|এটার|এটি|এইটার)?\s*(?:price|dam|দাম|stock|available|availability|ache|ase|আছে|ছবি|picture|photo|image|pic|black|white|blue|red|size|sizes|সাইজ).{0,35}$/i;
+const sizeInquiryRegex = /\b(size|sizes|সাইজ)\b/i;
+
+const COLOR_WORDS: Record<string, string> = {
+    'black': 'Black', 'kalo': 'Black', 'কালো': 'Black',
+    'white': 'White', 'shada': 'White', 'সাদা': 'White',
+    'blue': 'Blue', 'nil': 'Blue', 'neel': 'Blue', 'নীল': 'Blue',
+    'navy': 'Navy', 'red': 'Red', 'lal': 'Red', 'লাল': 'Red',
+    'green': 'Green', 'sobuj': 'Green', 'সবুজ': 'Green',
+    'yellow': 'Yellow', 'holud': 'Yellow', 'হলুদ': 'Yellow',
+    'grey': 'Grey', 'gray': 'Grey', 'dhusor': 'Grey', 'ধূসর': 'Grey',
+    'maroon': 'Maroon', 'মেরুন': 'Maroon',
+    'pink': 'Pink', 'golapi': 'Pink', 'গোলাপি': 'Pink',
+    'purple': 'Purple', 'beguni': 'Purple', 'বেগুনি': 'Purple',
+    'orange': 'Orange', 'komla': 'Orange', 'কমলা': 'Orange',
+    'brown': 'Brown', 'badami': 'Brown', 'বাদামি': 'Brown',
+    'olive': 'Olive', 'beige': 'Beige',
+};
 
 const courierStatusLabels: Record<string, string> = { pending: 'pending courier processing', submitted: 'submitted to Steadfast', in_transit: 'in transit', delivered: 'delivered', cancelled: 'cancelled', returned: 'returned', failed: 'affected by a courier processing issue', unknown: 'awaiting a confirmed courier update' };
 
@@ -27,11 +56,13 @@ function requestedSku(text: string) {
 }
 function money(amount: number, currency: string) { const symbol = ({ BDT: '৳', USD: '$', EUR: '€', GBP: '£', INR: '₹' } as Record<string, string>)[currency]; return symbol ? `${symbol}${amount}` : `${currency} ${amount}`; }
 function card(product: any, text = ''): CompactProductCard {
-    const color = parseSearchTerms(text).find((word) => ['black','white','blue','red','green','কালো','সাদা','নীল','লাল'].includes(word));
+    const terms = parseSearchTerms(text);
+    const colorWord = terms.find((word) => COLOR_WORDS[word.toLowerCase()]);
+    const color = colorWord ? COLOR_WORDS[colorWord.toLowerCase()].toLowerCase() : undefined;
     const sku = requestedSku(text);
     const variant = sku
         ? (product.variants || []).find((item: any) => String(item.sku).toLowerCase() === sku.toLowerCase())
-        : color ? (product.variants || []).find((item: any) => String(item.name).toLowerCase().includes(color)) : undefined;
+        : color ? (product.variants || []).find((item: any) => String(item.name || '').toLowerCase().includes(color) || String(item.sku || '').toLowerCase().includes(color)) : undefined;
     const availability = product.aiSellingStatus==='limited' ? (typeof (variant?variant.stock:product.stock)==='number'?((variant?variant.stock:product.stock)>0?'in_stock':'out_of_stock'):'unknown') : variant ? (variant.availability || (typeof variant.stock === 'number' ? (variant.stock > 0 ? 'in_stock' : 'out_of_stock') : 'unknown')) : (product.availability || (typeof product.stock === 'number' ? (product.stock > 0 ? 'in_stock' : 'out_of_stock') : 'unknown'));
     const currency = String(variant?.currency || product.currency || 'BDT').toUpperCase();
     return { id: String(product._id), sku: variant?.sku || product.variants?.[0]?.sku, name: product.name, price: product.salePrice ?? variant?.price ?? product.basePrice, currency, salePrice: product.salePrice, availability, stock: variant ? variant.stock : product.stock, image: variant?.images?.[0] || product.images?.[0], relevantVariant: variant ? { id: variant.variantId, name: variant.name, price: product.salePrice ?? variant.price, currency, availability, stock: variant.stock, image: variant.images?.[0] } : undefined };
@@ -79,11 +110,12 @@ async function findProducts(businessId: string, text: string, activeProductId?: 
             { name: { $regex: pattern, $options: 'i' } }, { brand: { $regex: pattern, $options: 'i' } },
             { slug: { $regex: pattern, $options: 'i' } }, { aliases: { $regex: pattern, $options: 'i' } },
             { description: { $regex: pattern, $options: 'i' } }, { 'variants.sku': { $regex: pattern, $options: 'i' } },
+            { 'variants.name': { $regex: pattern, $options: 'i' } },
             { compatibilityTags: { $regex: pattern, $options: 'i' } }, { 'intelligence.terms': { $regex: pattern, $options: 'i' } },
         ] };
     }) };
     const priceFilter = { $or: [{ salePrice: { $lte: max } }, { salePrice: null, basePrice: { $lte: max } }] };
-    return Product.find({ businessId, isActive: true, merchantConfirmed: { $ne: false }, ...(max !== undefined ? { $and: [searchFilter, priceFilter] } : searchFilter) }).select('aiSellingStatus aiKnowledge name basePrice salePrice currency stock availability variants images specs brand').limit(4).lean();
+    return Product.find({ businessId, isActive: true, merchantConfirmed: { $ne: false }, ...(max !== undefined ? { $and: [searchFilter, priceFilter] } : searchFilter) }).select('aiSellingStatus aiKnowledge name basePrice salePrice currency stock availability variants images specs brand categoryId').limit(4).lean();
 }
 
 async function stableBusinessFact(businessId: string, text: string, language: string, existingBusiness?: any) {
@@ -139,21 +171,197 @@ export async function getDeterministicResponse(businessId: string, text: string,
     }
     if (intent === 'BUSINESS_FACT') { const fact = await stableBusinessFact(businessId, text, language); if (fact) return { message_text: fact, intent, memory: lightweightMemory }; }
     if (!['GENERAL_CONVERSATION','KNOWLEDGE','HUMAN_HANDOFF','ORDER_STATUS','BUSINESS_FACT'].includes(intent)) {
-        const products = await findProducts(businessId, text, entity.activeProductId, entity.recentProductIds || []);
-        if(products.length===1 && products[0].aiSellingStatus==='disabled')return {message_text:language==='en'?'Sorry, this product is currently unavailable. I can help you find other available products.':'দুঃখিত, এই পণ্যটি বর্তমানে পাওয়া যাচ্ছে না। অন্য উপলব্ধ পণ্য খুঁজে পেতে সাহায্য করতে পারি।',intent,memory:lightweightMemory};
-        const cards = products.filter(item=>item.aiSellingStatus!=='disabled').map((item) => card(item, text)).slice(0, intent === 'PRODUCT_COMPARE' ? 4 : 3);
-        const exact = cards.length === 1 || Boolean(entity.activeProductId && String(cards[0]?.id) === String(entity.activeProductId));
-        if (cards.length && (intent === 'PRODUCT_SEARCH' || (exact && ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_IMAGE','PRODUCT_VARIANT'].includes(intent)))) return { message_text: productText(intent, cards, language, text), suggested_products: cards, intent, memory: { ...lightweightMemory, activeProductId: cards.length === 1 ? cards[0].id : entity.activeProductId, recentProductIds: cards.map((item) => item.id) } };
-        if (cards.length && ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_IMAGE','PRODUCT_VARIANT'].includes(intent)) return { message_text: language === 'en' ? 'I found a few possible matches. Which product do you mean?' : 'কয়েকটি match পেয়েছি। কোন product-টি জানতে চান?', suggested_products: cards, intent, memory: { ...lightweightMemory, recentProductIds: cards.map((item) => item.id) } };
-        if (!cards.length && intent === 'PRODUCT_PRICE') {
-            const terms = parseSearchTerms(text); const pattern = terms.map(escaped).join('.*');
-            const offering = pattern ? await Offering.findOne({ businessId, status: 'active', merchantConfirmed: { $ne: false }, name: { $regex: pattern, $options: 'i' } }).select('name price salePrice currency availability offeringType').lean() : entity.activeOfferingId ? await Offering.findOne({ _id: entity.activeOfferingId, businessId }).select('name price salePrice currency availability offeringType').lean() : null;
-            const amount = offering ? offering.salePrice ?? offering.price : undefined;
-            if (offering && amount !== undefined) { const formatted = money(amount, offering.currency || 'BDT'); return { message_text: language === 'en' ? `${offering.name} is ${formatted}.` : `${offering.name}-এর fee ${formatted}।`, intent, memory: { ...lightweightMemory, activeOfferingId: String(offering._id), activeService: offering.name } }; }
-            const fact = await stableBusinessFact(businessId, text, language);
-            if (fact) return { message_text: fact, intent: 'BUSINESS_FACT', memory: lightweightMemory };
+        // Conversational Memory: follow-up size inquiry on active product
+        if (sizeInquiryRegex.test(text) && entity.activeProductId) {
+            const active = await Product.findOne({ _id: entity.activeProductId, businessId, isActive: true, merchantConfirmed: { $ne: false } }).select('aiSellingStatus aiKnowledge name basePrice salePrice currency stock availability variants images specs brand categoryId').lean();
+            if (active) {
+                const sizeSet = new Set<string>();
+                for (const v of (active.variants || [])) {
+                    if (v.isActive === false || v.availability === 'out_of_stock' || v.stock === 0) continue;
+                    const vName = String(v.name || '').trim();
+                    const tokenMatch = vName.match(/\b(S|M|L|XL|XXL|XXXL|Small|Medium|Large|Extra Large)\b/i);
+                    if (tokenMatch) sizeSet.add(tokenMatch[0].toUpperCase());
+                    else if (v.specs?.size) sizeSet.add(String(v.specs.size));
+                    else if (vName) sizeSet.add(vName);
+                }
+                if (!sizeSet.size && active.specs?.sizes) {
+                    const rawSizes = Array.isArray(active.specs.sizes) ? active.specs.sizes : [active.specs.sizes];
+                    rawSizes.forEach((s: any) => sizeSet.add(String(s)));
+                }
+                const activeCard = card(active, text);
+                if (sizeSet.size > 0) {
+                    const sizeList = Array.from(sizeSet).join(', ');
+                    const msg = language === 'en'
+                        ? `${active.name} is available in sizes: ${sizeList}.`
+                        : `${active.name}-এর available size হলো: ${sizeList}।`;
+                    return { message_text: msg, suggested_products: [activeCard], intent: 'PRODUCT_VARIANT', memory: { ...lightweightMemory, activeProductId: String(active._id) } };
+                }
+                const msg = language === 'en'
+                    ? `${active.name} comes in a standard regular size.`
+                    : `${active.name}-এর standard/regular size available আছে।`;
+                return { message_text: msg, suggested_products: [activeCard], intent: 'PRODUCT_VARIANT', memory: { ...lightweightMemory, activeProductId: String(active._id) } };
+            }
         }
-        if (!cards.length) return { message_text: language === 'en' ? 'Which product, model, or SKU do you mean?' : 'কোন product, model, বা SKU বোঝাচ্ছেন?', intent, memory: lightweightMemory };
+
+        const rawTerms = parseSearchTerms(text);
+        const colorWord = rawTerms.find((w) => COLOR_WORDS[w.toLowerCase()]);
+        const requestedColor = colorWord ? COLOR_WORDS[colorWord.toLowerCase()] : undefined;
+        const coreTerms = colorWord ? rawTerms.filter((w) => w.toLowerCase() !== colorWord.toLowerCase()) : rawTerms;
+
+        const products = await findProducts(businessId, text, entity.activeProductId, entity.recentProductIds || []);
+        if (products.length === 1 && products[0].aiSellingStatus === 'disabled') {
+            return { message_text: language === 'en' ? 'Sorry, this product is currently unavailable. I can help you find other available products.' : 'দুঃখিত, এই পণ্যটি বর্তমানে পাওয়া যাচ্ছে না। অন্য উপলব্ধ পণ্য খুঁজে পেতে সাহায্য করতে পারি।', intent, memory: lightweightMemory };
+        }
+
+        const activeProducts = products.filter((item) => item.aiSellingStatus !== 'disabled');
+
+        // STEP 1: Exact Match (with requested color variant if specified)
+        if (requestedColor && activeProducts.length > 0) {
+            const exactMatch = activeProducts.find((p) =>
+                (p.variants || []).some((v: any) => v.isActive !== false && v.availability !== 'out_of_stock' && (typeof v.stock !== 'number' || v.stock > 0) && (String(v.name || '').toLowerCase().includes(requestedColor.toLowerCase()) || String(v.sku || '').toLowerCase().includes(requestedColor.toLowerCase())))
+                || (String(p.name || '').toLowerCase().includes(requestedColor.toLowerCase()) && p.availability !== 'out_of_stock')
+            );
+            if (exactMatch) {
+                const exactCard = card(exactMatch, text);
+                const priceFormatted = money(exactCard.price, exactCard.currency);
+                const msg = language === 'en'
+                    ? `Yes, ${exactMatch.name} (${requestedColor}) is in stock for ${priceFormatted}.`
+                    : language === 'bn'
+                        ? `জি, ${exactMatch.name} (${requestedColor}) available আছে। দাম ${priceFormatted}।`
+                        : `Ji, ${exactMatch.name} (${requestedColor}) available ache. Price ${priceFormatted}।`;
+                return {
+                    message_text: msg,
+                    suggested_products: [exactCard],
+                    intent: intent === 'PRODUCT_VARIANT' ? 'PRODUCT_VARIANT' : 'PRODUCT_STOCK',
+                    memory: { ...lightweightMemory, activeProductId: String(exactMatch._id), recentProductIds: [String(exactMatch._id)] }
+                };
+            }
+        }
+
+        const cards = activeProducts.map((item) => card(item, text)).slice(0, intent === 'PRODUCT_COMPARE' ? 4 : 3);
+        const exact = cards.length === 1 || Boolean(entity.activeProductId && String(cards[0]?.id) === String(entity.activeProductId));
+        if (cards.length && (intent === 'PRODUCT_SEARCH' || (exact && ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_IMAGE','PRODUCT_VARIANT'].includes(intent)))) {
+            return { message_text: productText(intent, cards, language, text), suggested_products: cards, intent, memory: { ...lightweightMemory, activeProductId: cards.length === 1 ? cards[0].id : entity.activeProductId, recentProductIds: cards.map((item) => item.id) } };
+        }
+        if (cards.length && ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_IMAGE','PRODUCT_VARIANT'].includes(intent)) {
+            return { message_text: language === 'en' ? 'I found a few possible matches. Which product do you mean?' : 'কয়েকটি match পেয়েছি। কোন product-টি জানতে চান?', suggested_products: cards, intent, memory: { ...lightweightMemory, recentProductIds: cards.map((item) => item.id) } };
+        }
+
+        // When no active products match directly:
+        if (!activeProducts.length) {
+            // Check non-commerce merchant
+            const business = await getBusinessSafe(businessId);
+            if (business?.businessType && business.businessType !== 'ECOMMERCE') {
+                const physicalProductPattern = /\b(hoodie|hoodies|shirt|shirts|t-shirt|tshirts|panjabi|watch|shoe|shoes|pant|pants|dress|saree|sharee|jacket|clothing|পোশাক|জামা|হুডি|পাঞ্জাবি|ঘড়ি|জুতো)\b/i;
+                if (physicalProductPattern.test(text) || ['PRODUCT_STOCK','PRODUCT_PRICE','PRODUCT_VARIANT','PRODUCT_IMAGE','PRODUCT_SEARCH'].includes(intent)) {
+                    const offerings = await getOfferingsSafe(businessId);
+                    const typeLabel = businessTypeLabel(business.businessType);
+                    const serviceNames = (offerings || []).map((o: any) => o.name).join(', ');
+                    const matchedWord = text.match(physicalProductPattern)?.[0] || (language === 'en' ? 'clothing' : 'পোশাক');
+                    const msg = language === 'en'
+                        ? `We do not offer ${matchedWord}. As a ${typeLabel}, ${business.name || 'we'} provide ${serviceNames || 'consultation and services'}. Please feel free to ask about our available services.`
+                        : `আমাদের এখানে ${matchedWord} নেই—আমরা মূলত ${business.name || 'প্রতিষ্ঠান'} হিসেবে ${typeLabel} সেবা প্রদান করি। আপনি চাইলে আমাদের ${serviceNames ? serviceNames + ' ' : ''}সার্ভিস সম্পর্কে জানতে পারেন।`;
+                    return { message_text: msg, intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
+                }
+            }
+
+            // STEP 2: Same Product, Alternative Available Variant
+            const isProductQueryable = mongoose.connection.readyState === 1 || Boolean((Product.find as any)?.mock);
+            if (requestedColor && coreTerms.length > 0 && isProductQueryable) {
+                const coreFilter = {
+                    businessId,
+                    isActive: true,
+                    merchantConfirmed: { $ne: false },
+                    $and: coreTerms.slice(0, 5).map((term) => {
+                        const pattern = escaped(term);
+                        return { $or: [
+                            { name: { $regex: pattern, $options: 'i' } }, { brand: { $regex: pattern, $options: 'i' } },
+                            { slug: { $regex: pattern, $options: 'i' } }, { aliases: { $regex: pattern, $options: 'i' } },
+                            { description: { $regex: pattern, $options: 'i' } }, { 'variants.sku': { $regex: pattern, $options: 'i' } },
+                            { 'variants.name': { $regex: pattern, $options: 'i' } },
+                        ] };
+                    })
+                };
+                const coreProducts = await Product.find(coreFilter).select('aiSellingStatus aiKnowledge name basePrice salePrice currency stock availability variants images specs brand categoryId').limit(3).lean().catch(() => []);
+                const sameProductWithAlt = (coreProducts || []).find((p: any) =>
+                    p.aiSellingStatus !== 'disabled' &&
+                    (p.variants || []).some((v: any) => v.isActive !== false && v.availability !== 'out_of_stock' && (typeof v.stock !== 'number' || v.stock > 0))
+                );
+                if (sameProductWithAlt) {
+                    const altVariant = (sameProductWithAlt.variants || []).find((v: any) => v.isActive !== false && v.availability !== 'out_of_stock' && (typeof v.stock !== 'number' || v.stock > 0));
+                    if (altVariant) {
+                        const altVariantName = altVariant.name || 'alternative';
+                        const altCard = card(sameProductWithAlt, altVariantName);
+                        const priceFormatted = money(altCard.price, altCard.currency);
+                        const msg = language === 'en'
+                            ? `${requestedColor} is currently out of stock, but the same design is available in ${altVariantName} (${priceFormatted}).`
+                            : language === 'bn'
+                                ? `${requestedColor} ভ্যারিয়েন্টটি বর্তমানে available নেই, তবে একই ডিজাইনের ${altVariantName} ভ্যারিয়েন্ট স্টকে আছে (দাম ${priceFormatted})।`
+                                : `${requestedColor} ta ekhon available nei, but same design-er ${altVariantName} variant ache (দাম ${priceFormatted})।`;
+                        return {
+                            message_text: msg,
+                            suggested_products: [altCard],
+                            intent: 'PRODUCT_VARIANT',
+                            memory: { ...lightweightMemory, activeProductId: String(sameProductWithAlt._id), recentProductIds: [String(sameProductWithAlt._id)] }
+                        };
+                    }
+                }
+            }
+
+            if (intent === 'PRODUCT_PRICE') {
+                const terms = parseSearchTerms(text); const pattern = terms.map(escaped).join('.*');
+                const offering = pattern ? await Offering.findOne({ businessId, status: 'active', merchantConfirmed: { $ne: false }, name: { $regex: pattern, $options: 'i' } }).select('name price salePrice currency availability offeringType').lean().catch(() => null) : entity.activeOfferingId ? await Offering.findOne({ _id: entity.activeOfferingId, businessId }).select('name price salePrice currency availability offeringType').lean().catch(() => null) : null;
+                const amount = offering ? offering.salePrice ?? offering.price : undefined;
+                if (offering && amount !== undefined) { const formatted = money(amount, offering.currency || 'BDT'); return { message_text: language === 'en' ? `${offering.name} is ${formatted}.` : `${offering.name}-এর fee ${formatted}।`, intent, memory: { ...lightweightMemory, activeOfferingId: String(offering._id), activeService: offering.name } }; }
+                const fact = await stableBusinessFact(businessId, text, language);
+                if (fact) return { message_text: fact, intent: 'BUSINESS_FACT', memory: lightweightMemory };
+            }
+
+            // STEP 3: Similar In-Stock Products Fallback
+            if (rawTerms.length > 0 && isProductQueryable) {
+                const similarProducts = await Product.find({
+                    businessId,
+                    isActive: true,
+                    merchantConfirmed: { $ne: false },
+                    aiSellingStatus: { $ne: 'disabled' },
+                    availability: { $ne: 'out_of_stock' },
+                    $or: [{ stock: null }, { stock: { $gt: 0 } }],
+                }).select('aiSellingStatus aiKnowledge name basePrice salePrice currency stock availability variants images specs brand categoryId').limit(3).lean().catch(() => []);
+
+                if (similarProducts && similarProducts.length > 0) {
+                    const similarCards = similarProducts.map((item: any) => card(item, text));
+                    const termLabel = rawTerms.join(' ');
+                    const msg = language === 'en'
+                        ? `${termLabel} is currently not available. However, here are some similar options you might like:`
+                        : language === 'bn'
+                            ? `${termLabel} বর্তমানে available নেই। তবে similar কিছু option আছে—চাইলে এগুলো দেখতে পারেন:`
+                            : `${termLabel} ta currently nei. Tobe similar kichu option ache - chaile egulo dekhte paren:`;
+                    return {
+                        message_text: msg,
+                        suggested_products: similarCards,
+                        intent: 'PRODUCT_SEARCH',
+                        memory: { ...lightweightMemory, recentProductIds: similarCards.map((c: any) => c.id) }
+                    };
+                }
+            }
+
+            // STEP 4: Polite Out of Stock
+            if (rawTerms.length > 0) {
+                const termLabel = rawTerms.join(' ');
+                const msg = language === 'en'
+                    ? `Sorry, ${termLabel} is currently not available in our catalog.`
+                    : language === 'bn'
+                        ? `দুঃখিত, আমাদের এখানে ${termLabel} বর্তমানে available নেই।`
+                        : `Sorry, amader ekhane ${termLabel} currently available nei.`;
+                return {
+                    message_text: msg,
+                    intent: 'PRODUCT_STOCK',
+                    memory: lightweightMemory,
+                };
+            }
+
+            return { message_text: language === 'en' ? 'Which product or service do you mean?' : 'কোন প্রোডাক্ট বা সার্ভিস সম্পর্কে জানতে চান?', intent, memory: lightweightMemory };
+        }
     }
     if (!requestedSku(text) && /offer|discount|sale|price drop|অফার|ছাড়/i.test(text)) {
         const awareness = (await retrieveRelevantAwareness(businessId, text, 1))[0];

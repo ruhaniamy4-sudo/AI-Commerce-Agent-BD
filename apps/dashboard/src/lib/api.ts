@@ -419,7 +419,7 @@ export interface TestAiState {
     estimatedCost: number | null;
   };
   reply?: string;
-  context?: { salesStage: string; intentScore: number; nextBestAction: string; knowledgeUsed: boolean };
+  context?: { salesStage: string; intentScore: number; nextBestAction: string; knowledgeUsed: boolean; businessType?: string; businessName?: string };
 }
 export const testAiApi = {
   current: () =>

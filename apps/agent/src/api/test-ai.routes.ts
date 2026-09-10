@@ -32,7 +32,26 @@ async function createOwnedConversation(req: AuthenticatedRequest) {
 }
 
 async function conversationPayload(req: AuthenticatedRequest, conversation: InstanceType<typeof Conversation> | null) {
-    if (!conversation) return { conversation: null, messages: [], usage: { aiReplies: 0, llmCalls: 0, nonGenerationAiCalls: 0, zeroLlmResponses: 0, llmAssistedResponses: 0, providers: [], inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, averageTokensPerReply: 0, estimatedCost: null } };
+    const business = await Business.findById(req.auth!.businessId).select('name businessType').lean().catch(() => null);
+    if (!conversation) {
+        return {
+            conversation: null,
+            messages: [],
+            usage: {
+                aiReplies: 0, llmCalls: 0, nonGenerationAiCalls: 0, zeroLlmResponses: 0, llmAssistedResponses: 0,
+                providers: [], inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0,
+                averageTokensPerReply: 0, estimatedCost: null,
+            },
+            context: {
+                businessType: business?.businessType || 'ECOMMERCE',
+                businessName: business?.name || 'My Store',
+                salesStage: 'DISCOVERY',
+                intentScore: 0,
+                nextBestAction: 'Ask a customer question',
+                knowledgeUsed: false,
+            },
+        };
+    }
     const [messages, usageRows] = await Promise.all([
         Message.find({ conversationId: conversation.conversationId }).sort({ createdAt: 1 }).limit(200).lean(),
         AIUsage.find({ conversationId: conversation.conversationId }).lean(),
@@ -59,6 +78,8 @@ async function conversationPayload(req: AuthenticatedRequest, conversation: Inst
             estimatedCost: usageRows.some((row) => row.estimatedCost === null) ? null : usageRows.reduce((sum, row) => sum + (row.estimatedCost || 0), 0),
         },
         context: {
+            businessType: business?.businessType || 'ECOMMERCE',
+            businessName: business?.name || 'My Store',
             salesStage: conversation.salesStage || 'DISCOVERY',
             intentScore: conversation.metadata?.salesIntelligence?.intentScore || 0,
             nextBestAction: conversation.metadata?.salesIntelligence?.nextBestAction || 'Ask a customer question',

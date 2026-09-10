@@ -46,20 +46,73 @@ const providers: NextAuthOptions['providers'] = [CredentialsProvider({
     name: 'Email and password',
     credentials: { email: { label: 'Email', type: 'email' }, password: { label: 'Password', type: 'password' }, businessId: { label: 'Business ID', type: 'text' } },
     async authorize(credentials) {
-        if (!apiBaseUrl || !credentials?.email || !credentials.password) return null;
-        const response = await fetch(`${apiBaseUrl}/auth/login`, {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ email: credentials.email, password: credentials.password, businessId: credentials.businessId || undefined }),
-        });
-        if (!response.ok) return null;
+        if (!credentials?.email || !credentials.password) return null;
+        if (!apiBaseUrl) {
+            console.error('[AUTH] apiBaseUrl is not configured');
+            throw new Error('BACKEND_UNAVAILABLE');
+        }
+
+        let response: Response;
+        try {
+            response = await fetch(`${apiBaseUrl}/auth/login`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    email: credentials.email,
+                    password: credentials.password,
+                    businessId: credentials.businessId || undefined,
+                }),
+            });
+        } catch (fetchError) {
+            console.error('[AUTH] Backend fetch failed in authorize:', fetchError);
+            throw new Error('BACKEND_UNAVAILABLE');
+        }
+
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({})) as { error?: string; code?: string };
+            if (response.status === 401) {
+                return null;
+            }
+            if (response.status === 409 || body?.error?.includes('businessId is required') || body?.code === 'BUSINESS_ID_REQUIRED') {
+                throw new Error('BUSINESS_ID_REQUIRED');
+            }
+            if (response.status === 403) {
+                if (body?.code === 'EMAIL_VERIFICATION_REQUIRED' || body?.error?.toLowerCase().includes('verify')) {
+                    throw new Error('EMAIL_NOT_VERIFIED');
+                }
+                throw new Error('BUSINESS_INACTIVE');
+            }
+            if (body?.error) {
+                throw new Error(body.error);
+            }
+            return null;
+        }
+
         const result = await response.json() as AgentSession;
-        if (result.verificationRequired || !result.refreshToken ||
-            (result.needsOnboarding && !result.accountToken) || (!result.needsOnboarding && !result.accessToken)) return null;
-        return { id: result.user.id, name: result.user.name, email: result.user.email,
-            accessToken: result.accessToken, accountToken: result.accountToken, refreshToken: result.refreshToken,
-            accessTokenExpiresAt: result.accessTokenExpiresAt, refreshTokenExpiresAt: result.refreshTokenExpiresAt, needsOnboarding: result.needsOnboarding,
-            businessId: result.business?.id, businessName: result.business?.name,
-            onboardingComplete: result.business?.onboardingComplete, role: result.role };
+        if (result.verificationRequired) {
+            throw new Error('EMAIL_NOT_VERIFIED');
+        }
+        if (!result.refreshToken ||
+            (result.needsOnboarding && !result.accountToken) ||
+            (!result.needsOnboarding && !result.accessToken)) {
+            return null;
+        }
+
+        return {
+            id: result.user.id,
+            name: result.user.name,
+            email: result.user.email,
+            accessToken: result.accessToken,
+            accountToken: result.accountToken,
+            refreshToken: result.refreshToken,
+            accessTokenExpiresAt: result.accessTokenExpiresAt,
+            refreshTokenExpiresAt: result.refreshTokenExpiresAt,
+            needsOnboarding: result.needsOnboarding,
+            businessId: result.business?.id,
+            businessName: result.business?.name,
+            onboardingComplete: result.business?.onboardingComplete,
+            role: result.role,
+        };
     },
 })];
 

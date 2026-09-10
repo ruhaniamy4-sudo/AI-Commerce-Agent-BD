@@ -8,9 +8,15 @@ describe('customer-facing Test AI rendering', () => {
     expect(customerFacingText(JSON.stringify(JSON.stringify({ message_text: 'nested' })))).toBe('nested');
   });
 
-  it('does not render malformed raw structured output', () => {
-    const text = customerFacingText('{"message_text":"broken"');
-    expect(text).not.toContain('message_text');
+  it('does not render malformed raw structured output and uses natural fallback', () => {
+    const text = customerFacingText('{"unknown_key":"broken"');
+    expect(text).not.toContain('unknown_key');
     expect(text).not.toContain('{');
+    expect(text).toMatch(/sorry|couldn't format/i);
+  });
+
+  it('loosely recovers readable message text from unparseable raw JSON', () => {
+    const text = customerFacingText('{"message_text":"Hello! How can I help you today?", unclosed');
+    expect(text).toBe('Hello! How can I help you today?');
   });
 });

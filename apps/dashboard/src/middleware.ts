@@ -15,7 +15,7 @@ export default withAuth(function middleware(req) {
     };
     if (legacyMerchantRoutes[pathname]) return NextResponse.redirect(new URL(legacyMerchantRoutes[pathname], req.url));
     if (token?.needsOnboarding && pathname !== '/onboarding') return NextResponse.redirect(new URL('/onboarding', req.url));
-    if (!token?.needsOnboarding && pathname === '/onboarding') return NextResponse.redirect(new URL('/', req.url));
+    if (!token?.needsOnboarding && token?.onboardingComplete && pathname === '/onboarding') return NextResponse.redirect(new URL('/', req.url));
     return NextResponse.next();
 }, { callbacks: { authorized: ({ req, token }) => req.nextUrl.pathname === '/admin/login' || req.nextUrl.pathname.startsWith('/platform-admin') ? true : Boolean(token) } });
 export const config = { matcher: ['/((?!api|login|signup|forgot-password|reset-password|verify-email|resend-verification|_next/static|_next/image|favicon.ico).*)'] };
