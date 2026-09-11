@@ -53,8 +53,7 @@ export function resetApiSessionForTests() {
     authenticationRequired = false;
 }
 
-async function getApiSession() {
-    if (cachedSession !== undefined) return cachedSession;
+function fetchApiSession() {
     if (!sessionRequest) {
         sessionRequest = getSession()
             .then((session) => {
@@ -66,6 +65,20 @@ async function getApiSession() {
             });
     }
     return sessionRequest;
+}
+
+async function getApiSession() {
+    if (cachedSession !== undefined) return cachedSession;
+    return fetchApiSession();
+}
+
+// Forces a fresh session lookup (and therefore a token refresh attempt via the
+// NextAuth jwt callback). Several requests can 401 on an expired access token at
+// almost the same moment — routing them all through the same in-flight promise
+// means only one refresh actually happens instead of N racing attempts.
+function refreshApiSession() {
+    cachedSession = undefined;
+    return fetchApiSession();
 }
 
 function notifyAuthenticationRequired() {
@@ -105,8 +118,7 @@ axiosInstance.interceptors.response.use(
         }
         if (status === 401 && config && !config._authRetried) {
             config._authRetried = true;
-            cachedSession = await getSession();
-            const token = sessionToken(cachedSession);
+            const token = sessionToken(await refreshApiSession());
             if (token && token !== config.headers.Authorization?.toString().replace(/^Bearer\s+/, '')) {
                 config.headers.Authorization = `Bearer ${token}`;
                 return axiosInstance.request(config);

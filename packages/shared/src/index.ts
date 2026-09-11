@@ -110,6 +110,8 @@ export interface Product extends TenantEntity {
   isActive: boolean;
   isFeatured: boolean;
   lowStockThreshold: number;
+  brand?: string;
+  barcode?: string;
   createdAt: string;
   updatedAt: string;
 }

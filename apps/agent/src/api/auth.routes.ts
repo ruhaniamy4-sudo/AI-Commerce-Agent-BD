@@ -462,6 +462,11 @@ router.post(
         .status(401)
         .json({ error: "Refresh token is invalid or expired" });
     const rotated = await rotateAuthSession(refreshToken, requestMetadata(req));
+    if (rotated === "retry")
+      return res.status(409).json({
+        error: "Session refresh already in progress, please retry",
+        code: "REFRESH_RACE",
+      });
     if (!rotated)
       return res
         .status(401)

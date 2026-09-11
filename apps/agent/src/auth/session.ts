@@ -5,6 +5,13 @@ import { AuthSession, AuthSessionType } from '../models/AuthSession';
 import { BusinessRole } from '../tenancy/context';
 
 const REFRESH_TOKEN_BYTES = 48;
+// Two requests can legitimately race to refresh the same (about-to-expire) access
+// token — e.g. several dashboard queries all 401 at once, or the same session open
+// in two browser tabs. The loser of that race presents a refresh token that was
+// just rotated away by the winner a moment earlier. Within this grace window we
+// treat that as a benign race and ask the caller to retry, instead of treating it
+// as token-theft replay and revoking the whole session family.
+const ROTATION_GRACE_MS = 15_000;
 
 export interface SessionIdentity {
     userId: string;
@@ -52,15 +59,19 @@ export async function createAuthSession(identity: SessionIdentity, metadata: Ses
 
 export async function rotateAuthSession(refreshToken: string, metadata: SessionMetadata = {}) {
     const now = new Date();
+    const tokenHash = hashRefreshToken(refreshToken);
     const previous = await AuthSession.findOneAndUpdate(
-        { refreshTokenHash: hashRefreshToken(refreshToken), revokedAt: null, expiresAt: { $gt: now } },
+        { refreshTokenHash: tokenHash, revokedAt: null, expiresAt: { $gt: now } },
         { $set: { revokedAt: now, revokeReason: 'rotated', lastUsedAt: now } },
         { new: false, select: '+refreshTokenHash' }
     );
     if (!previous) {
-        const replayed = await AuthSession.findOne({ refreshTokenHash: hashRefreshToken(refreshToken), revokeReason: 'rotated' })
-            .select('+refreshTokenHash familyId')
+        const replayed = await AuthSession.findOne({ refreshTokenHash: tokenHash, revokeReason: 'rotated' })
+            .select('+refreshTokenHash familyId revokedAt')
             .lean();
+        if (replayed && replayed.revokedAt && now.getTime() - new Date(replayed.revokedAt).getTime() < ROTATION_GRACE_MS) {
+            return 'retry' as const;
+        }
         if (replayed?.familyId) {
             await AuthSession.updateMany(
                 { familyId: replayed.familyId, revokedAt: null },

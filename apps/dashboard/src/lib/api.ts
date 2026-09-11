@@ -145,7 +145,24 @@ export const productsApi = {
   update: (id: string, data: Partial<Product>) =>
     apiClient.patch<Product>(`/api/products/${id}`, data),
   delete: (id: string) => apiClient.delete(`/api/products/${id}`),
+  bulkImport: (products: Record<string, unknown>[]) =>
+    apiClient.post<BulkImportResponse>("/api/products/bulk-import", { products }),
 };
+
+export interface BulkImportRowResult {
+  row: number;
+  name?: string;
+  status: "created" | "error";
+  id?: string;
+  error?: string;
+}
+
+export interface BulkImportResponse {
+  message: string;
+  created: number;
+  failed: number;
+  results: BulkImportRowResult[];
+}
 
 export const categoriesApi = {
   getAll: (params?: { parentId?: string | null }) =>

@@ -46,7 +46,8 @@ router.get('/products', async (req, res) => {
         if(['active','limited','disabled'].includes(String(req.query.aiSellingStatus)))query.aiSellingStatus=req.query.aiSellingStatus==='active'?{$nin:['limited','disabled']}:req.query.aiSellingStatus;
 
         if (search) {
-            query.$text = { $search: search };
+            const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            if (escaped) query.name = { $regex: escaped, $options: 'i' };
         }
         if (categoryId) {
             query.categoryId = categoryId;
@@ -247,7 +248,20 @@ router.delete('/products/:id', requireAdministrator, async (req, res) => {
     }
 });
 
-// Bulk import products via CSV (admin)
+function parseImportBoolean(value: unknown, fallback: boolean): boolean {
+    if (value === undefined || value === null || value === '') return fallback;
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value).trim().toLowerCase();
+    if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    return fallback;
+}
+
+function slugifyImportName(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'product';
+}
+
+// Bulk import products from a merchant-uploaded file (parsed to rows client-side)
 router.post('/products/bulk-import', requireAdministrator, async (req, res) => {
     try {
         const { products } = req.body;
@@ -255,12 +269,85 @@ router.post('/products/bulk-import', requireAdministrator, async (req, res) => {
         if (!Array.isArray(products) || products.length === 0) {
             return res.status(400).json({ error: 'Products array is required' });
         }
+        if (products.length > 500) {
+            return res.status(400).json({ error: 'Import is limited to 500 products per request' });
+        }
 
-        const results = await Product.create(products.map((product) => tenantDocument(product)));
+        const categoryCache = new Map<string, mongoose.Types.ObjectId>();
+        const existingCategories = await Category.find({ isActive: true }).select('name _id').lean();
+        for (const category of existingCategories) {
+            categoryCache.set(String(category.name).trim().toLowerCase(), category._id as mongoose.Types.ObjectId);
+        }
 
-        res.status(201).json({
-            message: `Successfully imported ${results.length} products`,
-            count: results.length,
+        const results: Array<{ row: number; name?: string; status: 'created' | 'error'; id?: string; error?: string }> = [];
+
+        for (let index = 0; index < products.length; index++) {
+            const raw = (products[index] || {}) as Record<string, unknown>;
+            const rowNumber = Number(raw.row) || index + 1;
+            const name = String(raw.name || '').trim();
+            try {
+                const categoryName = String(raw.category || '').trim();
+                const basePrice = Number(raw.basePrice);
+
+                if (!name) throw new Error('Product name is required');
+                if (!categoryName) throw new Error('Category is required');
+                if (!Number.isFinite(basePrice) || basePrice < 0) throw new Error('A valid price is required');
+
+                const categoryKey = categoryName.toLowerCase();
+                let categoryId = categoryCache.get(categoryKey);
+                if (!categoryId) {
+                    const category = new Category(tenantDocument({ name: categoryName }));
+                    await category.save();
+                    categoryId = category._id as mongoose.Types.ObjectId;
+                    categoryCache.set(categoryKey, categoryId);
+                }
+
+                const images = Array.isArray(raw.images)
+                    ? raw.images.map((url) => String(url).trim()).filter(Boolean)
+                    : String(raw.images || '').split(/[|,\n]/).map((url) => url.trim()).filter(Boolean);
+
+                const product = new Product(tenantDocument({
+                    name,
+                    slug: slugifyImportName(name),
+                    description: String(raw.description || '').trim() || name,
+                    categoryId,
+                    basePrice,
+                    currency: (String(raw.currency || 'BDT').trim().toUpperCase() || 'BDT'),
+                    stock: raw.stock === undefined || raw.stock === '' ? null : Number(raw.stock),
+                    images,
+                    brand: raw.brand ? String(raw.brand).trim() : undefined,
+                    barcode: raw.sku ? String(raw.sku).trim() : undefined,
+                    warrantyMonths: raw.warrantyMonths ? Number(raw.warrantyMonths) || 0 : 0,
+                    lowStockThreshold: raw.lowStockThreshold ? Number(raw.lowStockThreshold) || 10 : 10,
+                    isActive: parseImportBoolean(raw.isActive, true),
+                    isFeatured: parseImportBoolean(raw.isFeatured, false),
+                    isReturnable: parseImportBoolean(raw.isReturnable, true),
+                }));
+
+                try {
+                    await product.save();
+                } catch (saveError: any) {
+                    if (saveError?.code === 11000) {
+                        product.slug = `${slugifyImportName(name)}-${Math.random().toString(36).slice(2, 6)}`;
+                        await product.save();
+                    } else {
+                        throw saveError;
+                    }
+                }
+
+                results.push({ row: rowNumber, name, status: 'created', id: String(product._id) });
+            } catch (error) {
+                results.push({ row: rowNumber, name: name || undefined, status: 'error', error: error instanceof Error ? error.message : 'Failed to import row' });
+            }
+        }
+
+        const created = results.filter((r) => r.status === 'created').length;
+        const failed = results.length - created;
+        res.status(created > 0 ? 201 : 400).json({
+            message: `Imported ${created} of ${results.length} product${results.length === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}`,
+            created,
+            failed,
+            results,
         });
     } catch (error) {
         console.error('Error importing products:', error);

@@ -1,7 +1,8 @@
 'use client';
 
 import {WorkspaceSearch,WorkspacePagination} from '@/components/layout/workspace-surface';
-import {ProductWorkspace} from '@/components/products/product-workspace';
+import {ProductWorkspace, productCategory} from '@/components/products/product-workspace';
+import {ProductImportDialog} from '@/components/products/product-import-dialog';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 
@@ -14,8 +15,15 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 import { productsApi, categoriesApi } from '@/lib/api';
+import { downloadCsv } from '@/lib/csv';
 import { Product, ProductVariant } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,9 +31,13 @@ import {
     SlidersHorizontal,
     Plus,
     Trash2,
-
+    Upload,
+    Download,
     Layers,
     ListChecks,
+    ChevronDown,
+    LayoutGrid,
+    List as ListIcon,
 } from 'lucide-react';
 import { Suspense, useEffect, useState } from 'react';
 import {useSearchParams} from 'next/navigation';
@@ -43,15 +55,25 @@ function ProductsContent() {
     const params=useSearchParams();
     const searchParams={new:params.get('new'),product:params.get('product')||undefined};
     const queryClient = useQueryClient();
+    const [searchInput, setSearchInput] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [page,setPage] = useState(1);
     const limit = 12;
     const [filtersOpen,setFiltersOpen]=useState(false);
     const [statusFilter,setStatusFilter]=useState('');
     const [categoryFilter,setCategoryFilter]=useState('');
+    const [viewMode,setViewMode]=useState<'grid'|'list'>('grid');
+    const [selectedIds,setSelectedIds]=useState<Set<string>>(new Set());
+
+    // Debounce the search box so every keystroke doesn't fire a request.
+    useEffect(()=>{
+        const handle=setTimeout(()=>{setSearchQuery(searchInput);setPage(1);},300);
+        return ()=>clearTimeout(handle);
+    },[searchInput]);
 
     // Dialog States
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [isImportOpen, setIsImportOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [activeTab, setActiveTab] = useState('general');
     useEffect(()=>{
@@ -71,6 +93,13 @@ function ProductsContent() {
     const products = response?.data || [];
     const pagination = response?.pagination;
 
+    // Selection resets whenever the visible product set changes underneath it.
+    useEffect(()=>{setSelectedIds(new Set());},[page,searchQuery,statusFilter,categoryFilter]);
+
+    function toggleSelect(id:string){
+        setSelectedIds(prev=>{const next=new Set(prev);if(next.has(id))next.delete(id);else next.add(id);return next;});
+    }
+
     // Mutations
     const deleteMutation = useMutation({
         mutationFn: (id: string) => productsApi.delete(id),
@@ -78,6 +107,48 @@ function ProductsContent() {
             queryClient.invalidateQueries({ queryKey: ['products'] });
         },
     });
+
+    const bulkDeleteMutation = useMutation({
+        mutationFn: async (ids: string[]) => {
+            const BATCH_SIZE = 10;
+            for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                await Promise.allSettled(ids.slice(i, i + BATCH_SIZE).map(id => productsApi.delete(id)));
+            }
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            setSelectedIds(new Set());
+        },
+    });
+
+    function handleDeleteSelected(){
+        if(!selectedIds.size)return;
+        if(!confirm(`Remove ${selectedIds.size} selected product${selectedIds.size===1?'':'s'} from the store? Existing orders are preserved.`))return;
+        bulkDeleteMutation.mutate(Array.from(selectedIds));
+    }
+
+    function handleExportSelected(){
+        const selectedProducts=products.filter(p=>selectedIds.has(p._id));
+        if(!selectedProducts.length)return;
+        const header=['name','category','basePrice','description','currency','stock','sku','brand','images','isActive','isFeatured','isReturnable','warrantyMonths','lowStockThreshold'];
+        const rows=selectedProducts.map(p=>[
+            p.name,
+            productCategory(p),
+            String(p.basePrice??''),
+            p.description||'',
+            p.currency||'BDT',
+            p.stock==null?'':String(p.stock),
+            p.barcode||'',
+            p.brand||'',
+            (p.images||[]).join('|'),
+            String(p.isActive),
+            String(p.isFeatured),
+            String(p.isReturnable),
+            String(p.warrantyMonths??0),
+            String(p.lowStockThreshold??10),
+        ]);
+        downloadCsv(`sellpilot-products-export-${Date.now()}.csv`,[header,...rows]);
+    }
 
     const [formData, setFormData] = useState<Partial<Product>>({
         name: '',
@@ -224,9 +295,29 @@ function ProductsContent() {
         setIsDialogOpen(true);
     };
 
-return (<div><PageHeader title="Products" description="Manage your products, inventory and control what your AI agent can sell." actions={<><WorkspaceSearch value={searchQuery} onChange={v=>{setSearchQuery(v);setPage(1);}} placeholder="Search products"/><Button variant="outline" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={15} className="mr-2"/>Filter</Button><Button onClick={()=>{resetForm();setIsDialogOpen(true);}}><Plus size={15} className="mr-2"/>Add Product</Button></>}/>
+return (<div><PageHeader title="Products" description="Manage your products, inventory and control what your AI agent can sell." actions={<><WorkspaceSearch value={searchInput} onChange={setSearchInput} placeholder="Search products by name"/><Button variant="outline" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={15} className="mr-2"/>Filter</Button><Button variant="outline" onClick={()=>setIsImportOpen(true)}><Upload size={15} className="mr-2"/>Import Products</Button><Button onClick={()=>{resetForm();setIsDialogOpen(true);}}><Plus size={15} className="mr-2"/>Add Product</Button></>}/>
 {filtersOpen&&<div className="product-filters"><select aria-label="Filter by AI selling status" value={statusFilter} onChange={e=>{setStatusFilter(e.target.value);setPage(1);}}><option value="">All selling states</option><option value="active">Active</option><option value="limited">Limited</option><option value="disabled">Disabled</option></select><select aria-label="Filter by category" value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setPage(1);}}><option value="">All categories</option>{categories?.map(c=><option key={c._id} value={c._id}>{c.name}</option>)}</select><Button variant="ghost" onClick={()=>{setStatusFilter('');setCategoryFilter('');setPage(1);}}>Reset filters</Button><Button asChild variant="ghost"><Link href="/categories"><Layers size={14} className="mr-2"/>Manage Categories</Link></Button></div>}
-<div className="flex justify-between mb-4 text-xs text-muted-foreground"><span>{pagination?.total||0} products in your catalog</span><span>Inventory & AI selling control</span></div><ProductWorkspace initialProductId={searchParams?.product} products={products} loading={isLoading} error={isError} onAdd={()=>{resetForm();setIsDialogOpen(true);}} onEdit={openEdit} onDelete={id=>deleteMutation.mutate(id)}/><WorkspacePagination page={page} totalPages={pagination?.totalPages||1} onChange={setPage}/>
+<div className="flex justify-between mb-4 text-xs text-muted-foreground"><span>{pagination?.total||0} products in your catalog</span><span>Inventory & AI selling control</span></div>
+<div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+    <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+            <Button variant="outline" disabled={selectedIds.size===0}>
+                More{selectedIds.size>0?` (${selectedIds.size} selected)`:''}
+                <ChevronDown size={14} className="ml-2"/>
+            </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={handleExportSelected}><Download size={14} className="mr-2"/>Export Selected</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleDeleteSelected} className="text-destructive focus:text-destructive"><Trash2 size={14} className="mr-2"/>Delete Selected</DropdownMenuItem>
+        </DropdownMenuContent>
+    </DropdownMenu>
+    <div className="flex items-center gap-1 rounded-xl border border-border p-1">
+        <Button type="button" variant={viewMode==='grid'?'default':'ghost'} size="sm" aria-pressed={viewMode==='grid'} onClick={()=>setViewMode('grid')} aria-label="Grid view"><LayoutGrid size={15}/></Button>
+        <Button type="button" variant={viewMode==='list'?'default':'ghost'} size="sm" aria-pressed={viewMode==='list'} onClick={()=>setViewMode('list')} aria-label="List view"><ListIcon size={15}/></Button>
+    </div>
+</div>
+{bulkDeleteMutation.isError&&<p role="alert" className="text-sm text-destructive mb-4">Some selected products could not be removed. Please try again.</p>}
+<ProductWorkspace initialProductId={searchParams?.product} products={products} loading={isLoading} error={isError} onAdd={()=>{resetForm();setIsDialogOpen(true);}} onEdit={openEdit} onDelete={id=>deleteMutation.mutate(id)} viewMode={viewMode} selectedIds={selectedIds} onToggleSelect={toggleSelect}/><WorkspacePagination page={page} totalPages={pagination?.totalPages||1} onChange={setPage}/>
 <Dialog open={isDialogOpen} onOpenChange={(open) => {setIsDialogOpen(open);if(!open)resetForm();}}>
                 <DialogContent className="max-w-4xl p-0 overflow-hidden border-border shadow-2xl rounded-xl bg-background text-foreground">
                     <form onSubmit={handleSubmit} className="flex flex-col max-h-[90vh]">
@@ -517,6 +608,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                     </form>
                 </DialogContent>
             </Dialog>
+            <ProductImportDialog open={isImportOpen} onOpenChange={setIsImportOpen}/>
         </div>
     );
 }

@@ -13,13 +13,32 @@ interface AgentSession {
     user: { id: string; name: string; email: string };
 }
 
+function requestAgentRefresh(refreshToken: string) {
+    return fetch(`${apiBaseUrl}/auth/refresh`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+    });
+}
+
+function delay(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function refreshAgentSession(token: JWT): Promise<JWT> {
     if (!apiBaseUrl || !token.refreshToken) return { ...token, authError: 'RefreshAccessTokenError' };
     try {
-        const response = await fetch(`${apiBaseUrl}/auth/refresh`, {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ refreshToken: token.refreshToken }),
-        });
+        let response = await requestAgentRefresh(token.refreshToken);
+        // A second concurrent request for the same session (another dashboard
+        // query that also hit an expired access token, or the same account open
+        // in a second tab) can win the race to rotate this refresh token a
+        // moment earlier. That is a benign race, not a stolen/replayed token, so
+        // briefly retry instead of forcing the user back to the login screen.
+        for (let attempt = 0; attempt < 2 && !response.ok; attempt++) {
+            const body = await response.clone().json().catch(() => ({}) as { code?: string });
+            if (response.status !== 409 || body?.code !== 'REFRESH_RACE') break;
+            await delay(300 * (attempt + 1));
+            response = await requestAgentRefresh(token.refreshToken);
+        }
         if (!response.ok) throw new Error('Session refresh failed');
         const result = await response.json() as AgentSession;
         return {

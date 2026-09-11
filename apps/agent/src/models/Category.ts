@@ -44,8 +44,9 @@ CategorySchema.index({ businessId: 1, slug: 1 }, { unique: true });
 CategorySchema.index({ businessId: 1, parentId: 1, isActive: 1 });
 CategorySchema.index({ businessId: 1, order: 1 });
 
-// Pre-save middleware to generate slug
-CategorySchema.pre('save', async function (this: ICategory) {
+// Generate slug before validation runs, since `slug` is a required field and
+// validation happens before pre('save') hooks would otherwise fire too late.
+CategorySchema.pre('validate', function (this: ICategory) {
     if (this.isModified('name') && !this.slug) {
         this.slug = this.name
             .toLowerCase()

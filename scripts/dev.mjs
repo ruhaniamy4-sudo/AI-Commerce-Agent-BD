@@ -12,17 +12,6 @@ if (full && !agentEnv.REDIS_URL && !agentEnv.REDIS_HOST && !agentEnv.REDIS_PORT)
   process.exit(1);
 }
 
-const services = [
-  ['agent', ['run', 'dev', '-w', 'apps/agent']],
-  ['dashboard', ['run', 'dev', '-w', 'apps/dashboard']],
-  ['storefront', ['run', 'dev', '-w', 'apps/storefront', '--', '--port', '3001']],
-];
-if (full) services.push(['worker', ['run', 'worker', '-w', 'apps/agent']]);
-
-console.log(`Starting SellPilot ${full ? 'full' : 'core'} development mode...`);
-let stopping = false;
-const children = [];
-
 function npmInvocation(args) {
   const candidates = [
     process.env.npm_execpath,
@@ -36,6 +25,32 @@ function npmInvocation(args) {
   }
   return { command: 'npm', args };
 }
+
+// apps/agent and apps/dashboard both import @edutechs/shared at runtime via its
+// built dist/index.js. Without this, the agent fails silently (module not found)
+// and every dashboard login/signup then errors with "Unable to connect to the
+// authentication service" since there is nothing listening on the agent port.
+const sharedEntry = path.join(root, 'packages/shared/dist/index.js');
+if (!fs.existsSync(sharedEntry)) {
+  console.log('Building @edutechs/shared (missing dist output)...');
+  const buildInvocation = npmInvocation(['run', 'build', '-w', 'packages/shared']);
+  const build = spawnSync(buildInvocation.command, buildInvocation.args, { cwd: root, stdio: 'inherit' });
+  if (build.status !== 0) {
+    console.error('Failed to build @edutechs/shared. Fix the error above, then re-run npm run dev.');
+    process.exit(build.status || 1);
+  }
+}
+
+const services = [
+  ['agent', ['run', 'dev', '-w', 'apps/agent']],
+  ['dashboard', ['run', 'dev', '-w', 'apps/dashboard']],
+  ['storefront', ['run', 'dev', '-w', 'apps/storefront', '--', '--port', '3001']],
+];
+if (full) services.push(['worker', ['run', 'worker', '-w', 'apps/agent']]);
+
+console.log(`Starting SellPilot ${full ? 'full' : 'core'} development mode...`);
+let stopping = false;
+const children = [];
 
 for (const [name, args] of services) {
   const invocation = npmInvocation(args);

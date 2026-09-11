@@ -46,4 +46,23 @@ describe('refresh session lifecycle', () => {
         await expect(rotateAuthSession('replayed-token')).resolves.toBeNull();
         expect(revokeFamily).toHaveBeenCalledWith({ familyId, revokedAt: null }, { $set: expect.objectContaining({ revokeReason: 'refresh_token_replay' }) });
     });
+
+    it('asks the caller to retry instead of nuking the family when the same token was rotated moments ago', async () => {
+        const familyId = new mongoose.Types.ObjectId();
+        vi.spyOn(AuthSession, 'findOneAndUpdate').mockResolvedValue(null);
+        vi.spyOn(AuthSession, 'findOne').mockReturnValue({ select: () => ({ lean: () => Promise.resolve({ familyId, revokedAt: new Date() }) }) } as any);
+        const revokeFamily = vi.spyOn(AuthSession, 'updateMany').mockResolvedValue({ modifiedCount: 0 } as any);
+        await expect(rotateAuthSession('raced-token')).resolves.toBe('retry');
+        expect(revokeFamily).not.toHaveBeenCalled();
+    });
+
+    it('still treats an old, long-since-rotated token as a genuine replay', async () => {
+        const familyId = new mongoose.Types.ObjectId();
+        vi.spyOn(AuthSession, 'findOneAndUpdate').mockResolvedValue(null);
+        const oldRevokedAt = new Date(Date.now() - 60_000);
+        vi.spyOn(AuthSession, 'findOne').mockReturnValue({ select: () => ({ lean: () => Promise.resolve({ familyId, revokedAt: oldRevokedAt }) }) } as any);
+        const revokeFamily = vi.spyOn(AuthSession, 'updateMany').mockResolvedValue({ modifiedCount: 1 } as any);
+        await expect(rotateAuthSession('stale-token')).resolves.toBeNull();
+        expect(revokeFamily).toHaveBeenCalledWith({ familyId, revokedAt: null }, { $set: expect.objectContaining({ revokeReason: 'refresh_token_replay' }) });
+    });
 });

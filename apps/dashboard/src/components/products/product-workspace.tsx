@@ -8,16 +8,18 @@ import {apiClient} from '@/lib/api-client';
 import {formatCurrency} from '@/lib/currency';
 import {Button} from '@/components/ui/button';
 import {Switch} from '@/components/ui/switch';
+import {Checkbox} from '@/components/ui/checkbox';
 import {SafeProductImage} from '@/components/ui/safe-product-image';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {availableUnits,StatusLabel,useProductSelling} from './product-selling-control';
 import './products.css';
 
 type Status='active'|'limited'|'disabled';
+type ViewMode='grid'|'list';
 type Report={totalSold:number;totalRevenue:number;totalOrders:number;conversionRate:number|null;conversionNote:string;basis:string;series:Array<{date:string;units:number}>;recentOrders:Array<{_id:string;orderNumber:string;customer:string;quantity:number;amount:number;status:string}>};
 export function productCategory(p:Product){const category=p.categoryId as unknown as {name?:string};return category?.name||'Uncategorized';}
 
-export function ProductWorkspace({products,loading,error,onAdd,onEdit,onDelete,initialProductId}:{initialProductId?:string;products:Product[];loading:boolean;error:boolean;onAdd:()=>void;onEdit:(p:Product)=>void;onDelete:(id:string)=>void}){
+export function ProductWorkspace({products,loading,error,onAdd,onEdit,onDelete,initialProductId,viewMode='grid',selectedIds,onToggleSelect}:{initialProductId?:string;products:Product[];loading:boolean;error:boolean;onAdd:()=>void;onEdit:(p:Product)=>void;onDelete:(id:string)=>void;viewMode?:ViewMode;selectedIds?:Set<string>;onToggleSelect?:(id:string)=>void}){
  const [selected,setSelected]=useState<Product|null>(null);
  const [linkError,setLinkError]=useState(false);
  const [linkLoading,setLinkLoading]=useState(false);
@@ -31,9 +33,17 @@ export function ProductWorkspace({products,loading,error,onAdd,onEdit,onDelete,i
  },[initialProductId]);
  return <>
  {linkLoading&&<p role="status" className="mb-4 text-sm text-muted-foreground">Opening product details…</p>}
- <div className="product-agent-note"><span className="product-agent-icon"><Bot size={21}/></span><div><strong>Your catalog. Your AI’s selling rules.</strong><p>Keep stock accurate and decide which products your sales agent can recommend.</p></div><span className="product-note-tag"><Sparkles size={13}/> AI connected</span></div>
  {selling.isError&&<p role="alert" className="text-sm text-destructive mb-4">Selling status could not be updated. Check your administrator access and try again.</p>}
- {loading?<div className="product-grid" aria-label="Loading products">{[1,2,3,4,5,6].map(n=><div key={n} className="product-card h-96 animate-pulse bg-muted"/>)}</div>:error?<div className="product-empty" role="alert"><Package/><h2>Products couldn’t be loaded</h2><p>Check the connection and refresh this page.</p></div>:!products.length?<div className="product-empty"><span className="product-agent-icon"><Package size={30}/></span><h2>Your next best seller starts here</h2><p>Add a product or adjust your filters to build your AI-ready catalog.</p><Button onClick={onAdd}>Add Product</Button></div>:<div className="product-grid">{products.map(p=>{const status=p.aiSellingStatus||'active';const units=availableUnits(p);return <article key={p._id} className="product-card">
+ {loading?<div className="product-grid" aria-label="Loading products">{[1,2,3,4,5,6].map(n=><div key={n} className="product-card h-96 animate-pulse bg-muted"/>)}</div>:error?<div className="product-empty" role="alert"><Package/><h2>Products couldn’t be loaded</h2><p>Check the connection and refresh this page.</p></div>:!products.length?<div className="product-empty"><span className="product-agent-icon"><Package size={30}/></span><h2>Your next best seller starts here</h2><p>Add a product or adjust your filters to build your AI-ready catalog.</p><Button onClick={onAdd}>Add Product</Button></div>:viewMode==='list'?<div className="product-list">{products.map(p=>{const status=p.aiSellingStatus||'active';const units=availableUnits(p);return <div key={p._id} className="product-list-row">
+ {onToggleSelect&&<Checkbox checked={selectedIds?.has(p._id)||false} onCheckedChange={()=>onToggleSelect(p._id)} aria-label={`Select ${p.name}`}/>}
+ <button className="product-list-thumb" onClick={()=>setSelected(p)} aria-label={`View ${p.name}`}><SafeProductImage src={p.images?.[0]} alt={p.name} imageClassName="object-contain p-1.5"/></button>
+ <div className="product-list-info"><button className="product-name" onClick={()=>setSelected(p)}>{p.name}</button><p className="product-category">{productCategory(p)}</p></div>
+ <p className="product-list-price">{formatCurrency(p.salePrice??p.basePrice,p.currency)}</p>
+ <div className="product-list-stock"><span>Units</span><strong className={units===0?'text-rose-600':''}>{units==null?'Unknown':units.toLocaleString()}</strong></div>
+ <div className="product-list-selling"><StatusLabel status={status}/><Switch aria-label={`AI selling for ${p.name}`} checked={status!=='disabled'} disabled={selling.isPending} onCheckedChange={v=>change(p,v?'active':'disabled')}/></div>
+ <Button variant="outline" size="sm" onClick={()=>setSelected(p)}>View<ArrowUpRight size={13} className="ml-1"/></Button>
+ </div>;})}</div>:<div className="product-grid">{products.map(p=>{const status=p.aiSellingStatus||'active';const units=availableUnits(p);return <article key={p._id} className="product-card">
+ {onToggleSelect&&<div className="product-select-box" onClick={e=>e.stopPropagation()}><Checkbox checked={selectedIds?.has(p._id)||false} onCheckedChange={()=>onToggleSelect(p._id)} aria-label={`Select ${p.name}`}/></div>}
  <button className="product-cover" onClick={()=>setSelected(p)} aria-label={`View ${p.name}`}><SafeProductImage src={p.images?.[0]} alt={p.name} imageClassName="object-contain p-5"/><span className="product-cover-arrow"><ArrowUpRight size={17}/></span>{!p.isActive&&<span className="product-archived">Hidden from store</span>}</button>
  <div className="product-card-body"><p className="product-category">{productCategory(p)}</p><button className="product-name" onClick={()=>setSelected(p)}>{p.name}</button><p className="product-price">{formatCurrency(p.salePrice??p.basePrice,p.currency)}</p><div className="product-inventory"><div><span>Available Units</span><strong className={units===0?'text-rose-600':''}>{units==null?'Unknown':units.toLocaleString()}</strong></div><div><span>Total Sold</span><strong>{(p.totalSold||0).toLocaleString()} <small>units</small></strong></div></div>
  <div className="product-selling-row"><div><span className="product-small-label">AI Selling</span><StatusLabel status={status}/></div><Switch aria-label={`AI selling for ${p.name}`} checked={status!=='disabled'} disabled={selling.isPending} onCheckedChange={v=>change(p,v?'active':'disabled')}/></div><button className="product-details-button" onClick={()=>setSelected(p)}>View Details<ArrowUpRight size={15}/></button></div></article>;})}</div>}

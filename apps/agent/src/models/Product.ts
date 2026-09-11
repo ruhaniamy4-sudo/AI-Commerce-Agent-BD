@@ -221,19 +221,20 @@ ProductSchema.virtual('isLowStock').get(function (this: IProduct) {
     return typeof this.stock === 'number' && this.stock <= this.lowStockThreshold;
 });
 
+// Generate slug before validation runs, since `slug` is a required field and
+// validation happens before pre('save') hooks would otherwise fire too late.
 ProductSchema.pre('validate', function (this: IProduct) {
-    if (this.isNew || ['name', 'aliases', 'description', 'brand', 'specs', 'compatibilityTags', 'variants'].some((path) => this.isModified(path))) {
-        this.intelligence = buildProductSearchProfile(this.toObject({ depopulate: true }));
-    }
-});
-
-// Pre-save middleware to generate slug
-ProductSchema.pre('save', async function (this: IProduct) {
     if (this.isModified('name') && !this.slug) {
         this.slug = this.name
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/(^-|-$)/g, '');
+    }
+});
+
+ProductSchema.pre('validate', function (this: IProduct) {
+    if (this.isNew || ['name', 'aliases', 'description', 'brand', 'specs', 'compatibilityTags', 'variants'].some((path) => this.isModified(path))) {
+        this.intelligence = buildProductSearchProfile(this.toObject({ depopulate: true }));
     }
 });
 

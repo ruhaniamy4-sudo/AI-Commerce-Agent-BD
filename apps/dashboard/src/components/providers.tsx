@@ -43,7 +43,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="sellpilot-theme" disableTransitionOnChange={false}>
-      <SessionProvider refetchOnWindowFocus={false}>
+      <SessionProvider refetchOnWindowFocus={false} refetchInterval={5 * 60}>
         <AuthSessionBridge />
         <QueryClientProvider client={queryClient}>
           {children}
