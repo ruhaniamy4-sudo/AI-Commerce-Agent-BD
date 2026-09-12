@@ -16,7 +16,7 @@ export interface BrandVoiceSettings {
 }
 
 const bangla = /[\u0980-\u09ff]/;
-const banglish = /\b(ache|ase|koto|lagbe|chai|chaan|ta|eta|ki|kivabe|keno|nibo|dekh(?:an|abo)|den|bhai|apu|dam|pabo|korbo|hobe|jante)\b/i;
+const banglish = /\b(ache|ase|koto|lagbe|lagbo|dorkar|chai|chaan|ta|eta|ki|kivabe|keno|nibo|nebo|kinbo|khujchi|dekh(?:an|ao|abo)|den|bhai|apu|dam|pabo|korbo|hobe|jante|amar|ami|apnar|apnader|ekta|shob|sob|bolun|bolen|kon|konta)\b/i;
 
 export function detectConversationLanguage(text: string): ConversationLanguage {
     const hasBangla = bangla.test(text); const hasLatin = /[a-z]/i.test(text);

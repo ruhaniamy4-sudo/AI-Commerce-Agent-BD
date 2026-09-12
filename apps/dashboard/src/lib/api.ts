@@ -145,6 +145,8 @@ export const productsApi = {
   update: (id: string, data: Partial<Product>) =>
     apiClient.patch<Product>(`/api/products/${id}`, data),
   delete: (id: string) => apiClient.delete(`/api/products/${id}`),
+  bulkDelete: (ids: string[]) =>
+    apiClient.post<{ deleted: number; requested: number }>("/api/products/bulk-delete", { ids }),
   bulkImport: (products: Record<string, unknown>[]) =>
     apiClient.post<BulkImportResponse>("/api/products/bulk-import", { products }),
 };

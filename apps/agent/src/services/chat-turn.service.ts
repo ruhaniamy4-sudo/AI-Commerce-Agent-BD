@@ -107,17 +107,30 @@ async function runProcessChatTurn(input: ChatTurnInput) {
     const salesSignals = computeSalesSignals(messageText, routedIntent, currentSalesStage, hasActiveProduct);
     // ──────────────────────────────────────────────────────────────────────────
 
-    const deterministicResult = input.message ? await getDeterministicResponse(input.businessId, input.message, { psid: conversation?.psid, conversationId: convId }) : null;
+    const deterministicResult = input.message ? await getDeterministicResponse(input.businessId, input.message, { psid: conversation?.psid, conversationId: convId, eventIdentifier, sandbox: source === 'test' }) : null;
     if (deterministicResult) {
         const deterministicReply = typeof deterministicResult === 'string' ? deterministicResult : deterministicResult.message_text;
         const products = typeof deterministicResult === 'string' ? [] : deterministicResult.suggested_products || [];
+        const deterministicIntent = typeof deterministicResult === 'string' ? routedIntent : deterministicResult.intent;
+        // A chat order is a real conversion: stock already moved inside the order transaction.
+        const orderCreated = typeof deterministicResult === 'string' ? undefined : deterministicResult.orderCreated;
+        const deterministicStageUpdate: Record<string, unknown> = {
+            salesStage: orderCreated ? 'ORDERED' : salesSignals.salesStage,
+            'metadata.salesIntelligence': { intentScore: salesSignals.intentScore, nextBestAction: salesSignals.nextBestAction, updatedAt: new Date() },
+        };
+        if (orderCreated) {
+            deterministicStageUpdate['conversionOutcome.convertedAt'] = new Date();
+            deterministicStageUpdate['conversionOutcome.conversionType'] = 'AI_ONLY';
+            deterministicStageUpdate['conversionOutcome.orderId'] = orderCreated.orderId;
+            deterministicStageUpdate.currentIntent = 'order';
+        }
         // Persist salesStage alongside the existing turn metrics — single combined write
         await Promise.all([
-            saveMessage(input.businessId, convId, 'assistant', deterministicReply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source, products }),
+            saveMessage(input.businessId, convId, 'assistant', deterministicReply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source, products, intent: deterministicIntent }),
             recordConversationTurn(input.businessId, convId, 'zero_llm', typeof deterministicResult === 'string' ? undefined : deterministicResult.memory),
-            safeUpdateSalesStage(input.businessId, convId, { salesStage: salesSignals.salesStage, 'metadata.salesIntelligence': { intentScore: salesSignals.intentScore, nextBestAction: salesSignals.nextBestAction, updatedAt: new Date() } }),
+            safeUpdateSalesStage(input.businessId, convId, deterministicStageUpdate),
         ]);
-        const body = { conversationId: convId, messageId: eventIdentifier, reply: deterministicReply, products, deterministic: true, llmCalls: 0, salesStage: salesSignals.salesStage };
+        const body = { conversationId: convId, messageId: eventIdentifier, reply: deterministicReply, products, intent: deterministicIntent, deterministic: true, llmCalls: 0, salesStage: orderCreated ? 'ORDERED' : salesSignals.salesStage, ...(orderCreated ? { order: orderCreated } : {}) };
         await completeInboundEvent(eventIdentifier, processingToken, body);
         return { status: 200, body };
     }

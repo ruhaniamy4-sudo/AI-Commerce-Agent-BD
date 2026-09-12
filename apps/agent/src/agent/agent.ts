@@ -6,7 +6,7 @@ import * as dotenv from 'dotenv';
 import { SYSTEM_PROMPT } from './prompts';
 import { retrieveContext, formatContextPack, enforceContextBudget } from '../services/rag.service';
 import { assertTenantBusinessId } from '../tenancy/context';
-import { getAIMaxOutputTokens, getAIModel, getTurnOutputTokenLimit, ResponseComplexity } from '../services/ai-config';
+import { getAIHistoryCharBudget, getAIMaxOutputTokens, getAIModel, getTurnOutputTokenLimit, ResponseComplexity } from '../services/ai-config';
 import { recordAIUsage } from '../services/ai-usage.service';
 import { getAIConfiguration } from '../config/runtime';
 import { Business } from '../models/Business';
@@ -52,10 +52,10 @@ async function callModel(state: AgentState) {
     let contextStr = '{}';
     let operationType: 'chat' | 'rag-assisted-chat' = 'chat';
     const routedIntent = classifyLightweightIntent(userQuery);
-    const needsRetrieval = ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_VARIANT','PRODUCT_SEARCH','PRODUCT_COMPARE','KNOWLEDGE','BUSINESS_FACT'].includes(routedIntent);
+    const needsRetrieval = ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_VARIANT','PRODUCT_SEARCH','PRODUCT_COMPARE','CATALOG_BROWSE','KNOWLEDGE','BUSINESS_FACT'].includes(routedIntent);
     if (lastMessage instanceof HumanMessage && needsRetrieval) {
         const context = await retrieveContext(businessId, psid, userQuery, state.messages);
-        contextStr = enforceContextBudget(formatContextPack(context), routedIntent === 'KNOWLEDGE' ? 800 : 550);
+        contextStr = enforceContextBudget(formatContextPack(context), routedIntent === 'KNOWLEDGE' ? 650 : routedIntent === 'CATALOG_BROWSE' ? 700 : 500);
         if (context.catalogHits.length || context.offeringHits?.length || context.knowledgeEntries.length || context.awarenessEntries?.length || context.lastOrders.length) {
             operationType = 'rag-assisted-chat';
         }
@@ -105,15 +105,15 @@ async function callModel(state: AgentState) {
     let recentCharacters = 0;
     for (const message of [...candidates].reverse()) {
         const size = typeof message.content === 'string' ? message.content.length : JSON.stringify(message.content).length;
-        if (recentMessages.length && recentCharacters + size > 2400) continue;
+        if (recentMessages.length && recentCharacters + size > getAIHistoryCharBudget()) continue;
         recentMessages.unshift(message);
         recentCharacters += size;
     }
     const summary = state.messages.find((message) => message.getType() === 'system');
     const messages = [new SystemMessage(fullSystemPrompt), ...(summary ? [summary] : []), ...recentMessages];
 
-    const complexity: ResponseComplexity = routedIntent === 'PRODUCT_COMPARE' || routedIntent === 'PRODUCT_SEARCH' ? 'recommendation' : routedIntent === 'KNOWLEDGE' && /eligibility|medical|legal|visa|refund dispute/i.test(userQuery) ? 'complex' : routedIntent === 'GENERAL_CONVERSATION' ? 'simple' : 'normal';
-    const turnLlm = new ChatOpenAI({ model: getAIModel(), maxTokens: getTurnOutputTokenLimit(complexity), temperature: 0, maxRetries: 0, apiKey: aiConfig.apiKey, configuration: aiConfig.baseURL ? { baseURL: aiConfig.baseURL } : undefined });
+    const complexity: ResponseComplexity = routedIntent === 'PRODUCT_COMPARE' || routedIntent === 'PRODUCT_SEARCH' || routedIntent === 'CATALOG_BROWSE' ? 'recommendation' : routedIntent === 'KNOWLEDGE' && /eligibility|medical|legal|visa|refund dispute/i.test(userQuery) ? 'complex' : routedIntent === 'GENERAL_CONVERSATION' ? 'simple' : 'normal';
+    const turnLlm = new ChatOpenAI({ model: getAIModel(), maxTokens: getTurnOutputTokenLimit(complexity), temperature: 0, maxRetries: 0, apiKey: aiConfig.apiKey, configuration: aiConfig.baseURL ? { baseURL: aiConfig.baseURL } : undefined, modelKwargs: { reasoning_effort: 'low' } });
     const response = await turnLlm.invoke(messages);
     try {
         await recordAIUsage({

@@ -25,7 +25,7 @@ describe('zero-LLM canonical fast paths', () => {
     it('does not recommend a disabled product and explains unavailability',async()=>{
         conversation();vi.spyOn(Product,'find').mockReturnValue({select:()=>({limit:()=>({lean:async()=>[{...product,aiSellingStatus:'disabled'}]})})} as never);
         const result:any=await tenant(()=>getDeterministicResponse(businessId,'Zeblaze Vibe 7 Pro stock?',{conversationId:'c',language:'en'} as any));
-        expect(result.suggested_products).toBeUndefined();expect(result.message_text).toMatch(/unavailable|পাওয়া যাচ্ছে না/);
+        expect(result.suggested_products).toBeUndefined();expect(result.message_text).toMatch(/not available for order|order নেওয়া যাচ্ছে না|order neya jacche na/i);
     });
     it('requires stock evidence for a limited product',async()=>{
         conversation();vi.spyOn(Product,'find').mockReturnValue({select:()=>({limit:()=>({lean:async()=>[{...product,aiSellingStatus:'limited',stock:null}]})})} as never);
@@ -84,7 +84,7 @@ describe('zero-LLM canonical fast paths', () => {
         conversation({ activeProductId: product._id });
         vi.spyOn(Product, 'findOne').mockReturnValue({ select: () => ({ lean: () => Promise.resolve({ ...product, stock: null, availability: 'in_stock', variants: [] }) }) } as never);
         const result: any = await tenant(() => getDeterministicResponse(businessId, 'stock ache?', { conversationId: 'c' }));
-        expect(result.message_text).toContain('in stock');
+        expect(result.message_text).toMatch(/in stock|stock e ache|stock-এ আছে/i);
         expect(result.message_text).not.toContain('out of stock');
         expect(result.suggested_products[0].stock).toBeNull();
     });
@@ -134,7 +134,7 @@ describe('zero-LLM canonical fast paths', () => {
         conversation({ activeProductId: product._id, preferredLanguage: 'bn' });
         vi.spyOn(Product, 'findOne').mockReturnValue({ select: () => ({ lean: () => Promise.resolve(product) }) } as never);
         const remembered: any = await tenant(() => getDeterministicResponse(businessId, 'price?', { conversationId: 'c' }));
-        expect(remembered.message_text).toContain('-এর price');
+        expect(remembered.message_text).toMatch(/-এর দাম|-এর price/);
         expect(remembered.memory.preferredLanguage).toBe('bn');
 
         const switched: any = await tenant(() => getDeterministicResponse(businessId, 'Please reply in English', { conversationId: 'c' }));
@@ -146,7 +146,7 @@ describe('zero-LLM canonical fast paths', () => {
         conversation();
         vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([]) }) }) } as never);
         const result: any = await tenant(() => getDeterministicResponse(businessId, 'show galaxy ultra', { conversationId: 'c' }));
-        expect(result.message_text).toMatch(/not available|available নেই/i);
+        expect(result.message_text).toMatch(/not in our catalog|catalog e nei|catalog-এ নেই/i);
         expect(result.message_text).not.toMatch(/product, model, or SKU/i);
     });
 
@@ -156,7 +156,7 @@ describe('zero-LLM canonical fast paths', () => {
         vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([]) }) }) } as never);
         vi.spyOn(Offering, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([{ name: 'Canada Student Visa Consultation' }]) }) }) } as never);
         const result: any = await tenant(() => getDeterministicResponse(businessId, 'black hoodie ache?', { conversationId: 'c' }));
-        expect(result.message_text).toMatch(/hoodie নেই|পোশাক|do not offer/i);
+        expect(result.message_text).toMatch(/hoodie nei|hoodie নেই|do not carry/i);
         expect(result.message_text).toMatch(/Global Visa Hub|Visa consultancy|Canada Student Visa/i);
     });
 
@@ -211,5 +211,142 @@ describe('zero-LLM canonical fast paths', () => {
         expect(greeting.message_text).toContain('Demo Store');
         expect(await tenant(() => getDeterministicResponse(businessId, 'hello'))).toBeNull();
         expect(business).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('catalog browse answers from the live product collection', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    const second = { _id: '507f1f77bcf86cd799439013', name: 'Aromatherapy Essential Oil Diffuser', basePrice: 1350, currency: 'BDT', stock: 30, availability: 'in_stock', images: [], variants: [] };
+    const catalog = (items: any[]) => vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve(items) }) }) } as never);
+
+    it.each([
+        'shob gula product list dekhan',
+        'ki ki product ache?',
+        'what do you sell?',
+        'আপনাদের কি কি আছে',
+    ])('lists real catalog products for "%s" instead of answering not available', async (message) => {
+        conversation();
+        catalog([product, second]);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, message, { conversationId: 'c' }));
+        expect(result.intent).toBe('CATALOG_BROWSE');
+        expect(result.message_text).toContain(product.name);
+        expect(result.message_text).toContain(second.name);
+        expect(result.message_text).not.toMatch(/currently nei|amader kache nei|available নেই/i);
+        expect(result.suggested_products.map((item: any) => item.id)).toEqual([second._id, product._id]);
+    });
+
+    it('queries only this tenant’s confirmed, sellable products', async () => {
+        conversation();
+        const find = catalog([product]);
+        await tenant(() => getDeterministicResponse(businessId, 'product list dekhan', { conversationId: 'c' }));
+        expect(find.mock.calls[0][0]).toMatchObject({ businessId, isActive: true, merchantConfirmed: { $ne: false }, aiSellingStatus: { $ne: 'disabled' } });
+    });
+
+    it('narrows the browse to the requested budget', async () => {
+        conversation();
+        const find = catalog([second]);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, '2000 tk er moddhe ki ki product ache', { conversationId: 'c' }));
+        expect(JSON.stringify(find.mock.calls[0][0])).toContain('2000');
+        expect(result.suggested_products).toHaveLength(1);
+    });
+
+    it('falls back to canonical services when the merchant sells offerings, not products', async () => {
+        conversation();
+        catalog([]);
+        vi.spyOn(Offering, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([{ _id: 'o1', name: 'Canada Student Visa Filing', price: 15000, currency: 'BDT' }]) }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'ki ki service ache?', { conversationId: 'c' }));
+        expect(result.intent).toBe('CATALOG_BROWSE');
+        expect(result.message_text).toContain('Canada Student Visa Filing');
+    });
+
+    it('never invents a catalog when the merchant has nothing confirmed yet', async () => {
+        conversation();
+        catalog([]);
+        vi.spyOn(Offering, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([]) }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'shob product dekhan', { conversationId: 'c' }));
+        expect(result.suggested_products).toBeUndefined();
+        expect(result.message_text).toMatch(/confirmed/i);
+    });
+});
+
+describe('product search reads the request, not the whole sentence', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    const mugs = [
+        { _id: 'm1', name: 'Ceramic Coffee Mug', basePrice: 550, currency: 'BDT', stock: 12, availability: 'in_stock', images: [], variants: [] },
+        { _id: 'm2', name: 'Travel Mug Stainless Steel', basePrice: 890, currency: 'BDT', stock: 5, availability: 'in_stock', images: [], variants: [] },
+    ];
+
+    it('lists every matching product with name and price for "amar mug lagbe"', async () => {
+        conversation();
+        vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve(mugs) }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'amar mug lagbe. 1 ta', { conversationId: 'c' }));
+        expect(result.intent).toBe('PRODUCT_SEARCH');
+        expect(result.message_text).toContain('Ceramic Coffee Mug');
+        expect(result.message_text).toContain('৳550');
+        expect(result.message_text).toContain('Travel Mug Stainless Steel');
+        expect(result.message_text).toContain('৳890');
+        expect(result.message_text).not.toMatch(/amar mug lagbe|currently nei|not available/i);
+        expect(result.suggested_products).toHaveLength(2);
+    });
+
+    it('falls back to any-term matching when every term together matches nothing', async () => {
+        conversation();
+        const find = vi.spyOn(Product, 'find')
+            .mockReturnValueOnce({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([]) }) }) } as never)
+            .mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve(mugs) }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'ekta ceramic travel mug lagbe', { conversationId: 'c' }));
+        expect(JSON.stringify(find.mock.calls[0][0])).toContain('$and');
+        expect(JSON.stringify(find.mock.calls[1][0])).toContain('$or');
+        expect(result.message_text).toContain('Travel Mug Stainless Steel');
+        expect(result.suggested_products.length).toBeGreaterThan(0);
+    });
+
+    it('treats a product whose name contains a business-fact word as a product question', async () => {
+        conversation();
+        vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([{ _id: 'h1', name: 'Bluetooth Over-Ear Headphones', basePrice: 2800, currency: 'BDT', stock: 40, availability: 'in_stock', images: [], variants: [] }]) }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'amar ekta headphone lagbe', { conversationId: 'c' }));
+        expect(result.intent).toBe('PRODUCT_SEARCH');
+        expect(result.message_text).toContain('Bluetooth Over-Ear Headphones');
+        expect(result.suggested_products[0].id).toBe('h1');
+    });
+});
+
+describe('messenger-ready replies', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    const coded = { ...product, publicCode: 'ZEB-9012' };
+
+    it('gives every listed product a code the customer can order with', async () => {
+        conversation();
+        vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([coded, { ...coded, _id: 'p2', name: 'Travel Mug', publicCode: 'TRA-1B3D', salePrice: 890 }]) }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'mug dekhan', { conversationId: 'c' }));
+        expect(result.message_text).toContain('ZEB-9012');
+        expect(result.message_text).toContain('TRA-1B3D');
+        expect(result.suggested_products[0].code).toBe('ZEB-9012');
+    });
+
+    it('never sends markdown, since Messenger and WhatsApp render it literally', async () => {
+        conversation();
+        vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([coded]) }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'Zeblaze Vibe 7 Pro er price koto?', { conversationId: 'c' }));
+        expect(result.message_text).not.toMatch(/\*\*|^#|\[.+\]\(.+\)|<[a-z]+>/m);
+    });
+
+    it('finds a product when the customer quotes its code back', async () => {
+        conversation();
+        const findOne = vi.spyOn(Product, 'findOne').mockReturnValue({ select: () => ({ lean: () => Promise.resolve(coded) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'ZEB-9012 ta ache?', { conversationId: 'c' }));
+        expect(JSON.stringify(findOne.mock.calls[0][0])).toContain('ZEB-9012');
+        expect(result.suggested_products[0].code).toBe('ZEB-9012');
+    });
+
+    it('keeps a courteous salesperson tone rather than a bare data dump', async () => {
+        conversation();
+        vi.spyOn(Product, 'find').mockReturnValue({ select: () => ({ limit: () => ({ lean: () => Promise.resolve([coded]) }) }) } as never);
+        const result: any = await tenant(() => getDeterministicResponse(businessId, 'Zeblaze Vibe 7 Pro stock ache?', { conversationId: 'c' }));
+        expect(result.message_text).toMatch(/Ji|Yes|জি/);
+        expect(result.message_text).toMatch(/bolben|order|Shall I|বলবেন/i);
     });
 });

@@ -34,7 +34,7 @@ const IMPORT_COLUMNS: ImportColumn[] = [
     { key: 'description', header: 'description', required: false, hint: 'Defaults to the product name if left blank', aliases: ['description', 'desc'] },
     { key: 'currency', header: 'currency', required: false, hint: 'BDT, USD, EUR, GBP or INR (default BDT)', aliases: ['currency'] },
     { key: 'stock', header: 'stock', required: false, hint: 'Units in stock — leave blank if unknown', aliases: ['stock', 'quantity', 'qty'] },
-    { key: 'sku', header: 'sku', required: false, hint: 'SKU or barcode', aliases: ['sku', 'barcode'] },
+    { key: 'sku', header: 'sku', required: false, hint: 'Your product code — the AI shows it in chat so customers can order by it. Must be unique; auto-generated if blank', aliases: ['sku', 'barcode', 'code', 'productcode'] },
     { key: 'brand', header: 'brand', required: false, hint: 'Brand name', aliases: ['brand'] },
     { key: 'images', header: 'images', required: false, hint: 'Image URLs separated by | (pipe)', aliases: ['images', 'image', 'imageurl', 'imageurls'] },
     { key: 'isActive', header: 'isActive', required: false, hint: 'true/false — show in store (default true)', aliases: ['isactive', 'active'] },
@@ -45,8 +45,8 @@ const IMPORT_COLUMNS: ImportColumn[] = [
 ];
 
 const SAMPLE_ROWS: string[][] = [
-    ['Classic Cotton T-Shirt', 'Clothing', '650', 'Soft 100% cotton t-shirt available in multiple colors.', 'BDT', '100', 'TS-COTTON-001', 'SellPilot Basics', 'https://example.com/images/tshirt-1.jpg|https://example.com/images/tshirt-2.jpg', 'true', 'false', 'true', '0', '10'],
-    ['Wireless Mouse', 'Electronics', '1200', 'Ergonomic wireless mouse with USB receiver.', 'BDT', '25', 'WM-BLK-002', 'SellPilot Tech', 'https://example.com/images/mouse-1.jpg', 'true', 'true', 'true', '6', '5'],
+    ['Classic Cotton T-Shirt', 'Clothing', '650', 'Soft 100% cotton t-shirt available in multiple colors.', 'BDT', '100', 'TS-001', 'SellPilot Basics', 'https://example.com/images/tshirt-1.jpg|https://example.com/images/tshirt-2.jpg', 'true', 'false', 'true', '0', '10'],
+    ['Wireless Mouse', 'Electronics', '1200', 'Ergonomic wireless mouse with USB receiver.', 'BDT', '25', 'WM-002', 'SellPilot Tech', 'https://example.com/images/mouse-1.jpg', 'true', 'true', 'true', '6', '5'],
 ];
 
 const ALIAS_TO_KEY = new Map<string, string>();
@@ -65,10 +65,15 @@ interface ParsedRow {
 const MAX_ROWS = 500;
 const BATCH_SIZE = 25;
 
+function normalizeSku(value: string) {
+    return value.trim().toUpperCase().replace(/\s+/g, '-').replace(/[^A-Z0-9-]/g, '').slice(0, 24);
+}
+
 function parseRows(text: string): ParsedRow[] {
     const table = parseCsv(text);
     if (table.length < 2) return [];
     const columnKeys = table[0].map((cell) => ALIAS_TO_KEY.get(normalizeHeader(cell)));
+    const seenSkus = new Map<string, number>();
 
     return table
         .slice(1)
@@ -86,6 +91,12 @@ function parseRows(text: string): ParsedRow[] {
             if (!values.name) errors.push('Name is required');
             if (!values.category) errors.push('Category is required');
             if (!values.basePrice || !Number.isFinite(basePrice) || basePrice < 0) errors.push('A valid price is required');
+            if (values.sku) {
+                const sku = normalizeSku(values.sku);
+                if (sku.length < 2) errors.push('SKU needs at least 2 letters or digits');
+                else if (seenSkus.has(sku)) errors.push(`SKU ${sku} is already used in row ${seenSkus.get(sku)}`);
+                else seenSkus.set(sku, rowNumber);
+            }
             return { rowNumber, values, errors };
         });
 }

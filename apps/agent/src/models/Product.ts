@@ -54,6 +54,10 @@ export interface IProduct extends Document {
     aiKnowledge: Array<{question:string;answer:string}>;
 
     // Inventory alerts
+    /** Short customer-facing code ("MUG-9F2A") so a shopper can order by code in chat. */
+    publicCode: string;
+    /** Set when the merchant deletes the product. Hidden (isActive:false) is reversible; deleted is not shown anywhere. */
+    deletedAt?: Date;
     lowStockThreshold: number;
     salePrice?: number;
     barcode?: string;
@@ -159,6 +163,8 @@ const ProductSchema = new Schema(
 
         lowStockThreshold: { type: Number, default: 10 },
         salePrice: { type: Number, min: 0 },
+        publicCode: { type: String, trim: true, uppercase: true },
+        deletedAt: { type: Date },
         barcode: { type: String, trim: true },
         brand: { type: String, trim: true },
         canonicalUrl: { type: String, trim: true },
@@ -210,6 +216,8 @@ ProductSchema.index({ businessId: 1, aliases: 1, isActive: 1 });
 ProductSchema.index({ businessId: 1, basePrice: 1 });
 ProductSchema.index({ businessId: 1, canonicalUrl: 1 }, { sparse: true });
 ProductSchema.index({ businessId: 1, barcode: 1 }, { sparse: true });
+ProductSchema.index({ businessId: 1, publicCode: 1 }, { unique: true, partialFilterExpression: { publicCode: { $type: 'string' } } });
+ProductSchema.index({ businessId: 1, deletedAt: 1, createdAt: -1 });
 ProductSchema.index({ businessId: 1, isFeatured: 1, isActive: 1 });
 ProductSchema.index({ businessId: 1, 'intelligence.terms': 1, isActive: 1 });
 // MongoDB does not allow a compound multikey index across two array fields.
@@ -221,9 +229,22 @@ ProductSchema.virtual('isLowStock').get(function (this: IProduct) {
     return typeof this.stock === 'number' && this.stock <= this.lowStockThreshold;
 });
 
+/**
+ * A customer-facing product code that is stable for the life of the product and
+ * short enough to type into Messenger. Derived from the name prefix plus the
+ * product id suffix, so it never collides inside a business and survives renames
+ * once stored.
+ */
+export function deriveProductCode(name: string, id: unknown) {
+    const prefix = String(name || 'ITEM').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3).padEnd(3, 'X');
+    const suffix = String(id || '').replace(/[^a-z0-9]/gi, '').slice(-5).toUpperCase().padStart(5, '0');
+    return `${prefix}-${suffix}`;
+}
+
 // Generate slug before validation runs, since `slug` is a required field and
 // validation happens before pre('save') hooks would otherwise fire too late.
 ProductSchema.pre('validate', function (this: IProduct) {
+    if (!this.publicCode) this.publicCode = deriveProductCode(this.name, this._id);
     if (this.isModified('name') && !this.slug) {
         this.slug = this.name
             .toLowerCase()
@@ -236,6 +257,15 @@ ProductSchema.pre('validate', function (this: IProduct) {
     if (this.isNew || ['name', 'aliases', 'description', 'brand', 'specs', 'compatibilityTags', 'variants'].some((path) => this.isModified(path))) {
         this.intelligence = buildProductSearchProfile(this.toObject({ depopulate: true }));
     }
+});
+
+ProductSchema.post('save', function (error: any, document: any, next: (error?: Error) => void) {
+    if (error?.code === 11000 && error?.keyPattern?.publicCode && document?.isNew !== false) {
+        document.publicCode = deriveProductCode(document.name, `${document._id}${Math.random().toString(36).slice(2, 6)}`);
+        document.save().then(() => next()).catch(next);
+        return;
+    }
+    next(error);
 });
 
 export const Product = mongoose.model<IProduct>('Product', ProductSchema);

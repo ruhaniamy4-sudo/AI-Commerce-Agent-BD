@@ -110,7 +110,13 @@ router.post('/', verifySignature, async (req, res) => {
                                 businessId: channel.businessId.toString(),
                                 eventId,
                                 psid: senderPsid,
-                                message: event.message?.text || event.postback?.title || event.postback?.payload,
+                                // A Buy Now tap carries the product code in its payload;
+                                // forwarding that instead of the button title lets the
+                                // checkout flow start on the exact product tapped.
+                                message: event.message?.text
+                                    || (String(event.postback?.payload || '').startsWith('BUY_')
+                                        ? `${String(event.postback.payload).slice(4)} nibo`
+                                        : event.postback?.title || event.postback?.payload),
                                 attachments: event.message?.attachments || [],
                                 payload: event,
                                 source: 'facebook',

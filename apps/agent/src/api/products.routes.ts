@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import { Product } from '../models/Product';
+import { deriveProductCode, Product } from '../models/Product';
 import { Category } from '../models/Category';
 import { getImageEmbedding } from '../services/embedding.service';
 import { requireAdministrator } from '../auth/middleware';
@@ -29,6 +29,23 @@ router.patch('/products/:id/ai-selling',requireAdministrator,async(req,res)=>{
  res.json(product);
 });
 
+/**
+ * The merchant's own SKU. Customers quote it back in chat to order, so it is
+ * normalised to one typeable shape and must be unique inside the business.
+ */
+function normalizePublicCode(value: unknown) {
+    const code = String(value ?? '').trim().toUpperCase().replace(/\s+/g, '-').replace(/[^A-Z0-9-]/g, '');
+    return code.slice(0, 24);
+}
+
+async function publicCodeConflict(code: string, excludeProductId?: string) {
+    const existing = await Product.findOne({ publicCode: code, deletedAt: null }).select('_id').lean();
+    return Boolean(existing && String(existing._id) !== String(excludeProductId || ''));
+}
+
+/** Deleted products are gone from every merchant view; hidden ones are not. */
+const NOT_DELETED = { deletedAt: null };
+
 // Get all products with filtering and pagination
 router.get('/products', async (req, res) => {
     try {
@@ -42,7 +59,7 @@ router.get('/products', async (req, res) => {
         const isFeatured = req.query.isFeatured as string;
         const skip = (page - 1) * limit;
 
-        const query: any = req.query.includeInactive==='true'?{}:{ isActive: true };
+        const query: any = req.query.includeInactive==='true' ? { ...NOT_DELETED } : { isActive: true, ...NOT_DELETED };
         if(['active','limited','disabled'].includes(String(req.query.aiSellingStatus)))query.aiSellingStatus=req.query.aiSellingStatus==='active'?{$nin:['limited','disabled']}:req.query.aiSellingStatus;
 
         if (search) {
@@ -98,8 +115,8 @@ router.get('/products/:identifier', async (req, res) => {
         // Determine if identifier is ID or Slug
         const isObjectId = mongoose.Types.ObjectId.isValid(identifier);
         const query = isObjectId
-            ? { _id: identifier }
-            : { slug: identifier };
+            ? { _id: identifier, ...NOT_DELETED }
+            : { slug: identifier, ...NOT_DELETED };
 
         const product = await Product.findOne(query).populate('categoryId', 'name slug');
 
@@ -124,6 +141,12 @@ router.post('/products', requireAdministrator, async (req, res) => {
         }
         if (!(await Category.exists({ _id: productData.categoryId, isActive: true }))) {
             return res.status(400).json({ error: 'Category does not belong to this business' });
+        }
+        if (productData.publicCode !== undefined) {
+            const code = normalizePublicCode(productData.publicCode);
+            if (code && code.length < 2) return res.status(400).json({ error: 'A product code needs at least 2 letters or digits' });
+            if (code && await publicCodeConflict(code)) return res.status(409).json({ error: `Product code ${code} is already used by another product` });
+            if (code) productData.publicCode = code; else delete productData.publicCode;
         }
         if (Array.isArray(productData.images) && productData.images.length) {
             const imported = await mirrorExternalProductImages(productData.images, requireTenantContext().businessId);
@@ -175,10 +198,18 @@ router.patch('/products/:id', requireAdministrator, async (req, res) => {
         }
 
         if(updates.aiKnowledge && (!Array.isArray(updates.aiKnowledge)||updates.aiKnowledge.length>30||updates.aiKnowledge.some((a:any)=>typeof a.question!=='string'||!a.question.trim()||typeof a.answer!=='string'||!a.answer.trim())))return res.status(400).json({error:'Provide up to 30 complete product questions and answers'});
-        const product = await Product.findById(id);
+        const product = await Product.findOne({ _id: id, ...NOT_DELETED });
 
         if (!product) {
             return res.status(404).json({ error: 'Product not found' });
+        }
+
+        if (updates.publicCode !== undefined) {
+            const code = normalizePublicCode(updates.publicCode);
+            if (code && code.length < 2) return res.status(400).json({ error: 'A product code needs at least 2 letters or digits' });
+            if (code && await publicCodeConflict(code, String(id))) return res.status(409).json({ error: `Product code ${code} is already used by another product` });
+            // Clearing the field hands the product back its generated code.
+            updates.publicCode = code || deriveProductCode(updates.name || product.name, product._id);
         }
 
         const previousImageImports = [...(product.imageImports || [])].map((item: any) => item.toObject?.() || item);
@@ -220,20 +251,29 @@ router.patch('/products/:id', requireAdministrator, async (req, res) => {
         }
 
         res.json(product);
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.code === 11000 && error?.keyPattern?.publicCode) {
+            return res.status(409).json({ error: 'That product code is already used by another product' });
+        }
         console.error('Error updating product:', error);
         res.status(500).json({ error: 'Failed to update product' });
     }
 });
 
-// Delete product (admin - soft delete)
+/**
+ * Delete a product. The document is retained so past orders keep their product
+ * link, but it leaves every merchant view, the storefront and the AI catalog —
+ * which is what a merchant means by "delete". Hiding is the reversible action
+ * and lives on the update endpoint as `isActive`.
+ */
 router.delete('/products/:id', requireAdministrator, async (req, res) => {
     try {
         const { id } = req.params;
-
-        const product = await Product.findByIdAndUpdate(
-            id,
-            { isActive: false },
+        const product = await Product.findOneAndUpdate(
+            { _id: id, ...NOT_DELETED },
+            // The code is released with the product so the merchant can reuse it
+            // on a replacement; past orders keep their own SKU snapshot.
+            { $set: { deletedAt: new Date(), isActive: false, aiSellingStatus: 'disabled' }, $unset: { publicCode: '' } },
             { new: true }
         );
 
@@ -241,10 +281,28 @@ router.delete('/products/:id', requireAdministrator, async (req, res) => {
             return res.status(404).json({ error: 'Product not found' });
         }
 
-        res.json({ message: 'Product deleted successfully' });
+        res.json({ message: 'Product deleted', id: String(product._id) });
     } catch (error) {
         console.error('Error deleting product:', error);
         res.status(500).json({ error: 'Failed to delete product' });
+    }
+});
+
+// Delete several products in one request, so a bulk action is one atomic write.
+router.post('/products/bulk-delete', requireAdministrator, async (req, res) => {
+    try {
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((id: unknown) => String(id)) : [];
+        const valid = ids.filter((id: string) => mongoose.Types.ObjectId.isValid(id)).slice(0, 100);
+        if (!valid.length) return res.status(400).json({ error: 'Select at least one product to delete' });
+
+        const result = await Product.updateMany(
+            { _id: { $in: valid }, ...NOT_DELETED },
+            { $set: { deletedAt: new Date(), isActive: false, aiSellingStatus: 'disabled' }, $unset: { publicCode: '' } }
+        );
+        res.json({ deleted: result.modifiedCount, requested: valid.length });
+    } catch (error) {
+        console.error('Error deleting products:', error);
+        res.status(500).json({ error: 'Failed to delete the selected products' });
     }
 });
 
@@ -273,6 +331,11 @@ router.post('/products/bulk-import', requireAdministrator, async (req, res) => {
             return res.status(400).json({ error: 'Import is limited to 500 products per request' });
         }
 
+        const takenCodes = new Set<string>(
+            (await Product.find({ publicCode: { $type: 'string' }, ...NOT_DELETED }).select('publicCode').lean())
+                .map((item: any) => String(item.publicCode).toUpperCase())
+        );
+
         const categoryCache = new Map<string, mongoose.Types.ObjectId>();
         const existingCategories = await Category.find({ isActive: true }).select('name _id').lean();
         for (const category of existingCategories) {
@@ -292,6 +355,14 @@ router.post('/products/bulk-import', requireAdministrator, async (req, res) => {
                 if (!name) throw new Error('Product name is required');
                 if (!categoryName) throw new Error('Category is required');
                 if (!Number.isFinite(basePrice) || basePrice < 0) throw new Error('A valid price is required');
+
+                // A SKU the customer will quote back must point at exactly one
+                // product, so a clash is a row error the merchant can fix in the
+                // sheet — never a silently different code.
+                const importedCode = raw.sku ? normalizePublicCode(raw.sku) : '';
+                if (raw.sku && !importedCode) throw new Error('SKU must contain letters or digits');
+                if (importedCode && importedCode.length < 2) throw new Error('SKU needs at least 2 letters or digits');
+                if (importedCode && takenCodes.has(importedCode)) throw new Error(`SKU ${importedCode} is already used by another product`);
 
                 const categoryKey = categoryName.toLowerCase();
                 let categoryId = categoryCache.get(categoryKey);
@@ -317,6 +388,7 @@ router.post('/products/bulk-import', requireAdministrator, async (req, res) => {
                     images,
                     brand: raw.brand ? String(raw.brand).trim() : undefined,
                     barcode: raw.sku ? String(raw.sku).trim() : undefined,
+                    publicCode: importedCode || undefined,
                     warrantyMonths: raw.warrantyMonths ? Number(raw.warrantyMonths) || 0 : 0,
                     lowStockThreshold: raw.lowStockThreshold ? Number(raw.lowStockThreshold) || 10 : 10,
                     isActive: parseImportBoolean(raw.isActive, true),
@@ -327,7 +399,11 @@ router.post('/products/bulk-import', requireAdministrator, async (req, res) => {
                 try {
                     await product.save();
                 } catch (saveError: any) {
+                    if (saveError?.code === 11000 && saveError?.keyPattern?.publicCode) {
+                        throw new Error(`SKU ${importedCode} is already used by another product`);
+                    }
                     if (saveError?.code === 11000) {
+                        // Two rows can legitimately share a name; the slug just has to differ.
                         product.slug = `${slugifyImportName(name)}-${Math.random().toString(36).slice(2, 6)}`;
                         await product.save();
                     } else {
@@ -335,6 +411,7 @@ router.post('/products/bulk-import', requireAdministrator, async (req, res) => {
                     }
                 }
 
+                takenCodes.add(String(product.publicCode).toUpperCase());
                 results.push({ row: rowNumber, name, status: 'created', id: String(product._id) });
             } catch (error) {
                 results.push({ row: rowNumber, name: name || undefined, status: 'error', error: error instanceof Error ? error.message : 'Failed to import row' });

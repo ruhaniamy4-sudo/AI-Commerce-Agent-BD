@@ -138,7 +138,7 @@ export function deriveSalesStage(
     if (score > 0) return 'DISCOVERY';
 
     // Zero score but still a product-related intent
-    if (['PRODUCT_SEARCH', 'PRODUCT_PRICE', 'PRODUCT_STOCK', 'PRODUCT_IMAGE', 'PRODUCT_VARIANT', 'PRODUCT_COMPARE'].includes(intent)) return 'DISCOVERY';
+    if (['PRODUCT_SEARCH', 'PRODUCT_PRICE', 'PRODUCT_STOCK', 'PRODUCT_IMAGE', 'PRODUCT_VARIANT', 'PRODUCT_COMPARE', 'CATALOG_BROWSE'].includes(intent)) return 'DISCOVERY';
 
     // Human handoff requested → LOST in sales funnel
     if (intent === 'HUMAN_HANDOFF') return 'LOST';
@@ -161,7 +161,7 @@ export function deriveNextBestAction(stage: SalesStage, intent: LightweightInten
         case 'LOST':
             return 'FOLLOW_UP_LATER';
         case 'INTERESTED':
-            if (intent === 'PRODUCT_SEARCH' || intent === 'PRODUCT_COMPARE') return 'RECOMMEND_PRODUCT';
+            if (intent === 'PRODUCT_SEARCH' || intent === 'PRODUCT_COMPARE' || intent === 'CATALOG_BROWSE') return 'RECOMMEND_PRODUCT';
             return 'CROSS_SELL';
         case 'DISCOVERY':
             if (intent === 'HUMAN_HANDOFF') return 'HANDOFF';

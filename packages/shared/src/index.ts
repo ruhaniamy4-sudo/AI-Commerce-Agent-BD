@@ -85,6 +85,9 @@ export function classifyProductImageSource(value?: string | null): ProductImageS
 }
 
 export interface Product extends TenantEntity {
+  /** Merchant SKU / product code; the AI shows it so customers can order by code. */
+  publicCode?: string;
+  deletedAt?: string;
   aiSellingStatus?: 'active' | 'limited' | 'disabled';
   aiSellingReason?: string;
   salePrice?: number;

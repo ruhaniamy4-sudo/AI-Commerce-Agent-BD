@@ -78,8 +78,10 @@ describe('targeted RAG limits', () => {
         );
         expect(result.knowledgeEntries).toHaveLength(2);
         const packed = JSON.parse(formatContextPack(result));
-        expect(packed.approved_knowledge.every((entry: any) => entry.authority === 'APPROVED_KNOWLEDGE')).toBe(true);
-        expect(JSON.stringify(packed.approved_knowledge)).toContain('cod_available');
+        // The knowledge block carries the facts; the trust ordering itself now
+        // lives once in the system prompt rather than in every context pack.
+        expect(packed.knowledge).toHaveLength(2);
+        expect(JSON.stringify(packed.knowledge)).toContain('cod_available');
     });
 
     it('puts canonical current product price and stock ahead of approved knowledge', async () => {
@@ -93,8 +95,9 @@ describe('targeted RAG limits', () => {
             retrieveContext(businessId, 'customer', 'black shirt price stock', [])
         );
         const packed = JSON.parse(formatContextPack(result));
-        expect(packed.trust_order[0]).toBe('canonical_product_service_inventory');
-        expect(packed.canonical_catalog_matches[0]).toMatchObject({ price: 1490, stock: 2, authority: 'CANONICAL_CURRENT_PRODUCT',ai_selling_status:'limited',approved_product_answers:[{question:'Material?',answer:'Cotton'}] });
+        expect(packed.products[0]).toMatchObject({ price: 1490, stock: 2, verify_variant_stock_before_selling: true, approved_answers: [{ question: 'Material?', answer: 'Cotton' }] });
+        // Live catalog facts must survive the pack even when older knowledge disagrees.
+        expect(JSON.stringify(packed.products[0])).toContain('1490');
     });
 
     it('retrieves budget-only discovery and labels a factual alternative when an exact attribute is unavailable', async () => {

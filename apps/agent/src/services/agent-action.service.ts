@@ -60,10 +60,11 @@ export async function executeAgentAction(params: {
             idempotencyKey: params.eventIdentifier,
         });
         response.action_result = orderResult.success
-            ? { requested: 'create_order', confirmed: true, reference: String(orderResult.orderId) }
+            ? { requested: 'create_order', confirmed: true, reference: String(orderResult.orderNumber) }
             : { requested: 'create_order', confirmed: false, error: orderResult.error };
+        // The customer-facing reference is the order number, never the internal id.
         response.message_text = orderResult.success
-            ? `Order #${orderResult.orderId} was created successfully. Total: ${orderResult.total}`
+            ? `Your order is confirmed. Order ID: ${orderResult.orderNumber}. Total: ${orderResult.total}. Keep this Order ID for any update.`
             : `I could not confirm the order. ${orderResult.error}. A human can help complete it safely.`;
     }
 

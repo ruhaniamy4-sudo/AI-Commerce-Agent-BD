@@ -84,7 +84,9 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
 
                 if((item.variantId || item.sku) && product.variants.length && !variant) throw new OrderCreationError('Product variant not found');
                 if(variant?.isActive===false) throw new OrderCreationError('Product variant is unavailable');
-                const unitPrice = variant?.price ?? product.basePrice;
+                // The customer is quoted salePrice ?? variant ?? base everywhere it is
+                // shown, so the charged price must resolve identically.
+                const unitPrice = product.salePrice ?? variant?.price ?? product.basePrice;
                 const sku = variant?.sku || item.sku || product.slug;
                 const lineSubtotal = unitPrice * quantity;
 
@@ -182,7 +184,7 @@ export const createOrder = async (params: CreateOrderParams) => {
         });
 
         console.log(`Order created: ${order.orderNumber}`);
-        return { success: true, orderId: order._id, total: order.total };
+        return { success: true, orderId: order._id, orderNumber: order.orderNumber, total: order.total };
 
     } catch (error: any) {
         console.error('Create Order Failed:', error.message);

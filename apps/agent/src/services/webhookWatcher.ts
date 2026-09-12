@@ -11,6 +11,7 @@ import {
     sendQuickReplies,
     sendGenericTemplate
 } from './facebook.service';
+import { Conversation } from '../models/Conversation';
 import { logError } from './error.service';
 import { handleImageInput } from './image-processor.service';
 import { formatProductsForResponse } from './product-matcher.service';
@@ -102,21 +103,34 @@ export const processWebhookEvent = async (data: any) => {
         }
 
         const deterministicResult = message
-            ? await getDeterministicResponse(businessId, String(message), { psid, conversationId: convId })
+            ? await getDeterministicResponse(businessId, String(message), { psid, conversationId: convId, eventIdentifier: eventId })
             : null;
         if (deterministicResult) {
             const deterministicReply = typeof deterministicResult === 'string' ? deterministicResult : deterministicResult.message_text;
             const products = typeof deterministicResult === 'string' ? [] : deterministicResult.suggested_products || [];
             if (products.length) await sendOnce('deterministic-products', () => sendGenericTemplate(psid, products.map((product: any) => ({
-                title: product.name, subtitle: `Price: ৳${product.price}${product.stock !== undefined ? ` · Stock: ${product.stock}` : ''}`,
-                ...(product.image ? { image_url: product.image } : {}), buttons: product.sku ? [{ type: 'postback', title: 'Buy Now', payload: `BUY_${product.sku}` }] : [],
+                title: product.name, subtitle: `${product.code ? `${product.code} · ` : ''}৳${product.price}${product.stock !== undefined ? ` · Stock: ${product.stock}` : ''}`,
+                ...(product.image ? { image_url: product.image } : {}), buttons: (product.sku || product.code) ? [{ type: 'postback', title: 'Buy Now', payload: `BUY_${product.sku || product.code}` }] : [],
             })), pageId));
             if (deterministicReply) await sendOnce('deterministic-text', () => sendMessage(psid, deterministicReply, pageId));
             await saveMessage(businessId, convId, 'assistant', deterministicReply, undefined, {
-                messageId: `${eventId}:assistant`, platform: 'facebook',
+                messageId: `${eventId}:assistant`, platform: 'facebook', products,
+                intent: typeof deterministicResult === 'string' ? undefined : deterministicResult.intent,
             });
             await recordConversationTurn(businessId, convId, 'zero_llm', typeof deterministicResult === 'string' ? undefined : deterministicResult.memory);
-            await completeInboundEvent(eventId, processingToken, { reply: deterministicReply, products, deterministic: true, llmCalls: 0 });
+            const orderCreated = typeof deterministicResult === 'string' ? undefined : deterministicResult.orderCreated;
+            if (orderCreated) {
+                await Conversation.updateOne({ businessId, conversationId: convId }, {
+                    $set: {
+                        salesStage: 'ORDERED',
+                        currentIntent: 'order',
+                        'conversionOutcome.convertedAt': new Date(),
+                        'conversionOutcome.conversionType': 'AI_ONLY',
+                        'conversionOutcome.orderId': orderCreated.orderId,
+                    },
+                }).catch((error: unknown) => console.warn('Order conversion metadata not persisted:', error instanceof Error ? error.message : error));
+            }
+            await completeInboundEvent(eventId, processingToken, { reply: deterministicReply, products, deterministic: true, llmCalls: 0, ...(orderCreated ? { order: orderCreated } : {}) });
             return;
         }
 

@@ -109,12 +109,7 @@ function ProductsContent() {
     });
 
     const bulkDeleteMutation = useMutation({
-        mutationFn: async (ids: string[]) => {
-            const BATCH_SIZE = 10;
-            for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-                await Promise.allSettled(ids.slice(i, i + BATCH_SIZE).map(id => productsApi.delete(id)));
-            }
-        },
+        mutationFn: (ids: string[]) => productsApi.bulkDelete(ids),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['products'] });
             setSelectedIds(new Set());
@@ -123,7 +118,7 @@ function ProductsContent() {
 
     function handleDeleteSelected(){
         if(!selectedIds.size)return;
-        if(!confirm(`Remove ${selectedIds.size} selected product${selectedIds.size===1?'':'s'} from the store? Existing orders are preserved.`))return;
+        if(!confirm(`Delete ${selectedIds.size} selected product${selectedIds.size===1?'':'s'}? They are removed from your catalog, the storefront and the AI. Past orders keep their records.`))return;
         bulkDeleteMutation.mutate(Array.from(selectedIds));
     }
 
@@ -138,7 +133,8 @@ function ProductsContent() {
             p.description||'',
             p.currency||'BDT',
             p.stock==null?'':String(p.stock),
-            p.barcode||'',
+            p.publicCode||p.barcode||'',   // exports the code customers can order with
+
             p.brand||'',
             (p.images||[]).join('|'),
             String(p.isActive),
@@ -153,6 +149,7 @@ function ProductsContent() {
     const [formData, setFormData] = useState<Partial<Product>>({
         name: '',
         slug: '',
+        publicCode: '',
         description: '',
         basePrice: 0,
         currency: 'BDT',
@@ -241,6 +238,7 @@ function ProductsContent() {
         setFormData({
             name: '',
             slug: '',
+            publicCode: '',
             description: '',
             basePrice: 0,
             currency: 'BDT',
@@ -257,6 +255,11 @@ function ProductsContent() {
         });
         setActiveTab('general');
     };
+
+    const visibilityMutation = useMutation({
+        mutationFn: (data: { id: string; isActive: boolean }) => productsApi.update(data.id, { isActive: data.isActive }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+    });
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -278,6 +281,7 @@ function ProductsContent() {
         setFormData({
             name: product.name,
             slug: product.slug,
+            publicCode: product.publicCode || '',
             description: product.description,
             basePrice: product.basePrice,
             currency: product.currency || 'BDT',
@@ -316,8 +320,8 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
         <Button type="button" variant={viewMode==='list'?'default':'ghost'} size="sm" aria-pressed={viewMode==='list'} onClick={()=>setViewMode('list')} aria-label="List view"><ListIcon size={15}/></Button>
     </div>
 </div>
-{bulkDeleteMutation.isError&&<p role="alert" className="text-sm text-destructive mb-4">Some selected products could not be removed. Please try again.</p>}
-<ProductWorkspace initialProductId={searchParams?.product} products={products} loading={isLoading} error={isError} onAdd={()=>{resetForm();setIsDialogOpen(true);}} onEdit={openEdit} onDelete={id=>deleteMutation.mutate(id)} viewMode={viewMode} selectedIds={selectedIds} onToggleSelect={toggleSelect}/><WorkspacePagination page={page} totalPages={pagination?.totalPages||1} onChange={setPage}/>
+{(bulkDeleteMutation.isError||deleteMutation.isError||visibilityMutation.isError)&&<p role="alert" className="text-sm text-destructive mb-4">{(bulkDeleteMutation.error as Error)?.message||(deleteMutation.error as Error)?.message||(visibilityMutation.error as Error)?.message||'The action could not be completed. Please try again.'}</p>}
+<ProductWorkspace initialProductId={searchParams?.product} products={products} loading={isLoading} error={isError} onAdd={()=>{resetForm();setIsDialogOpen(true);}} onEdit={openEdit} onDelete={id=>deleteMutation.mutate(id)} onToggleVisibility={(id,isActive)=>visibilityMutation.mutate({id,isActive})} deleting={deleteMutation.isPending} viewMode={viewMode} selectedIds={selectedIds} onToggleSelect={toggleSelect}/><WorkspacePagination page={page} totalPages={pagination?.totalPages||1} onChange={setPage}/>
 <Dialog open={isDialogOpen} onOpenChange={(open) => {setIsDialogOpen(open);if(!open)resetForm();}}>
                 <DialogContent className="max-w-4xl p-0 overflow-hidden border-border shadow-2xl rounded-xl bg-background text-foreground">
                     <form onSubmit={handleSubmit} className="flex flex-col max-h-[90vh]">
@@ -386,6 +390,17 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                                         ))}
                                                     </SelectContent>
                                                 </Select>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">SKU / Product Code</Label>
+                                                <Input
+                                                    value={formData.publicCode || ''}
+                                                    onChange={e => setFormData({ ...formData, publicCode: e.target.value.toUpperCase() })}
+                                                    maxLength={24}
+                                                    className="h-11 bg-muted/30 border-border focus:bg-muted/50 rounded-2xl transition-all text-foreground placeholder:text-muted-foreground/60 px-6 font-mono"
+                                                    placeholder="e.g. MUG-01"
+                                                />
+                                                <p className="text-[11px] text-muted-foreground ml-1">Your own code. The AI shows it in chat so customers can order by code. Leave blank to keep the generated one.</p>
                                             </div>
                                         </div>
                                         <div className="space-y-3">
@@ -592,7 +607,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                             </div>
                         </Tabs>
 
-                        {(createMutation.isError||updateMutation.isError)&&<p role="alert" className="px-6 text-sm text-destructive">Could not save product. Check required fields, category and administrator access.</p>}<div className="p-6 bg-muted/20 border-t border-border flex justify-between items-center">
+                        {(createMutation.isError||updateMutation.isError)&&<p role="alert" className="px-6 pb-2 text-sm text-destructive">{(createMutation.error as Error)?.message||(updateMutation.error as Error)?.message||'Could not save product. Check required fields, category and administrator access.'}</p>}<div className="p-6 bg-muted/20 border-t border-border flex justify-between items-center">
                             <Button type="button" variant="ghost" onClick={resetForm} className="text-muted-foreground/50 hover:text-foreground font-black uppercase text-[10px] tracking-[0.2em] transition-colors">Clear Form</Button>
                             <div className="flex gap-4">
                                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="h-11 rounded-2xl border-border bg-transparent text-foreground px-8 font-bold hover:bg-accent">Cancel</Button>
@@ -600,7 +615,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                     {(createMutation.isPending || updateMutation.isPending) ? (
                                         <Loader2 className="h-5 w-5 animate-spin" />
                                     ) : (
-                                        editingProduct ? 'Save Changes' : 'Add Product'
+                                        editingProduct ? 'Update Product' : 'Add Product'
                                     )}
                                 </Button>
                             </div>
