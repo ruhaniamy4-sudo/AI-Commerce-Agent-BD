@@ -42,6 +42,7 @@ export interface IOrder extends Document {
     invoiceNumber?: string; // Unique invoice ID for accounting
     customerId: mongoose.Types.ObjectId;
     psid?: string; // Facebook PSID if ordered via Messenger
+    conversationId?: string; // The chat this order was placed in, for support and audit
 
     // Order items with price snapshots
     items: IOrderItem[];
@@ -132,6 +133,7 @@ const OrderSchema = new Schema(
             index: true,
         },
         psid: { type: String, index: true },
+        conversationId: { type: String, index: true },
 
         items: [OrderItemSchema],
 
@@ -229,6 +231,7 @@ OrderSchema.index(
     { unique: true, partialFilterExpression: { invoiceNumber: { $type: 'string' } } }
 );
 OrderSchema.index({ businessId: 1, customerId: 1, createdAt: -1 });
+OrderSchema.index({ businessId: 1, conversationId: 1, createdAt: -1 });
 OrderSchema.index({ businessId: 1, status: 1, createdAt: -1 });
 OrderSchema.index({ businessId: 1, 'courier.provider': 1, 'courier.consignmentId': 1 }, {
     unique: true,

@@ -7,7 +7,7 @@ import { Product } from '../models/Product';
 import { withTenantContext } from '../tenancy/context';
 import * as checkoutService from './checkout.service';
 import { getDeterministicResponse } from './deterministic-response.service';
-import { cityFrom, phoneFrom, quantityFrom } from './order-flow.service';
+import { cityFrom, extractLabelledDetails, phoneFrom, quantityFrom } from './order-flow.service';
 
 vi.mock('./business-awareness.service', () => ({ retrieveRelevantAwareness: vi.fn(async () => []) }));
 
@@ -240,6 +240,48 @@ describe('chat order flow', () => {
         expect(metadata.orderDraft.items[0]).toMatchObject({ code: 'CER-9F2A', quantity: 1 });
     });
 
+    it('starts checkout when the customer says "confirm kore den" after seeing a product', async () => {
+        const started = await say('Okay confirm kore den. Name: rafi, Phone: 0182232 address: Dhaka');
+        expect(started.intent).toBe('ORDER_FLOW');
+        expect(started.message_text).not.toMatch(/At least one order item|could not confirm/i);
+        // Name and address are taken from the same message; only the broken number is re-asked.
+        expect(metadata.orderDraft).toMatchObject({ fullName: 'rafi', addressLine1: 'Dhaka', city: 'Dhaka', stage: 'AWAITING_PHONE' });
+        expect(started.message_text).toMatch(/number/i);
+    });
+
+    it('places the order straight away when the confirmation and every detail arrive together', async () => {
+        const createOrder = vi.spyOn(checkoutService, 'createOrderWithStock').mockResolvedValue({ _id: 'o9', orderNumber: 'ORD-ONE-SHOT', total: 630 } as never);
+        const placed = await say('confirm kore den. Name: Rafiul Islam, Phone: 01712345678, address: House 12, Dhanmondi, Dhaka', 'evt-one-shot');
+
+        expect(createOrder).toHaveBeenCalledTimes(1);
+        const payload: any = createOrder.mock.calls[0][0];
+        expect(payload).toMatchObject({
+            businessId,
+            customerId,
+            conversationId,
+            deliveryFee: 80,
+            items: [{ productId, quantity: 1 }],
+            shippingAddress: { fullName: 'Rafiul Islam', phone: '01712345678', city: 'Dhaka', country: 'Bangladesh' },
+        });
+        expect(payload.shippingAddress.addressLine1).toContain('Dhanmondi');
+        expect(placed.message_text).toContain('ORD-ONE-SHOT');
+        expect(placed.orderCreated).toMatchObject({ orderNumber: 'ORD-ONE-SHOT' });
+        expect(metadata.orderDraft).toBeUndefined();
+    });
+
+    it('does not add the product twice when the customer confirms a pending summary', async () => {
+        vi.spyOn(checkoutService, 'createOrderWithStock').mockResolvedValue({ _id: 'o1', orderNumber: 'ORD-4', total: 630 } as never);
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        await say('01712345678');
+        await say('Dhanmondi, Dhaka');
+        expect(metadata.orderDraft.items).toHaveLength(1);
+        await say('confirm');
+        const items: any[] = (checkoutService.createOrderWithStock as any).mock.calls[0][0].items;
+        expect(items).toHaveLength(1);
+        expect(items[0].quantity).toBe(1);
+    });
+
     it('rehearses the confirmation in the Test AI sandbox without creating an order or moving stock', async () => {
         const createOrder = vi.spyOn(checkoutService, 'createOrderWithStock');
         const sandboxSay = (text: string) => tenant(() => getDeterministicResponse(businessId, text, { conversationId, psid: 'web-1', eventIdentifier: `evt-${text}`, sandbox: true })) as Promise<any>;
@@ -292,5 +334,21 @@ describe('order input parsing', () => {
         expect(cityFrom('চট্টগ্রাম, চকবাজার')).toBe('Chattogram');
         expect(cityFrom('Jessore sadar')).toBe('Jashore');
         expect(cityFrom('no district here')).toBeUndefined();
+    });
+});
+
+describe('one-message orders', () => {
+    it('reads name, phone and address wherever the customer labels them', () => {
+        expect(extractLabelledDetails('Okay confirm kore den. Name: rafi, Phone: 01712345678 address: Dhanmondi, Dhaka')).toMatchObject({
+            fullName: 'rafi',
+            phone: '01712345678',
+            addressLine1: 'Dhanmondi, Dhaka',
+        });
+        expect(extractLabelledDetails('address: House 12, Road 5, Dhaka, phone: 01712345678').addressLine1).toBe('House 12, Road 5, Dhaka');
+        // An incomplete number is never stored as if it were real.
+        const short = extractLabelledDetails('Name: rafi, Phone: 0182232 address: Dhaka');
+        expect(short.phone).toBeUndefined();
+        expect(short.phoneRejected).toBe(true);
+        expect(short.addressLine1).toBe('Dhaka');
     });
 });

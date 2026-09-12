@@ -12,6 +12,7 @@ import { classifyLightweightIntent, detectExplicitLanguagePreference, extractBud
 import { setupQuestionStorageKey } from './business-setup.service';
 import { businessTypeLabel } from './adaptive-training.service';
 import { handleOrderTurn, pendingOrderPrompt, setOrderDraftLanguage } from './order-flow.service';
+import { extractTurnMemory } from './conversation-memory.service';
 import { availableVariant, card, cardLines, catalogQueryable, CompactProductCard, COLOR_WORDS, escaped, money, PRODUCT_CARD_FIELDS, requestedSku, say, sellable, termMatchScore, termPredicate } from './product-card';
 
 export type { CompactProductCard } from './product-card';
@@ -62,6 +63,13 @@ function variantAlternativeResponse(product: any, requestedColor: string, langua
  * order. The tone is a courteous shop assistant — acknowledge, answer, offer one
  * clear next step.
  */
+/** What "eta" refers to later: the single product just discussed, with its code and price. */
+function activeProductMemory(cards: CompactProductCard[], entity: Record<string, any>) {
+    if (cards.length !== 1) return { activeProductId: entity.activeProductId };
+    const [one] = cards;
+    return { activeProductId: one.id, activeProductName: one.name, activeProductCode: one.code, activeProductPrice: one.price };
+}
+
 function productText(intent: LightweightIntent, cards: CompactProductCard[], language: string, text = '') {
     const one = cards[0];
     const price = money(one.price, one.currency);
@@ -436,7 +444,7 @@ async function resolveDeterministicResponse(context: DeterministicTurnContext): 
         const cards = activeProducts.map((item) => card(item, text)).slice(0, intent === 'PRODUCT_COMPARE' ? 4 : intent === 'PRODUCT_SEARCH' ? PRODUCT_SEARCH_LIMIT : 3);
         const exact = cards.length === 1 || Boolean(entity.activeProductId && String(cards[0]?.id) === String(entity.activeProductId));
         if (cards.length && (intent === 'PRODUCT_SEARCH' || (exact && ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_IMAGE','PRODUCT_VARIANT'].includes(intent)))) {
-            return { message_text: productText(intent, cards, language, text), suggested_products: cards, intent, memory: { ...lightweightMemory, activeProductId: cards.length === 1 ? cards[0].id : entity.activeProductId, recentProductIds: cards.map((item) => item.id) } };
+            return { message_text: productText(intent, cards, language, text), suggested_products: cards, intent, memory: { ...lightweightMemory, ...activeProductMemory(cards, entity), recentProductIds: cards.map((item) => item.id) } };
         }
         if (cards.length && ['PRODUCT_PRICE','PRODUCT_STOCK','PRODUCT_IMAGE','PRODUCT_VARIANT'].includes(intent)) {
             return { message_text: `${say(language, {
@@ -584,7 +592,8 @@ export async function getDeterministicResponse(businessId: string, text: string,
     const explicitLanguage = detectExplicitLanguagePreference(text);
     const language = resolveConversationLanguage(text, entity.preferredLanguage as ConversationLanguage | undefined);
     const intent = classifyLightweightIntent(text);
-    const lightweightMemory = { ...extractLightweightMemory(text), preferredLanguage: language };
+    // Facts the customer states once must outlive the model's short message window.
+    const lightweightMemory = { ...extractLightweightMemory(text), ...extractTurnMemory(text), preferredLanguage: language };
 
     // An explicit "bangla te bolen" is a language request, never an answer to the
     // checkout question in flight.

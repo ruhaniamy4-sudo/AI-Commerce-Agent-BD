@@ -22,6 +22,8 @@ export async function executeAgentAction(params: {
     psid?: string;
     eventIdentifier: string;
     response: AgentResponse;
+    /** Conversation language, so a failure speaks to the customer, not to the log. */
+    language?: string;
 }) {
     assertTenantBusinessId(params.businessId, 'agent.executeAction');
     const { response } = params;
@@ -43,6 +45,21 @@ export async function executeAgentAction(params: {
     }
 
     if (response.action === 'create_order') {
+        // The deterministic checkout flow owns ordering. If the model still asks
+        // for an order without naming a product, ask the customer in their own
+        // language instead of showing them a raw validation error.
+        const requestedItems = Array.isArray(response.action_payload?.items) ? response.action_payload!.items : [];
+        const usableItems = requestedItems.filter((item: any) => (item?.sku || item?.productId) && Number(item?.quantity) > 0);
+        if (!usableItems.length) {
+            response.action = 'none';
+            response.action_result = { requested: 'create_order', confirmed: false, error: 'No order item was identified' };
+            response.message_text = params.language === 'en'
+                ? 'Happy to place that order - which product and how many should I put down?'
+                : params.language === 'bn'
+                    ? 'অবশ্যই অর্ডারটি করে দিচ্ছি—কোন প্রোডাক্ট আর কয়টি নেবেন বলুন।'
+                    : 'Obosshoi order ta kore dicchi - kon product ar koyta niben bolun.';
+            return response;
+        }
         if (!params.psid) {
             response.message_text = 'I could not confirm the order because the customer identity is unavailable. A human can help complete it safely.';
             response.action_result = {
@@ -55,7 +72,8 @@ export async function executeAgentAction(params: {
         const orderResult = await createOrder({
             businessId: params.businessId,
             psid: params.psid,
-            items: response.action_payload?.items || [],
+            conversationId: params.conversationId,
+            items: usableItems,
             address: response.action_payload?.address,
             idempotencyKey: params.eventIdentifier,
         });

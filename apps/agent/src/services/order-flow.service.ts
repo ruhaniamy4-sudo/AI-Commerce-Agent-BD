@@ -73,6 +73,8 @@ export interface OrderTurnContext {
     eventIdentifier?: string;
     /** Test AI sandbox: rehearse the whole flow without touching real inventory. */
     sandbox?: boolean;
+    /** The customer explicitly asked to place the order in this message. */
+    confirmRequested?: boolean;
     /** Product resolution stays with the catalog search that already understands the merchant's wording. */
     resolveProducts: (text: string) => Promise<any[]>;
 }
@@ -82,6 +84,10 @@ const MAX_QUANTITY = 20;
 
 const ORDER_INTENT = /\b(?:nibo|nebo|nib|nite chai|nite chachchi|kinbo|kinte chai|order korbo|order korte chai|order korlam|order dibo|order debo|place (?:an )?order|buy (?:it|this|now)|checkout)\b|নিব|নেব|কিনব|কিনতে চাই|অর্ডার\s*(?:করব|করতে|দিব|দেব|করলাম)/i;
 const CONFIRM_WORDS = /^(?:confirm(?:ed)?|confirm\s*(?:koro|korun|kore\s*din)|ha|haa|hae|hyan|hn|ji|jee|jii|yes|yep|ok|okay|acha|thik\s*ache|thik|kore\s*din|kore\s*dao|order\s*(?:koro|korun|confirm|kore\s*din))[\s!.।]*$/i;
+// "Okay confirm kore den. Name: ... Phone: ... address: ..." is a complete order
+// instruction, so it must reach checkout even before a draft exists — anywhere in
+// the sentence, unlike CONFIRM_WORDS which answers a pending summary.
+const CONFIRM_ORDER_PHRASE = /\b(?:confirm|konfirm)\s*(?:ta|ti)?\s*(?:kore|kre|kora)?\s*(?:den|din|dao|deo|dio|koro|korun|kori|kore\s*din|felun|fela)?\b|\border\s*(?:ta|ti)?\s*(?:confirm|kore\s*(?:den|din|dao)|koro|korun|den|din|dao|nin|niye\s*nin)\b|কনফার্ম\s*(?:করে)?\s*(?:দেন|দিন|দাও|করুন)?|অর্ডার\s*(?:টা)?\s*(?:কনফার্ম|করে\s*দিন|করুন|দিন)/i;
 const CANCEL_WORDS = /^(?:cancel|cancel\s*(?:koro|korun|kore\s*din)|bad\s*(?:dao|din)|thak|lagbe\s*na|na|no|nah|বাতিল|লাগবে\s*না|না|থাক)[\s!.।]*$/i;
 const ADDRESS_CHANGE = /\b(?:address|thikana)\b.{0,24}\b(?:change|bodla|bodlate|onno|another|different|update|vul|wrong)\b|\b(?:onno|another|new)\s+(?:address|thikana)\b|ঠিকানা.{0,20}(?:বদল|পরিবর্তন|ভুল|অন্য)/i;
 // Greetings and flow keywords are never somebody's name.
@@ -144,6 +150,32 @@ export function phoneFrom(text: string) {
 
 export function cityFrom(text: string) {
     return KNOWN_CITIES.find(([pattern]) => pattern.test(text))?.[1];
+}
+
+/**
+ * Customers often hand over everything at once: "confirm kore den. Name: rafi,
+ * Phone: 01712345678, address: Dhanmondi, Dhaka". Labelled values are read
+ * wherever they appear so the flow asks only for what is genuinely missing.
+ */
+export function extractLabelledDetails(text: string) {
+    const stopAtNextLabel = (value: string) => value
+        .split(/\s*(?:,|;|\n|\bar\b|\band\b)?\s*(?:name|naam|nam|phone|mobile|number|contact|address|thikana|নাম|ফোন|মোবাইল|নম্বর|ঠিকানা)\s*[:\-=]/i)[0]
+        .replace(/^[\s,;:.\-]+|[\s,;:.\-]+$/g, '')
+        .trim();
+
+    const rawName = text.match(/\b(?:name|naam|nam|নাম)\s*[:\-=]\s*([^,;\n]{2,60})/i)?.[1];
+    const rawAddress = text.match(/\b(?:address|thikana|ঠিকানা|location)\s*[:\-=]\s*([^\n]{3,200})/i)?.[1];
+    const labelledPhone = text.match(/\b(?:phone|mobile|number|contact|ফোন|মোবাইল|নম্বর)\s*[:\-=]\s*([^,;\n]{5,25})/i)?.[1];
+
+    const address = rawAddress ? stopAtNextLabel(rawAddress) : undefined;
+    return {
+        fullName: rawName ? plausibleName(stopAtNextLabel(rawName)) : undefined,
+        // An invalid number is left unset on purpose: the flow then asks for a real one.
+        phone: phoneFrom(labelledPhone || '') || undefined,
+        addressLine1: address && address.length >= 3 ? address.slice(0, 200) : undefined,
+        /** A number was offered but is not a usable Bangladeshi mobile. */
+        phoneRejected: Boolean(labelledPhone) && !phoneFrom(labelledPhone || ''),
+    };
 }
 
 function plausibleName(value?: string) {
@@ -317,7 +349,11 @@ async function advance(context: OrderTurnContext, draft: OrderDraft): Promise<Or
               : 'AWAITING_CONFIRMATION';
     draft.stage = next;
     await saveDraft(context.businessId, context.conversationId!, draft);
-    if (next === 'AWAITING_CONFIRMATION') return summaryResponse(context, draft);
+    if (next === 'AWAITING_CONFIRMATION') {
+        // The customer already said "confirm kore den" and nothing is missing, so
+        // asking them to confirm a second time would just stall their order.
+        return context.confirmRequested ? submitOrder(context, draft) : summaryResponse(context, draft);
+    }
     return { message_text: askFor(next, context.language), intent: 'ORDER_FLOW', memory: context.lightweightMemory };
 }
 
@@ -408,6 +444,15 @@ async function addItem(context: OrderTurnContext, existing: OrderDraft | undefin
         })
         : '';
 
+    const supplied = extractLabelledDetails(text);
+    if (supplied.fullName) draft.fullName = supplied.fullName;
+    if (supplied.phone) draft.phone = supplied.phone;
+    if (supplied.addressLine1) {
+        draft.addressLine1 = supplied.addressLine1;
+        draft.city = cityFrom(supplied.addressLine1) || draft.city;
+        draft.zone = draft.zone || draft.city;
+    }
+
     // A returning customer is not re-interviewed: reuse whatever the profile
     // already confirms, and only ask for the fields still missing.
     if (!draft.fullName || !draft.phone || !draft.addressLine1) {
@@ -420,8 +465,17 @@ async function addItem(context: OrderTurnContext, existing: OrderDraft | undefin
         draft.zone = draft.zone || saved?.zone;
     }
 
+    // A number that was offered but is not usable is called out, so the customer
+    // knows why they are being asked again.
+    const phoneNotice = supplied.phoneRejected && !draft.phone
+        ? say(context.language, {
+            en: 'That mobile number does not look complete. ',
+            bn: 'নম্বরটি পুরো মনে হচ্ছে না। ',
+            banglish: 'Number ta puro mone hocche na. ',
+        })
+        : '';
     const reply = await advance(context, draft);
-    return { ...reply, message_text: `${trimmedNotice}${reply.message_text}`, suggested_products: [card(product, text)], memory: { ...context.lightweightMemory, activeProductId: String(product._id) } };
+    return { ...reply, message_text: `${trimmedNotice}${phoneNotice}${reply.message_text}`, suggested_products: [card(product, text)], memory: { ...context.lightweightMemory, activeProductId: String(product._id) } };
 }
 
 async function startOrAddItem(context: OrderTurnContext, existing?: OrderDraft): Promise<OrderFlowResponse | null> {
@@ -529,6 +583,7 @@ async function submitOrder(context: OrderTurnContext, draft: OrderDraft): Promis
             businessId: context.businessId,
             customerId: customer._id,
             psid: context.conversation?.psid,
+            conversationId,
             items: draft.items.map((item) => ({ productId: item.productId, variantId: item.variantId, sku: item.sku, quantity: item.quantity })),
             shippingAddress,
             deliveryFee,
@@ -608,6 +663,30 @@ async function continueDraft(context: OrderTurnContext, draft: OrderDraft): Prom
             intent: 'ORDER_FLOW',
             memory: context.lightweightMemory,
         };
+    }
+
+    // Whatever the customer labelled in this message is taken first, whichever
+    // question is pending — they may answer three of them in one line.
+    const inline = extractLabelledDetails(text);
+    let absorbed = false;
+    if (inline.fullName && inline.fullName !== draft.fullName) { draft.fullName = inline.fullName; absorbed = true; }
+    if (inline.phone && inline.phone !== draft.phone) { draft.phone = inline.phone; absorbed = true; }
+    if (inline.addressLine1 && inline.addressLine1 !== draft.addressLine1) {
+        draft.addressLine1 = inline.addressLine1;
+        draft.city = cityFrom(inline.addressLine1) || draft.city;
+        draft.zone = draft.zone || draft.city;
+        absorbed = true;
+    }
+    if (absorbed) {
+        const reply = await advance(context, draft);
+        if (inline.phoneRejected && !draft.phone) {
+            return { ...reply, message_text: say(context.language, {
+                en: 'That mobile number does not look complete. ',
+                bn: 'নম্বরটি পুরো মনে হচ্ছে না। ',
+                banglish: 'Number ta puro mone hocche na. ',
+            }) + reply.message_text };
+        }
+        return reply;
     }
 
     if (draft.stage === 'AWAITING_VARIANT') {
@@ -698,8 +777,13 @@ export async function handleOrderTurn(rawContext: OrderTurnContext): Promise<Ord
     // Stay in the language the checkout started in: "Rafiul Islam" or a phone
     // number on its own would otherwise read as English and flip the replies.
     const conversationId = rawContext.conversationId;
-    const context: OrderTurnContext = draft?.language ? { ...rawContext, language: draft.language, conversationId } : rawContext;
-    const text = context.text.trim();
+    const text = rawContext.text.trim();
+    const context: OrderTurnContext = {
+        ...rawContext,
+        conversationId,
+        ...(draft?.language ? { language: draft.language } : {}),
+        confirmRequested: CONFIRM_ORDER_PHRASE.test(text) || CONFIRM_WORDS.test(text),
+    };
 
     if (draft && CANCEL_WORDS.test(text)) {
         await clearDraft(context.businessId, conversationId);
@@ -714,12 +798,16 @@ export async function handleOrderTurn(rawContext: OrderTurnContext): Promise<Ord
         };
     }
 
-    // A fresh order intent while a draft waits for confirmation adds to that order.
-    if (ORDER_INTENT.test(text) && (!draft || draft.stage === 'AWAITING_CONFIRMATION')) {
+    // The pending question owns the turn; only then can a new order intent add an
+    // item, so "confirm" answers the summary instead of ordering the same thing twice.
+    if (draft) {
+        const handled = await continueDraft(context, draft);
+        if (handled) return handled;
+    }
+
+    if (ORDER_INTENT.test(text) || CONFIRM_ORDER_PHRASE.test(text)) {
         const added = await startOrAddItem(context, draft);
         if (added) return added;
     }
-
-    if (draft) return continueDraft(context, draft);
     return null;
 }

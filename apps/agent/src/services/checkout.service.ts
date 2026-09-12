@@ -7,6 +7,7 @@ import { assertTenantBusinessId } from '../tenancy/context';
 interface CreateOrderParams {
     businessId: string;
     psid: string;
+    conversationId?: string;
     items: { sku: string; quantity: number; variantId?: string }[];
     address?: any;
     idempotencyKey?: string;
@@ -16,6 +17,7 @@ export interface CreateOrderWithStockParams {
     businessId: string;
     customerId: mongoose.Types.ObjectId | string;
     psid?: string;
+    conversationId?: string;
     items: Array<{
         productId?: mongoose.Types.ObjectId | string;
         variantId?: string;
@@ -135,6 +137,7 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
                 customerId: customer._id,
                 idempotencyKey: params.idempotencyKey,
                 psid: params.psid,
+                conversationId: params.conversationId,
                 items: normalizedItems,
                 subtotal,
                 deliveryFee,
@@ -179,6 +182,7 @@ export const createOrder = async (params: CreateOrderParams) => {
             idempotencyKey: params.idempotencyKey,
             customerId: customer._id,
             psid: params.psid,
+            conversationId: params.conversationId,
             items: params.items,
             shippingAddress: params.address || customer.addresses[0] || {},
         });

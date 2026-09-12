@@ -36,7 +36,7 @@ describe('agent action confirmation safety', () => {
 
     it('never represents a failed order action as successful', async () => {
         createOrder.mockResolvedValue({ success: false, error: 'Insufficient stock' });
-        const response = { message_text: 'I will place that order.', action: 'create_order' };
+        const response = { message_text: 'I will place that order.', action: 'create_order', action_payload: { items: [{ sku: 'MUG-01', quantity: 1 }] } };
         await withTenantContext({ businessId, userId: 'u', membershipId: 'm', role: 'Staff' }, () =>
             executeAgentAction({
                 businessId,
@@ -49,6 +49,18 @@ describe('agent action confirmation safety', () => {
         expect(response).toMatchObject({ action_result: { confirmed: false } });
         expect(response.message_text).not.toContain('created successfully');
         expect(response.message_text).toContain('could not confirm');
+    });
+
+    it('asks which product instead of showing a raw validation error when no item was identified', async () => {
+        const response: any = { message_text: 'Placing your order.', action: 'create_order', action_payload: {} };
+        await withTenantContext({ businessId, userId: 'u', membershipId: 'm', role: 'Staff' }, () =>
+            executeAgentAction({ businessId, conversationId: 'conversation-1', psid: 'customer-1', eventIdentifier: 'event-3', response, language: 'banglish' })
+        );
+        expect(createOrder).not.toHaveBeenCalled();
+        expect(response.action).toBe('none');
+        expect(response.action_result).toMatchObject({ confirmed: false });
+        expect(response.message_text).toMatch(/kon product/i);
+        expect(response.message_text).not.toMatch(/At least one order item/i);
     });
 
     it('moves an AI-requested handoff to human control while preserving the conversation', async () => {

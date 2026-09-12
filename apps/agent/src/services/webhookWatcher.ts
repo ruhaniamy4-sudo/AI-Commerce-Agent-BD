@@ -12,6 +12,7 @@ import {
     sendGenericTemplate
 } from './facebook.service';
 import { Conversation } from '../models/Conversation';
+import { detectConversationLanguage } from './conversation-intelligence.service';
 import { logError } from './error.service';
 import { handleImageInput } from './image-processor.service';
 import { formatProductsForResponse } from './product-matcher.service';
@@ -183,7 +184,7 @@ export const processWebhookEvent = async (data: any) => {
         }
 
         // 1. Handle Actions
-        await executeAgentAction({ businessId, conversationId: convId, psid, response: aiResponse, eventIdentifier: eventId });
+        await executeAgentAction({ businessId, conversationId: convId, psid, response: aiResponse, eventIdentifier: eventId, language: detectConversationLanguage(String(message || '')) });
 
         // 2. Send Message (with Quick Replies or Templates)
         if (aiResponse.suggested_products && aiResponse.suggested_products.length > 0) {

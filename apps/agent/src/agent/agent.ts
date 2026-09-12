@@ -13,6 +13,7 @@ import { Business } from '../models/Business';
 import { Conversation } from '../models/Conversation';
 import { buildConversationInstructions, guardResponseText } from '../services/conversation-intelligence.service';
 import { classifyLightweightIntent, extractLightweightMemory } from '../services/turn-routing.service';
+import { extractTurnMemory, memoryPromptLine, mergeMemory } from '../services/conversation-memory.service';
 import { computeSalesSignals, buildSalesContextSnippet } from '../services/sales-intelligence.service';
 import { normalizeAssistantResponse } from '../services/assistant-response.service';
 
@@ -67,7 +68,9 @@ async function callModel(state: AgentState) {
         Conversation.findOne({ businessId, conversationId: state.conversationId }).select('platform metadata salesStage').lean(),
     ]);
     const intelligence = buildConversationInstructions({ business: business || {}, customerText: userQuery, history: state.messages, channel: conversation?.platform });
-    const entityMemory = extractLightweightMemory(userQuery);
+    const entityMemory = { ...extractLightweightMemory(userQuery), ...extractTurnMemory(userQuery) };
+    // One short line carries what the four-message window dropped.
+    const carriedMemory = mergeMemory(conversation?.metadata?.entityState, entityMemory);
 
     // Compute sales signals — pure synchronous, zero LLM call, zero DB call
     const currentSalesStage = conversation?.salesStage;
@@ -94,7 +97,8 @@ async function callModel(state: AgentState) {
             ...Object.fromEntries(Object.entries(entityMemory).map(([key, value]) => [`metadata.entityState.${key}`, value])),
         },
     });
-    const fullSystemPrompt = `${SYSTEM_PROMPT}${intelligence.prompt}\n${salesSnippet}${contextStr !== '{}' ? `\nCONTEXT:\n${contextStr}` : ''}`;
+    const memoryLine = memoryPromptLine(carriedMemory);
+    const fullSystemPrompt = `${SYSTEM_PROMPT}${intelligence.prompt}\n${salesSnippet}${memoryLine ? `\n${memoryLine}` : ''}${contextStr !== '{}' ? `\nCONTEXT:\n${contextStr}` : ''}`;
 
 
     // 4. Call Model

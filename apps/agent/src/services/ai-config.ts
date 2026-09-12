@@ -4,7 +4,10 @@ function boundedInteger(name: string, fallback: number, min: number, max: number
 }
 
 export const getAIRecentMessageLimit = () => boundedInteger('AI_RECENT_MESSAGE_LIMIT', 4, 2, 12);
-export const getAISummaryThreshold = () => boundedInteger('AI_SUMMARY_THRESHOLD', 20, 10, 200);
+// The transcript summary is free (no LLM call), so it starts as soon as messages
+// fall out of the recent window rather than twenty messages later, when the
+// conversation had already lost them.
+export const getAISummaryThreshold = () => boundedInteger('AI_SUMMARY_THRESHOLD', 6, 2, 200);
 export const getRagTopK = () => boundedInteger('RAG_TOP_K', 2, 1, 3);
 // Recent-turn history is re-sent on every LLM call. 1800 characters (~450 tokens)
 // covers three or four real turns; the running summary and entity memory carry

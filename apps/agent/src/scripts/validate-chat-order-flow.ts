@@ -85,10 +85,49 @@ async function main() {
             assert.equal(String(order.customerId), String(customer._id), 'the order must belong to this customer');
 
             assert.equal((await Product.findById(product._id))!.stock, 4, 'stock must drop by the ordered quantity');
+
+            // ── Everything the merchant needs is on the order row ─────────────
+            assert.equal(order.conversationId, conversationId, 'the order must record the chat it came from');
+            assert.equal(order.items.length, 1);
+            assert.equal(order.items[0].productName, 'Ceramic Coffee Mug', 'the product name is snapshotted');
+            assert.equal(String(order.items[0].productId), String(product._id));
+            assert.equal(order.items[0].quantity, 1);
+            assert.equal(order.items[0].subtotal, 550);
+            assert.ok(order.items[0].sku, 'the ordered item keeps a sku snapshot');
+            assert.equal(order.subtotal, 550);
+            assert.equal(order.status, 'pending');
+            assert.equal(order.paymentMethod, 'Cash on Delivery');
+            assert.equal(order.paymentStatus, 'pending');
+            assert.equal(order.source, 'web');
+            assert.equal(order.psid, 'web-validation');
+            assert.equal(order.statusHistory[0].status, 'pending', 'the order opens its own status history');
             const updatedCustomer = await Customer.findById(customer._id);
             assert.equal(updatedCustomer!.totalOrders, 1);
             assert.equal(updatedCustomer!.addresses[0].addressLine1, 'House 12, Road 5, Dhanmondi, Dhaka');
             assert.equal((await Conversation.findOne({ conversationId }))!.metadata.orderDraft, undefined, 'the draft must be cleared after success');
+
+            // ── One message that carries the confirmation and every detail ───
+            const oneShotConversation = 'validation-one-shot';
+            await Conversation.create({
+                conversationId: oneShotConversation, customerId: customer._id, psid: 'web-validation', platform: 'web-widget',
+                metadata: { entityState: { activeProductId: String(product._id) } },
+            });
+            const oneShot: any = await withTenantContext(context, () => getDeterministicResponse(
+                businessId,
+                'Okay confirm kore den. Name: Rafi Islam, Phone: 01812345678, address: Mirpur 10, Dhaka',
+                { conversationId: oneShotConversation, psid: 'web-validation', eventIdentifier: 'evt-one-shot' },
+            )) as any;
+            assert.ok(oneShot?.orderCreated, `a complete instruction must place the order, got: ${oneShot?.message_text}`);
+            assert.ok(!/could not confirm|At least one order item/i.test(oneShot.message_text), 'the customer must never see a raw validation error');
+            const secondOrder = (await Order.findOne({ orderNumber: oneShot.orderCreated.orderNumber }))!;
+            assert.equal(secondOrder.conversationId, oneShotConversation);
+            assert.equal(secondOrder.shippingAddress.fullName, 'Rafi Islam');
+            assert.equal(secondOrder.shippingAddress.phone, '01812345678');
+            assert.match(secondOrder.shippingAddress.addressLine1, /Mirpur 10/);
+            assert.equal(secondOrder.shippingAddress.city, 'Dhaka');
+            assert.equal(secondOrder.items[0].quantity, 1);
+            assert.equal((await Product.findById(product._id))!.stock, 3, 'the one-message order must move stock too');
+            assert.equal(await Order.countDocuments({}), 2);
 
             // ── A redelivered inbound event must not sell the item twice ─────
             const replay = await createOrderWithStock({
@@ -98,8 +137,8 @@ async function main() {
                 deliveryFee: 80, idempotencyKey: 'evt-confirm',
             });
             assert.equal(String(replay._id), String(order._id), 'the same event id must return the same order');
-            assert.equal(await Order.countDocuments({}), 1, 'a replay must not create a second order');
-            assert.equal((await Product.findById(product._id))!.stock, 4, 'a replay must not decrement stock again');
+            assert.equal(await Order.countDocuments({}), 2, 'a replay must not create another order');
+            assert.equal((await Product.findById(product._id))!.stock, 3, 'a replay must not decrement stock again');
 
             // ── Overselling must fail loudly, with stock untouched ───────────
             await assert.rejects(
@@ -111,8 +150,8 @@ async function main() {
                 (error: unknown) => error instanceof OrderCreationError,
                 'ordering more than the live stock must be rejected',
             );
-            assert.equal((await Product.findById(product._id))!.stock, 4, 'a failed order must leave stock unchanged');
-            assert.equal(await Order.countDocuments({}), 1, 'a failed order must not be persisted');
+            assert.equal((await Product.findById(product._id))!.stock, 3, 'a failed order must leave stock unchanged');
+            assert.equal(await Order.countDocuments({}), 2, 'a failed order must not be persisted');
         });
         console.log('✅ chat order flow validated: order id issued, stock adjusted, replays and overselling rejected');
     } finally {

@@ -3,7 +3,9 @@ import { Message } from '../models/Message';
 import { assertTenantBusinessId } from '../tenancy/context';
 import { getAIRecentMessageLimit, getAISummaryThreshold } from './ai-config';
 
-const maxSummaryCharacters = 1800;
+// Capped tight: the durable facts live in the structured memory line, so this
+// only has to carry the thread of the conversation, not every word of it.
+const maxSummaryCharacters = 900;
 
 export async function maybeUpdateConversationSummary(businessId: string, conversationId: string) {
     assertTenantBusinessId(businessId, 'memory.summary');

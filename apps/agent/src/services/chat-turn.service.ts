@@ -171,7 +171,7 @@ async function runProcessChatTurn(input: ChatTurnInput) {
         agentResponse = parseAgentResponse(state.messages[state.messages.length - 1]?.content);
         await checkpointInboundEvent(eventIdentifier, processingToken, { aiResponse: agentResponse });
     }
-    await executeAgentAction({ businessId: input.businessId, conversationId: convId, psid: conversation?.psid, response: agentResponse, eventIdentifier });
+    await executeAgentAction({ businessId: input.businessId, conversationId: convId, psid: conversation?.psid, response: agentResponse, eventIdentifier, language: detectConversationLanguage(messageText) });
     const reply = agentResponse.message_text;
     if (reply) await saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source, products: agentResponse.suggested_products || [], intent: agentResponse.intent });
 
