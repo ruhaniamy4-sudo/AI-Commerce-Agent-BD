@@ -123,7 +123,7 @@ describe('order creation and stock safety', () => {
     it('blocks disabled products before stock or order writes',async()=>{
         vi.mocked(Product.findOne).mockReturnValue({session:vi.fn().mockResolvedValue({_id:productId,name:'Paused product',aiSellingStatus:'disabled',stock:5,variants:[]})} as never);
         const update=vi.spyOn(Product,'findOneAndUpdate');
-        await expect(asTenant(()=>createOrderWithStock({businessId,customerId,items:[{productId,quantity:1}],shippingAddress:{}}))).rejects.toThrow('currently unavailable');
+        await expect(asTenant(()=>createOrderWithStock({businessId,customerId,items:[{productId,quantity:1}],shippingAddress:{}}))).rejects.toThrow(expect.objectContaining({ code: 'PRODUCT_UNAVAILABLE' }));
         expect(update).not.toHaveBeenCalled();expect(Order.prototype.save).not.toHaveBeenCalled();
     });
     it('returns the existing order for a repeated action without touching stock', async () => {

@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Business } from '../models/Business';
 import { Conversation } from '../models/Conversation';
 import { Customer } from '../models/Customer';
+import { Knowledge } from '../models/Knowledge';
+import { Order } from '../models/Order';
 import { Product } from '../models/Product';
 import { withTenantContext } from '../tenancy/context';
 import * as checkoutService from './checkout.service';
 import { getDeterministicResponse } from './deterministic-response.service';
-import { cityFrom, extractLabelledDetails, phoneFrom, quantityFrom } from './order-flow.service';
+import { areaFrom, cityFrom, extractLabelledDetails, phoneFrom, quantityFrom, quantityIncrementFrom } from './order-flow.service';
 
 vi.mock('./business-awareness.service', () => ({ retrieveRelevantAwareness: vi.fn(async () => []) }));
 
@@ -73,6 +75,8 @@ beforeEach(() => {
     })) as never);
     vi.spyOn(Customer, 'findById').mockReturnValue({ lean: () => Promise.resolve({ _id: customerId, name: 'Web User', addresses: [] }) } as never);
     vi.spyOn(Customer, 'updateOne').mockResolvedValue({ acknowledged: true } as never);
+    // A turn that falls through to the business-fact path must not hit a real query.
+    vi.spyOn(Knowledge, 'findOne').mockReturnValue({ sort: () => ({ select: () => ({ lean: () => Promise.resolve(null) }) }), select: () => ({ lean: () => Promise.resolve(null) }) } as never);
     vi.spyOn(Business, 'findById').mockReturnValue({
         select: () => ({ lean: () => Promise.resolve({ _id: businessId, name: 'Shop', commerce: { paymentMethods: ['Cash on Delivery'], deliveryFees: { insideDhaka: 80, outsideDhaka: 130 } } }) }),
     } as never);
@@ -105,6 +109,8 @@ describe('chat order flow', () => {
         expect(summary.message_text).toContain('৳80');   // inside-Dhaka delivery fee
         expect(summary.message_text).toContain('৳630');  // total the customer is asked to confirm
         expect(createOrder).not.toHaveBeenCalled();      // nothing is ordered before an explicit confirm
+        const metadataDraftKey = metadata.orderDraft.orderKey;
+        expect(metadataDraftKey).toMatch(/^draft:/);
 
         const confirmed = await say('confirm', 'evt-confirm');
         expect(createOrder).toHaveBeenCalledTimes(1);
@@ -114,17 +120,19 @@ describe('chat order flow', () => {
             customerId,
             deliveryFee: 80,
             paymentMethod: 'Cash on Delivery',
-            idempotencyKey: 'evt-confirm',
             items: [{ productId, quantity: 1 }],
             shippingAddress: {
                 fullName: 'Rafiul Islam',
                 phone: '01712345678',
                 addressLine1: 'House 12, Road 5, Dhanmondi, Dhaka',
                 city: 'Dhaka',
-                zone: 'Dhaka',
+                zone: 'Dhanmondi',   // the sub-area is kept for the courier, the district decides the fee
                 country: 'Bangladesh',
             },
         });
+        // The key belongs to the basket, not to the inbound event: a retried
+        // confirmation must return the same order rather than create a second.
+        expect(payload.idempotencyKey).toBe(metadataDraftKey);
         expect(confirmed.message_text).toContain('ORD-TEST-1234');
         expect(confirmed.orderCreated).toMatchObject({ orderNumber: 'ORD-TEST-1234', orderId: 'order-object-id', total: 630 });
         expect(metadata.orderDraft).toBeUndefined();
@@ -210,13 +218,17 @@ describe('chat order flow', () => {
     });
 
     it('keeps the draft and explains itself when checkout fails on stock', async () => {
-        vi.spyOn(checkoutService, 'createOrderWithStock').mockRejectedValue(new checkoutService.OrderCreationError('Insufficient stock for Ceramic Coffee Mug'));
+        vi.spyOn(checkoutService, 'createOrderWithStock').mockRejectedValue(
+            new checkoutService.OrderCreationError('Insufficient stock for Ceramic Coffee Mug', 'INSUFFICIENT_STOCK', 'Ceramic Coffee Mug', 2));
         await say('ei ta nibo');
         await say('Rafiul Islam');
         await say('01712345678');
         await say('Dhanmondi, Dhaka');
         const failed = await say('confirm');
-        expect(failed.message_text).toMatch(/Insufficient stock/i);
+        // The customer hears what to do next, never the internal error string.
+        expect(failed.message_text).toContain('Ceramic Coffee Mug');
+        expect(failed.message_text).toContain('2');
+        expect(failed.message_text).not.toMatch(/Insufficient stock/i);
         expect(failed.orderCreated).toBeUndefined();
         expect(metadata.orderDraft.stage).toBe('AWAITING_CONFIRMATION');
     });
@@ -280,6 +292,189 @@ describe('chat order flow', () => {
         const items: any[] = (checkoutService.createOrderWithStock as any).mock.calls[0][0].items;
         expect(items).toHaveLength(1);
         expect(items[0].quantity).toBe(1);
+    });
+
+    it.each([
+        'ji vai, order ta confirm kore den',
+        'confirm kore den',
+        'ha confirm',
+        'order ta kore den',
+        'ok',
+        'ঠিক আছে',
+        'thik ache',
+    ])('accepts "%s" as the confirmation of a pending summary', async (confirmation) => {
+        const createOrder = vi.spyOn(checkoutService, 'createOrderWithStock').mockResolvedValue({ _id: 'o1', orderNumber: 'ORD-CONF', total: 630 } as never);
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        await say('01712345678');
+        await say('Dhanmondi, Dhaka');
+        const placed = await say(confirmation);
+
+        expect(createOrder).toHaveBeenCalledTimes(1);
+        // The item must not be re-added by the confirmation itself.
+        expect(createOrder.mock.calls[0][0].items).toHaveLength(1);
+        expect(createOrder.mock.calls[0][0].items[0].quantity).toBe(1);
+        expect(placed.message_text).toContain('ORD-CONF');
+    });
+
+    it.each([
+        'vai ekhon lagbe na, cancel kore den',
+        'order ta cancel kore den',
+        'cancel korte chai',
+    ])('cancels on "%s" instead of asking for the address again', async (cancellation) => {
+        const createOrder = vi.spyOn(checkoutService, 'createOrderWithStock');
+        await say('ei ta nibo');
+        const cancelled = await say(cancellation);
+        expect(metadata.orderDraft).toBeUndefined();
+        expect(cancelled.message_text).toMatch(/cancel|বাতিল/i);
+        expect(createOrder).not.toHaveBeenCalled();
+    });
+
+    it('answers a question at the name step instead of saving it as the name', async () => {
+        await say('ei ta nibo');
+        const asked = await say('bikash e payment hobe?');
+        expect(metadata.orderDraft.fullName).toBeUndefined();
+        expect(metadata.orderDraft.stage).toBe('AWAITING_NAME');
+        // The turn falls through to the rest of the assistant, which answers and re-asks.
+        expect(asked?.intent === 'ORDER_FLOW' ? asked.message_text : '').not.toMatch(/bikash e payment hobe/i);
+    });
+
+    it('does not accept a question as the delivery district', async () => {
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        await say('01712345678');
+        await say('Banglabazar er pashe, 3 tola');   // address with no district
+        expect(metadata.orderDraft.stage).toBe('AWAITING_CITY');
+        await say('delivery charge koto?');
+        expect(metadata.orderDraft.city).toBeUndefined();
+        expect(metadata.orderDraft.stage).toBe('AWAITING_CITY');
+    });
+
+    it('keeps asking rather than shipping to "amar age ordered address e pathan" as a literal address', async () => {
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        await say('01712345678');
+        const reused = await say('amar age ordered address e pathan');
+        expect(metadata.orderDraft.addressLine1).toBeUndefined();   // never stored as a literal address
+        expect(reused.message_text).toMatch(/address|ঠিকানা/i);
+    });
+
+    it('reuses the saved address when the customer asks for it', async () => {
+        vi.spyOn(Customer, 'findById').mockReturnValue({
+            lean: () => Promise.resolve({
+                _id: customerId, name: 'Web User',
+                addresses: [{ label: 'Delivery', fullName: 'Rafi', phone: '01712345678', addressLine1: 'House 9, Mirpur 10', city: 'Dhaka', zone: 'Mirpur 10', isDefault: true }],
+            }),
+        } as never);
+        await say('ei ta nibo');   // profile has no name, so the flow still asks
+        await say('Rafiul Islam');
+        await say('01812345678');
+        await say('ager address e pathan');
+        expect(metadata.orderDraft.addressLine1).toBe('House 9, Mirpur 10');
+        expect(metadata.orderDraft.city).toBe('Dhaka');
+        expect(metadata.orderDraft.stage).toBe('AWAITING_CONFIRMATION');
+    });
+
+    it('answers a question with digits at the phone step instead of calling it an invalid number', async () => {
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        const asked = await say('2 ta nile koto porbe?');
+        expect(asked?.intent === 'ORDER_FLOW' ? asked.message_text : '').not.toMatch(/valid mobile|01XXXXXXXXX/i);
+        expect(metadata.orderDraft.phone).toBeUndefined();
+    });
+
+    it('recaps the order when asked for the total instead of searching the catalog', async () => {
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        await say('01712345678');
+        await say('Dhanmondi, Dhaka');
+        const recap = await say('koto holo total');
+        expect(recap.intent).toBe('ORDER_FLOW');
+        expect(recap.message_text).toContain('৳630');
+    });
+
+    it('corrects a wrong phone number at the confirmation step', async () => {
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        await say('01712345678');
+        await say('Dhanmondi, Dhaka');
+        const corrected = await say('vai number ta vul hoise, 01812345678 ta din');
+        expect(metadata.orderDraft.phone).toBe('01812345678');
+        expect(corrected.message_text).toContain('01812345678');
+    });
+
+    it('raises the quantity when the customer asks for one more, in words', async () => {
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        await say('01712345678');
+        await say('Dhanmondi, Dhaka');
+        const raised = await say('aro ekta baray den');
+        expect(metadata.orderDraft.items[0].quantity).toBe(2);
+        expect(raised.message_text).toContain('x2');
+    });
+
+    it('removes an item when the customer drops it, and ends the draft if it was the only one', async () => {
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        const removed = await say('mug ta bad din');
+        expect(metadata.orderDraft).toBeUndefined();
+        expect(removed.message_text).toMatch(/bad diye dilam|taken .* out|বাদ/i);
+    });
+
+    it('starts checkout on the everyday buy signal with a spelled-out quantity', async () => {
+        const started = await say('eta amar duita lagbe');
+        expect(started.intent).toBe('ORDER_FLOW');
+        expect(metadata.orderDraft.items[0].quantity).toBe(2);
+    });
+
+    it('recovers a submission that crashed instead of saying "one moment" for hours', async () => {
+        vi.spyOn(checkoutService, 'createOrderWithStock').mockResolvedValue({ _id: 'o1', orderNumber: 'ORD-STUCK', total: 630 } as never);
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        await say('01712345678');
+        await say('Dhanmondi, Dhaka');
+        // Simulate a process that died right after claiming the draft.
+        metadata.orderDraft.stage = 'SUBMITTING';
+        metadata.orderDraft.submittingAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        vi.spyOn(Order, 'findOne').mockReturnValue({ select: () => ({ lean: () => Promise.resolve(null) }) } as never);
+
+        const recovered = await say('vai ki holo?');
+        expect(recovered.message_text).toMatch(/confirm/i);
+        expect(metadata.orderDraft.stage).toBe('AWAITING_CONFIRMATION');
+    });
+
+    it('tells the customer the order went through when a crashed submit had already committed it', async () => {
+        vi.spyOn(checkoutService, 'createOrderWithStock').mockResolvedValue({ _id: 'o1', orderNumber: 'ORD-DONE', total: 630 } as never);
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        await say('01712345678');
+        await say('Dhanmondi, Dhaka');
+        metadata.orderDraft.stage = 'SUBMITTING';
+        metadata.orderDraft.submittingAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        vi.spyOn(Order, 'findOne').mockReturnValue({
+            select: () => ({ lean: () => Promise.resolve({ _id: 'o1', orderNumber: 'ORD-DONE', total: 630 }) }),
+        } as never);
+
+        const recovered = await say('order ta hoise?');
+        expect(recovered.message_text).toContain('ORD-DONE');
+        expect(metadata.orderDraft).toBeUndefined();
+    });
+
+    it('shows a summary first when a bare confirmation arrives with no priced draft', async () => {
+        const createOrder = vi.spyOn(checkoutService, 'createOrderWithStock');
+        // A returning customer whose details we already hold, confirming out of the blue.
+        vi.spyOn(Customer, 'findById').mockReturnValue({
+            lean: () => Promise.resolve({
+                _id: customerId, name: 'Rafiul Islam', phone: '01712345678',
+                addresses: [{ label: 'Delivery', fullName: 'Rafiul Islam', phone: '01712345678', addressLine1: 'Dhanmondi 32', city: 'Dhaka', zone: 'Dhaka', isDefault: true }],
+            }),
+        } as never);
+
+        const reply = await say('confirm kore den');
+        expect(createOrder).not.toHaveBeenCalled();
+        expect(metadata.orderDraft.stage).toBe('AWAITING_CONFIRMATION');
+        expect(reply.message_text).toMatch(/confirm/i);
+        expect(reply.message_text).toContain('৳630');   // the total is shown before anything is placed
     });
 
     it('rehearses the confirmation in the Test AI sandbox without creating an order or moving stock', async () => {
@@ -350,5 +545,24 @@ describe('one-message orders', () => {
         expect(short.phone).toBeUndefined();
         expect(short.phoneRejected).toBe(true);
         expect(short.addressLine1).toBe('Dhaka');
+    });
+});
+
+describe('order input parsing, extended', () => {
+    it('reads spelled-out quantities and increments', () => {
+        expect(quantityFrom('duita nibo')).toBe(2);
+        expect(quantityFrom('tinta den')).toBe(3);
+        expect(quantityFrom('একটা লাগবে')).toBe(1);
+        expect(quantityIncrementFrom('aro ekta baray den')).toBe(1);
+        expect(quantityIncrementFrom('aro 2 ta den')).toBe(2);
+        expect(quantityIncrementFrom('2 ta nibo')).toBeUndefined();
+    });
+
+    it('maps Dhaka sub-areas to the district that decides the delivery fee', () => {
+        expect(cityFrom('Mirpur 10')).toBe('Dhaka');
+        expect(areaFrom('Mirpur 10')).toMatchObject({ city: 'Dhaka', zone: 'Mirpur 10' });
+        expect(areaFrom('House 9, Dhanmondi 27')).toMatchObject({ city: 'Dhaka' });
+        expect(cityFrom('Agrabad')).toBe('Chattogram');
+        expect(areaFrom('kothao na')).toBeUndefined();
     });
 });

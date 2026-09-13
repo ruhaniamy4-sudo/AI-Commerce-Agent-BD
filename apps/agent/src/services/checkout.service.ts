@@ -38,7 +38,18 @@ export interface CreateOrderWithStockParams {
     idempotencyKey?: string;
 }
 
-export class OrderCreationError extends Error {}
+/** Codes the chat layer maps to customer-facing wording; the message stays internal. */
+export type OrderCreationCode =
+    | 'NO_ITEMS' | 'INVALID_QUANTITY' | 'PRODUCT_NOT_FOUND' | 'PRODUCT_UNAVAILABLE'
+    | 'VARIANT_NOT_FOUND' | 'VARIANT_UNAVAILABLE' | 'INSUFFICIENT_STOCK'
+    | 'CUSTOMER_NOT_FOUND' | 'INVALID_TOTALS' | 'TRANSACTION_INCOMPLETE';
+
+export class OrderCreationError extends Error {
+    constructor(message: string, public code: OrderCreationCode = 'TRANSACTION_INCOMPLETE', public product?: string, public available?: number) {
+        super(message);
+        this.name = 'OrderCreationError';
+    }
+}
 
 export const createOrderWithStock = async (params: CreateOrderWithStockParams) => {
     assertTenantBusinessId(params.businessId, 'orders.createWithStock');
@@ -46,12 +57,12 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
         const existing = await Order.findOne({ idempotencyKey: params.idempotencyKey });
         if (existing) return existing;
     }
-    if (!params.items?.length) throw new OrderCreationError('At least one order item is required');
+    if (!params.items?.length) throw new OrderCreationError('At least one order item is required', 'NO_ITEMS');
 
     const deliveryFee = Number(params.deliveryFee || 0);
     const discount = Number(params.discount || 0);
     if (deliveryFee < 0 || discount < 0) {
-        throw new OrderCreationError('Delivery fee and discount cannot be negative');
+        throw new OrderCreationError('Delivery fee and discount cannot be negative', 'INVALID_TOTALS');
     }
 
     const session = await mongoose.startSession();
@@ -60,7 +71,7 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
     try {
         await session.withTransaction(async () => {
             const customer = await Customer.findById(params.customerId).session(session);
-            if (!customer) throw new OrderCreationError('Customer not found');
+            if (!customer) throw new OrderCreationError('Customer not found', 'CUSTOMER_NOT_FOUND');
 
             const normalizedItems: Array<Record<string, unknown>> = [];
             let subtotal = 0;
@@ -68,15 +79,15 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
             for (const item of params.items) {
                 const quantity = Number(item.quantity);
                 if (!Number.isInteger(quantity) || quantity < 1) {
-                    throw new OrderCreationError('Item quantity must be a positive integer');
+                    throw new OrderCreationError('Item quantity must be a positive integer', 'INVALID_QUANTITY');
                 }
 
                 const selector = item.productId
                     ? { _id: item.productId }
                     : { 'variants.sku': item.sku };
                 const product = await Product.findOne(selector).session(session);
-                if (!product) throw new OrderCreationError('Product not found');
-                if(product.isActive===false || product.aiSellingStatus==='disabled') throw new OrderCreationError('Sorry, this product is currently unavailable. I can help you find other available products.');
+                if (!product) throw new OrderCreationError('Product not found', 'PRODUCT_NOT_FOUND');
+                if(product.isActive===false || product.aiSellingStatus==='disabled') throw new OrderCreationError('Product is not sellable', 'PRODUCT_UNAVAILABLE', product.name);
 
                 const variant = item.variantId
                     ? product.variants.find((candidate) => candidate.variantId === item.variantId)
@@ -84,8 +95,8 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
                       ? product.variants.find((candidate) => candidate.sku === item.sku)
                       : undefined;
 
-                if((item.variantId || item.sku) && product.variants.length && !variant) throw new OrderCreationError('Product variant not found');
-                if(variant?.isActive===false) throw new OrderCreationError('Product variant is unavailable');
+                if((item.variantId || item.sku) && product.variants.length && !variant) throw new OrderCreationError('Product variant not found', 'VARIANT_NOT_FOUND', product.name);
+                if(variant?.isActive===false) throw new OrderCreationError('Product variant is unavailable', 'VARIANT_UNAVAILABLE', product.name);
                 // The customer is quoted salePrice ?? variant ?? base everywhere it is
                 // shown, so the charged price must resolve identically.
                 const unitPrice = product.salePrice ?? variant?.price ?? product.basePrice;
@@ -113,7 +124,7 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
                       );
 
                 if (!stockUpdate) {
-                    throw new OrderCreationError(`Insufficient stock for ${product.name}`);
+                    throw new OrderCreationError(`Insufficient stock for ${product.name}`, 'INSUFFICIENT_STOCK', product.name, typeof (variant ? variant.stock : product.stock) === 'number' ? Math.max(0, Number(variant ? variant.stock : product.stock)) : undefined);
                 }
 
                 normalizedItems.push({
@@ -130,7 +141,7 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
             }
 
             if (discount > subtotal + deliveryFee) {
-                throw new OrderCreationError('Discount cannot exceed the order value');
+                throw new OrderCreationError('Discount cannot exceed the order value', 'INVALID_TOTALS');
             }
 
             createdOrder = new Order({
@@ -165,7 +176,7 @@ export const createOrderWithStock = async (params: CreateOrderWithStockParams) =
         await session.endSession();
     }
 
-    if (!createdOrder) throw new OrderCreationError('Order transaction did not complete');
+    if (!createdOrder) throw new OrderCreationError('Order transaction did not complete', 'TRANSACTION_INCOMPLETE');
     return createdOrder;
 };
 

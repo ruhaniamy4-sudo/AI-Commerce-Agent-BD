@@ -130,11 +130,14 @@ async function main() {
             assert.equal(await Order.countDocuments({}), 2);
 
             // ── A redelivered inbound event must not sell the item twice ─────
+            // The key belongs to the basket, so a retry of the same confirmation
+            // returns the same order even when the inbound event id differs.
+            assert.ok(String(order.idempotencyKey).startsWith('draft:'), `the order key must be draft-scoped, got ${order.idempotencyKey}`);
             const replay = await createOrderWithStock({
                 businessId, customerId: customer._id, psid: 'web-validation',
                 items: [{ productId: product._id, quantity: 1 }],
                 shippingAddress: { ...order.shippingAddress },
-                deliveryFee: 80, idempotencyKey: 'evt-confirm',
+                deliveryFee: 80, idempotencyKey: order.idempotencyKey,
             });
             assert.equal(String(replay._id), String(order._id), 'the same event id must return the same order');
             assert.equal(await Order.countDocuments({}), 2, 'a replay must not create another order');

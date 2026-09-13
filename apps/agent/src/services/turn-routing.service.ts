@@ -54,7 +54,7 @@ export function classifyLightweightIntent(text: string): LightweightIntent {
     if (/\b(?:picture|photo|image|pic)\b|ছবি/i.test(text)) return 'PRODUCT_IMAGE';
     if (/\b(?:compare|better|best|versus|vs)\b|কোনটা ভালো|konta better/i.test(text)) return 'PRODUCT_COMPARE';
     if (isCatalogBrowseQuery(text)) return 'CATALOG_BROWSE';
-    if (/\b(?:delivery|shipping)\b.{0,20}\b(?:charge|cost|fee|koto)\b|\b(?:charge|cost|fee)\b.{0,20}\b(?:delivery|shipping)\b|\bdhaka\b.{0,20}\bdelivery\b|\bdelivery\b.{0,20}\bdhaka\b|\bcod\b|cash on delivery|payment method|\b(?:support|contact|phone|mobile|whatsapp)\s*(?:number|no\b)|\b(?:address|location)\b|opening hour|working hour|ডেলিভারি(?:\s|.*)(?:চার্জ|খরচ|কত)|ঠিকানা|নাম্বার/i.test(text)) return 'BUSINESS_FACT';
+    if (/\b(?:delivery|shipping)\b.{0,20}\b(?:charge|cost|fee|koto|kotodin|koydin|somoy|time)\b|\b(?:charge|cost|fee)\b.{0,20}\b(?:delivery|shipping)\b|\bdhaka\b.{0,20}\bdelivery\b|\bdelivery\b.{0,20}\bdhaka\b|\bcod\b|cash on delivery|payment method|\b(?:bkash|bikash|nagad|rocket|upay|card|advance)\b|\b(?:support|contact|phone|mobile|whatsapp)\s*(?:number|no\b)|\b(?:address|location)\b|opening hour|working hour|ডেলিভারি(?:\s|.*)(?:চার্জ|খরচ|কত|কতদিন|সময়)|বিকাশ|নগদ|রকেট|ঠিকানা|নাম্বার/i.test(text)) return 'BUSINESS_FACT';
     if (/\b(?:price|cost|dam|fee|rate|koto)\b|দাম|ফি|কত/i.test(text)) return 'PRODUCT_PRICE';
     if (/\b(?:black|white|blue|red|green|size|color|colour)\b|কালো|সাদা|নীল|লাল/i.test(text)) return 'PRODUCT_VARIANT';
     if (/\b(?:offer|discount|sale|price drop)\b|অফার|ছাড়/i.test(text)) return 'GENERAL_CONVERSATION';

@@ -56,7 +56,11 @@ describe('token optimized routing', () => {
     });
 
     it('keeps the static system prompt compact', () => {
-        expect(Math.ceil(SYSTEM_PROMPT.length / 4)).toBeLessThan(400);
+        // The prompt is paid on every LLM turn. The objection rules earned their
+        // ~45 tokens by keeping the model from inventing discounts and delivery
+        // promises, but the ceiling stays tight.
+        expect(Math.ceil(SYSTEM_PROMPT.length / 4)).toBeLessThan(430);
+        expect(SYSTEM_PROMPT).toMatch(/OBJECTIONS/);
         expect(SYSTEM_PROMPT).toMatch(/Name, CODE, price/);      // messenger-ready plain text
         expect(SYSTEM_PROMPT).toMatch(/courteous/i);              // professional salesperson voice
         expect(SYSTEM_PROMPT).not.toContain('EXAMPLE BEHAVIORS');

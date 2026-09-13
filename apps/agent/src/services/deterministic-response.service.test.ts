@@ -102,15 +102,23 @@ describe('zero-LLM canonical fast paths', () => {
             sort: () => ({ select: () => ({ lean: () => Promise.resolve({ orderNumber: 'ORD-ABC123', status: 'confirmed', courier: { status: 'in_transit', trackingCode: 'TRACK123' } }) }) }),
         } as never);
         const result: any = await tenant(() => getDeterministicResponse(businessId, 'amar parcel koi?', { psid: 'customer-1' }));
-        expect(result.message_text).toBe('Order #ORD-ABC123 is currently in transit. Tracking code: TRACK123.');
+        // Answered in the customer's language, with the tracking code and a next
+        // step — and never naming the merchant's courier vendor.
+        expect(result.message_text).toContain('ORD-ABC123');
+        expect(result.message_text).toContain('TRACK123');
+        expect(result.message_text).toMatch(/pothe ache|in transit|পথে আছে/i);
+        expect(result.message_text).not.toMatch(/steadfast/i);
         expect(result.message_text).not.toMatch(/ETA|arrive|tomorrow/i);
     });
 
     it('keeps verified offer details in the zero-LLM response', async () => {
         const result: any = await tenant(() => getDeterministicResponse(businessId, 'Kurti offer ache?'));
-        expect(result.message_text).toContain('Kurti collection');
-        expect(result.message_text).toContain('up to 30% discount');
-        expect(result.message_text).toContain('catalog price ও stock');
+        expect(result.message_text).toContain('Kurti');
+        // The real claim and the live-price caveat survive; the wording is now the
+        // customer's own language.
+        expect(result.message_text).toContain('30%');
+        expect(result.message_text).toMatch(/catalog (?:dam|price)/i);
+        expect(result.message_text).toMatch(/stock/i);
     });
 
     it('answers natural delivery questions from the current business-type confirmed setup fact', async () => {

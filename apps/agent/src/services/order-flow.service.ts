@@ -5,8 +5,9 @@ import { Customer } from '../models/Customer';
 import { normalizeBangladeshPhone } from '../courier/bangladesh-phone';
 import { assertTenantBusinessId } from '../tenancy/context';
 import { createOrderWithStock, OrderCreationError } from './checkout.service';
-import { card, CompactProductCard, money, productCode, say } from './product-card';
-import { LightweightIntent } from './turn-routing.service';
+import { Order } from '../models/Order';
+import { card, CompactProductCard, money, productCode, requestedSku, say } from './product-card';
+import { classifyLightweightIntent, LightweightIntent, parseSearchTerms } from './turn-routing.service';
 
 /**
  * Deterministic chat checkout — zero LLM calls.
@@ -43,6 +44,10 @@ export interface OrderDraftItem {
 
 export interface OrderDraft {
     stage: OrderDraftStage;
+    /** Stable idempotency key for this basket: a retry must return the same order, never a second one. */
+    orderKey?: string;
+    /** When the draft was claimed for submission, so a crashed submit can be recovered. */
+    submittingAt?: string;
     /** Pinned at the first order turn so a one-word answer like a phone number cannot flip the reply language mid-checkout. */
     language?: string;
     items: OrderDraftItem[];
@@ -82,17 +87,42 @@ export interface OrderTurnContext {
 const DRAFT_TTL_MINUTES = 180;
 const MAX_QUANTITY = 20;
 
-const ORDER_INTENT = /\b(?:nibo|nebo|nib|nite chai|nite chachchi|kinbo|kinte chai|order korbo|order korte chai|order korlam|order dibo|order debo|place (?:an )?order|buy (?:it|this|now)|checkout)\b|নিব|নেব|কিনব|কিনতে চাই|অর্ডার\s*(?:করব|করতে|দিব|দেব|করলাম)/i;
-const CONFIRM_WORDS = /^(?:confirm(?:ed)?|confirm\s*(?:koro|korun|kore\s*din)|ha|haa|hae|hyan|hn|ji|jee|jii|yes|yep|ok|okay|acha|thik\s*ache|thik|kore\s*din|kore\s*dao|order\s*(?:koro|korun|confirm|kore\s*din))[\s!.।]*$/i;
-// "Okay confirm kore den. Name: ... Phone: ... address: ..." is a complete order
-// instruction, so it must reach checkout even before a draft exists — anywhere in
-// the sentence, unlike CONFIRM_WORDS which answers a pending summary.
-const CONFIRM_ORDER_PHRASE = /\b(?:confirm|konfirm)\s*(?:ta|ti)?\s*(?:kore|kre|kora)?\s*(?:den|din|dao|deo|dio|koro|korun|kori|kore\s*din|felun|fela)?\b|\border\s*(?:ta|ti)?\s*(?:confirm|kore\s*(?:den|din|dao)|koro|korun|den|din|dao|nin|niye\s*nin)\b|কনফার্ম\s*(?:করে)?\s*(?:দেন|দিন|দাও|করুন)?|অর্ডার\s*(?:টা)?\s*(?:কনফার্ম|করে\s*দিন|করুন|দিন)/i;
-const CANCEL_WORDS = /^(?:cancel|cancel\s*(?:koro|korun|kore\s*din)|bad\s*(?:dao|din)|thak|lagbe\s*na|na|no|nah|বাতিল|লাগবে\s*না|না|থাক)[\s!.।]*$/i;
-const ADDRESS_CHANGE = /\b(?:address|thikana)\b.{0,24}\b(?:change|bodla|bodlate|onno|another|different|update|vul|wrong)\b|\b(?:onno|another|new)\s+(?:address|thikana)\b|ঠিকানা.{0,20}(?:বদল|পরিবর্তন|ভুল|অন্য)/i;
+// Buying is said a dozen ways. "lagbe", "dorkar" and "chai" are the everyday
+// ones, and they arrive with prefixes ("vai eta amar 2 ta lagbe"), so nothing here
+// is anchored.
+// An unmistakable instruction to buy: checkout starts on these alone.
+const ORDER_INTENT = /\b(?:nibo|nebo|nib|nite chai|nite chachchi|kinbo|kinte chai|kinte chachchi|nilam|rekhe den|book korbo|book kore rakhen|pathai den|pathiye den|pathaye den|dia den|diye den|de den|packet koren|parcel koren|order korbo|order korte chai|order korlam|order dibo|order debo|place (?:an )?order|buy (?:it|this|now)|checkout)\b|নিব|নেব|কিনব|কিনতে চাই|পাঠিয়ে\s*(?:দিন|দেন)|অর্ডার\s*(?:করব|করতে|দিব|দেব|করলাম)/i;
+// "lagbe", "dorkar", "chai" mean "I want one" — but also "amar budget 3000 er
+// moddhe kichu lagbe", which is browsing. They start checkout only when the
+// customer also names the product or says how many.
+const SOFT_ORDER_INTENT = /\b(?:lagbe|lagbo|lagto|dorkar|chai|chachchi|rakhen)\b|লাগবে|দরকার|চাই/i;
+// A question asks about buying; it does not instruct us to buy.
+const ASKS_RATHER_THAN_ORDERS = /\?\s*$|\b(?:pabo|hobe|jabe|parbo|ache|dibe|dibn|kobe|koto|kotodin)\s*(?:to|ki|kina|na)?\s*\??$|\b(?:pabo|hobe|jabe|parbo)\s+(?:to|ki|kina)\b/i;
+// A bare affirmative answering the summary. Kept anchored: "ha" inside a sentence
+// is not a confirmation.
+const CONFIRM_WORDS = /^(?:confirm(?:ed)?|ha|haa|hae|hyan|hn|hmm+|ji|jee|jii|yes|yep|ok(?:ay)?|acha|accha|thik\s*ache|thik|done|hoye\s*jak|হ্যাঁ|হ্যা|জি|আচ্ছা|ঠিক\s*আছে|ওকে)[\s!.।,]*$/i;
+// "ji vai, order ta confirm kore den" — the confirmation verb anywhere in the
+// sentence, in every spelling Bangladeshi customers type.
+const CONFIRM_ORDER_PHRASE = /\b(?:confirm|konfirm|cnfrm|conform)\b|কনফার্ম|\border\s*(?:ta|ti)?\s*(?:kore\s*)?(?:den|din|dao|deo|dio|koro|korun|felun|nin|nen)\b|\b(?:kore|kre)\s*(?:den|din|dao|deo|dio|felun)\b|অর্ডার\s*(?:টা)?\s*(?:করে\s*)?(?:দিন|দেন|দাও|করুন|ফেলুন)/i;
+// An explicit cancel verb counts wherever it appears; bare negatives only when
+// the whole message is the negative.
+const CANCEL_EXPLICIT = /\b(?:cancel|cancle|batil)\b|বাতিল|\blagbe\s*na\b|\bdorkar\s*nei\b|লাগবে\s*না/i;
+const CANCEL_WORDS = /^(?:cancel|na|no|nah|nai|thak|thak\s*lagbe\s*na|বাতিল|না|থাক|লাগবে\s*না)[\s!.।]*$/i;
+const ADDRESS_CHANGE = /\b(?:address|thikana)\b.{0,24}\b(?:change|bodla|bodlate|onno|another|different|update|vul|bhul|wrong)\b|\b(?:onno|another|new)\s+(?:address|thikana)\b|ঠিকানা.{0,20}(?:বদল|পরিবর্তন|ভুল|অন্য)/i;
+const NAME_CHANGE = /\b(?:nam|naam|name)\b.{0,20}\b(?:vul|bhul|wrong|change|bodla|bodlate|thik\s*na)\b|নাম.{0,16}(?:ভুল|বদল|পরিবর্তন)/i;
+/** "amar ager address e pathan" — reuse what the customer already gave us once. */
+const REUSE_ADDRESS = /\b(?:age|ager|ageri|agery|previous|last|same|purono)\s*(?:er)?\s*(?:order(?:ed)?)?\s*(?:address|thikana|jaygay)|আগের\s*(?:ঠিকানা|অর্ডারের)/i;
+/** "koto holo total", "shob miliye koto" — a recap, not a new product search. */
+const TOTAL_QUERY = /\b(?:total|mot|shob\s*miliye|sob\s*miliye|koto\s*(?:holo|holo|porlo|porbe|hoise|dite\s*hobe)|koto\s*dibo)\b|মোট\s*কত|সব\s*মিলিয়ে|কত\s*(?:হলো|পড়ল|দিতে\s*হবে)/i;
+/** "mug ta bad din", "oita lagbe na" — drop an item from the basket. */
+const REMOVE_ITEM = /\b(?:bad|baad)\s*(?:dao|din|den|dio|de)\b|\b(?:oi|ei|eta|oita|eita)\s*(?:ta|ti)?\s*(?:lagbe\s*na|bad)\b|\bremove\b|বাদ\s*(?:দিন|দাও)/i;
+const QUESTION_WORDS = /\?|\b(?:koto|kemon|kivabe|kobe|ki|kothay|how|what|when|where|why|which|price|dam|stock|delivery|charge|discount|warranty|return|payment|bikash|bkash|nagad|rocket|cod)\b|কত|কেমন|কীভাবে|কবে|কোথায়|দাম|ছাড়|বিকাশ|নগদ/i;
+/** A phone-shaped run of digits, so a question containing "2 ta" is not read as a number. */
 // Greetings and flow keywords are never somebody's name.
 const NAME_NOISE = /^(?:hi|hey|hello|yo|salam|assalam|walaikum|ok|okay|acha|hmm+|yes|no|na|ji|thanks?|thank you|start|order|confirm)/i;
-const QUESTION_WORDS = /\?|\b(?:koto|kemon|kivabe|kobe|ki|kothay|how|what|when|where|why|which|price|dam|stock|delivery|charge|discount|warranty|return)\b|কত|কেমন|কীভাবে|কবে|কোথায়|দাম|ছাড়/i;
+/** "3000 er moddhe", "budget 5000", "under 1500" — framing a search, not placing an order. */
+const BUDGET_PHRASE = /\b(?:budget|under|within|max(?:imum)?)\b|\b\d{2,7}\s*(?:taka|tk|৳)?\s*(?:er|র)?\s*(?:moddhe|modhye|vitore|bhitore)\b|মধ্যে|ভিতরে|বাজেট/i;
+const PHONE_SHAPED = /(?<!\d)(?:\+?88)?0?1\d{6,9}(?!\d)/;
 
 const DHAKA_CITY = /\b(?:dhaka|dhk)\b|ঢাকা/i;
 const KNOWN_CITIES: Array<[RegExp, string]> = [
@@ -127,11 +157,32 @@ function orderFlowQueryable() {
     return mongoose.connection.readyState === 1 || Boolean((Conversation.updateOne as any)?.mock);
 }
 
+const WORD_NUMBERS: Record<string, number> = {
+    ek: 1, ekta: 1, ekti: 1, একটা: 1, একটি: 1, এক: 1,
+    dui: 2, duita: 2, duto: 2, duita_: 2, দুই: 2, দুইটা: 2, দুটো: 2,
+    tin: 3, tinta: 3, তিন: 3, তিনটা: 3,
+    char: 4, charta: 4, চার: 4, চারটা: 4,
+    panch: 5, pach: 5, panchta: 5, পাঁচ: 5, পাঁচটা: 5,
+    choy: 6, ছয়: 6, sat: 7, সাত: 7, at: 8, আট: 8, noy: 9, নয়: 9, dosh: 10, দশ: 10,
+};
+
+/** "aro ekta", "arekta" — one more than whatever is already in the basket. */
+export function quantityIncrementFrom(text: string) {
+    if (!/\b(?:aro|are|arek|ar)\s*(?:ek|ekta|ekti|akta)?\b|আরেকটা|আরও\s*একটা/i.test(text)) return undefined;
+    const counted = text.match(/\b(?:aro|are)\s*(\d{1,2})\s*(?:ta|টা|pcs?)\b/i);
+    if (counted) return Number(counted[1]);
+    const word = text.match(/\b(?:aro|are)\s*([a-z]+)\s*(?:ta|টা)?\b/i)?.[1]?.toLowerCase();
+    return (word && WORD_NUMBERS[word]) || 1;
+}
+
 export function quantityFrom(text: string) {
     // The digits must stand alone: a product code such as "CER-CAF6 ta nibo" ends
     // in a digit and was being read as a quantity of six.
     const counted = text.match(/(?<![\w-])(\d{1,2})\s*(?:ta|টা|টি|pc|pcs|piece|pieces|copy|set|jon)\b/i);
     const bare = counted ? undefined : text.trim().match(/^(\d{1,2})$/);
+    // "duita nibo", "tinta den" — spelled-out counts are just as common as digits.
+    const spelled = counted || bare ? undefined : text.toLowerCase().match(/\b(ekta|ekti|duita|duto|dui|tinta|tin|charta|char|panchta|panch|pach|choy|sat|dosh)\b|(একটা|একটি|দুইটা|দুটো|দুই|তিনটা|তিন|চারটা|চার|পাঁচটা|পাঁচ)/);
+    if (spelled) return Math.min(WORD_NUMBERS[spelled[1] || spelled[2]] || 1, MAX_QUANTITY);
     const value = Number(counted?.[1] ?? bare?.[1]);
     if (!Number.isInteger(value) || value < 1) return undefined;
     return Math.min(value, MAX_QUANTITY);
@@ -148,8 +199,30 @@ export function phoneFrom(text: string) {
     }
 }
 
+/**
+ * Sub-areas a customer names instead of the district. "Mirpur 10" is Dhaka, and
+ * it decides the delivery fee, so it cannot be left unrecognised.
+ */
+const SUB_AREAS: Array<[RegExp, string]> = [
+    [/\b(?:mirpur|mohammadpur|dhanmondi|gulshan|banani|uttara|badda|rampura|mugda|khilgaon|bashundhara|banasree|motijheel|paltan|farmgate|mohakhali|tejgaon|shyamoli|kalabagan|malibagh|jatrabari|demra|keraniganj|savar|ashulia|tongi|azimpur|lalbagh|old dhaka|puran dhaka|shantinagar|bailey road|niketan|nikunja|khilkhet|kuril|baridhara|wari|gendaria|sutrapur|kamrangirchar|hazaribagh|adabor|shewrapara|kazipara|pallabi|rupnagar|agargaon|shyamoli)\b|মিরপুর|মোহাম্মদপুর|ধানমন্ডি|গুলশান|বনানী|উত্তরা|বাড্ডা|রামপুরা|যাত্রাবাড়ী|খিলগাঁও|বসুন্ধরা|মতিঝিল|ফার্মগেট|মহাখালী|তেজগাঁও|শ্যামলী|পুরান\s*ঢাকা/i, 'Dhaka'],
+    [/\b(?:agrabad|halishahar|pahartali|nasirabad|khulshi|chawkbazar ctg|patenga|bayezid)\b|আগ্রাবাদ|হালিশহর|পতেঙ্গা/i, 'Chattogram'],
+];
+
+/** The district a message names, directly or through a sub-area. */
 export function cityFrom(text: string) {
-    return KNOWN_CITIES.find(([pattern]) => pattern.test(text))?.[1];
+    return KNOWN_CITIES.find(([pattern]) => pattern.test(text))?.[1]
+        || SUB_AREAS.find(([pattern]) => pattern.test(text))?.[1];
+}
+
+/** The district plus the sub-area worth keeping on the shipping label. */
+export function areaFrom(text: string) {
+    const city = cityFrom(text);
+    if (!city) return undefined;
+    const area = SUB_AREAS.find(([pattern]) => pattern.test(text));
+    if (!area) return { city, zone: city };
+    const matched = text.match(area[0])?.[0] || city;
+    const numbered = text.match(new RegExp(`${matched}\\s*-?\\s*(\\d{1,2})`, 'i'));
+    return { city, zone: numbered ? `${matched} ${numbered[1]}` : matched };
 }
 
 /**
@@ -183,6 +256,10 @@ function plausibleName(value?: string) {
     if (name.length < 2 || name.length > 60) return undefined;
     if (/^(?:web user|facebook user|guest|customer)$/i.test(name)) return undefined;
     if (/\d/.test(name)) return undefined;
+    // A question or a flow keyword is never somebody's name.
+    if (/[?？]/.test(name)) return undefined;
+    if (name.split(/\s+/).length > 5) return undefined;
+    if (/\b(?:payment|delivery|discount|bikash|bkash|nagad|rocket|cod|order|price|dam|stock|charge|koto|kobe|kivabe|ache|hobe)\b/i.test(name)) return undefined;
     return name;
 }
 
@@ -324,6 +401,11 @@ async function summaryResponse(context: OrderTurnContext, draft: OrderDraft): Pr
         bn: 'সব ঠিক থাকলে "confirm" লিখুন, আমি অর্ডারটি করে দিচ্ছি। কিছু বদলাতে চাইলে নির্দ্বিধায় বলুন।',
         banglish: 'Sob thik thakle "confirm" likhun, ami order ta kore dicchi. Kichu bodlate chaile nirdhidhay bolun.',
     });
+    const reassurance = say(context.language, {
+        en: `Cash on delivery - you pay when it reaches you. ${draft.city && DHAKA_CITY.test(draft.city) ? 'Usually 1-2 days inside Dhaka.' : 'Usually 2-4 days outside Dhaka.'}`,
+        bn: `ক্যাশ অন ডেলিভারি—হাতে পেয়ে টাকা দেবেন। ${draft.city && DHAKA_CITY.test(draft.city) ? 'ঢাকায় সাধারণত ১-২ দিন লাগে।' : 'ঢাকার বাইরে সাধারণত ২-৪ দিন লাগে।'}`,
+        banglish: `Cash on delivery - hate peye taka diben. ${draft.city && DHAKA_CITY.test(draft.city) ? 'Dhaka-y sadharonoto 1-2 din lage.' : 'Dhaka-r baire sadharonoto 2-4 din lage.'}`,
+    });
     const message = [
         header,
         itemLines(draft),
@@ -331,6 +413,7 @@ async function summaryResponse(context: OrderTurnContext, draft: OrderDraft): Pr
         `${totalLabel}: ${money(totals.total, currency)} - ${paymentMethod}`,
         `${draft.fullName} - ${draft.phone}`,
         addressLine(draft),
+        reassurance,
         closing,
     ].join('\n');
     return { message_text: message, intent: 'ORDER_FLOW', memory: context.lightweightMemory };
@@ -348,6 +431,11 @@ async function advance(context: OrderTurnContext, draft: OrderDraft): Promise<Or
               ? 'AWAITING_CITY'
               : 'AWAITING_CONFIRMATION';
     draft.stage = next;
+    // Mint the idempotency key once per basket. Using the inbound event id instead
+    // would let a retried confirmation create a second order.
+    if (next === 'AWAITING_CONFIRMATION' && !draft.orderKey) {
+        draft.orderKey = `draft:${context.conversationId}:${Date.now().toString(36)}`;
+    }
     await saveDraft(context.businessId, context.conversationId!, draft);
     if (next === 'AWAITING_CONFIRMATION') {
         // The customer already said "confirm kore den" and nothing is missing, so
@@ -433,8 +521,14 @@ async function addItem(context: OrderTurnContext, existing: OrderDraft | undefin
         quantity,
     };
     const duplicate = draft.items.find((candidate) => candidate.productId === item.productId && candidate.variantId === item.variantId);
-    if (duplicate) duplicate.quantity = Math.min(duplicate.quantity + quantity, available ?? MAX_QUANTITY);
-    else draft.items.push(item);
+    if (duplicate) {
+        // Only an explicit count changes the quantity. Saying "eta nibo" again is
+        // the customer repeating themselves, not ordering a second one.
+        const explicit = quantityFrom(text) !== undefined || quantityIncrementFrom(text) !== undefined;
+        if (explicit) duplicate.quantity = Math.min(duplicate.quantity + quantity, available ?? MAX_QUANTITY);
+    } else {
+        draft.items.push(item);
+    }
 
     const trimmedNotice = quantity < requested
         ? say(context.language, {
@@ -502,21 +596,12 @@ async function startOrAddItem(context: OrderTurnContext, existing?: OrderDraft):
 async function submitOrder(context: OrderTurnContext, draft: OrderDraft): Promise<OrderFlowResponse> {
     const conversationId = context.conversationId!;
     // Claim the draft so two concurrent confirmations cannot both reach checkout.
+    if (!draft.orderKey) draft.orderKey = `draft:${conversationId}:${Date.now().toString(36)}`;
     const claimed = await Conversation.findOneAndUpdate(
         { businessId: context.businessId, conversationId, 'metadata.orderDraft.stage': 'AWAITING_CONFIRMATION' },
-        { $set: { 'metadata.orderDraft.stage': 'SUBMITTING' } },
+        { $set: { 'metadata.orderDraft.stage': 'SUBMITTING', 'metadata.orderDraft.orderKey': draft.orderKey, 'metadata.orderDraft.submittingAt': new Date().toISOString() } },
     ).lean();
-    if (!claimed) {
-        return {
-            message_text: say(context.language, {
-                en: 'Your order is being placed right now — one moment.',
-                bn: 'আপনার অর্ডারটি এই মুহূর্তে প্লেস হচ্ছে—একটু অপেক্ষা করুন।',
-                banglish: 'Apnar order ta ekhon place hocche - ektu opekkha korun.',
-            }),
-            intent: 'ORDER_FLOW',
-            memory: context.lightweightMemory,
-        };
-    }
+    if (!claimed) return submittingResponse(context, draft);
 
     const restore = async () => {
         draft.stage = 'AWAITING_CONFIRMATION';
@@ -589,15 +674,16 @@ async function submitOrder(context: OrderTurnContext, draft: OrderDraft): Promis
             deliveryFee,
             paymentMethod,
             source: context.conversation?.platform === 'facebook' || context.conversation?.platform === 'whatsapp' ? 'messenger' : 'web',
-            idempotencyKey: context.eventIdentifier,
+            idempotencyKey: draft.orderKey,
         });
 
-        // Remember the confirmed delivery details so a repeat customer is not re-interviewed.
+        // The order and the stock movement are committed from here on, so every
+        // remaining step is best-effort: none of it may turn into "order failed".
         await Customer.updateOne(
             { _id: customer._id },
             { $set: { name: draft.fullName, phone: draft.phone, addresses: [{ label: 'Delivery', ...shippingAddress, isDefault: true }] } },
         ).catch(() => undefined);
-        await clearDraft(context.businessId, conversationId);
+        await clearDraft(context.businessId, conversationId).catch(() => undefined);
 
         const currency = draft.items[0].currency;
         const message = [
@@ -611,6 +697,11 @@ async function submitOrder(context: OrderTurnContext, draft: OrderDraft): Promis
             `${say(context.language, { en: 'Total', bn: 'মোট', banglish: 'Total' })}: ${money(order.total, currency)} (${paymentMethod}, ${say(context.language, { en: 'delivery', bn: 'ডেলিভারি', banglish: 'delivery' })} ${money(deliveryFee, currency)})`,
             `${shippingAddress.fullName} - ${shippingAddress.phone}`,
             addressLine(draft),
+            say(context.language, {
+                en: `We will call before delivery, and you pay only when the parcel reaches you.${draft.city && DHAKA_CITY.test(draft.city) ? ' Usually 1-2 days inside Dhaka.' : ' Usually 2-4 days outside Dhaka.'}`,
+                bn: `ডেলিভারির আগে কল করা হবে, আর টাকা দেবেন পার্সেল হাতে পাওয়ার পরেই।${draft.city && DHAKA_CITY.test(draft.city) ? ' ঢাকায় সাধারণত ১-২ দিন লাগে।' : ' ঢাকার বাইরে সাধারণত ২-৪ দিন লাগে।'}`,
+                banglish: `Delivery-r age call kora hobe, ar taka diben parcel hate pawar porei.${draft.city && DHAKA_CITY.test(draft.city) ? ' Dhaka-y sadharonoto 1-2 din lage.' : ' Dhaka-r baire sadharonoto 2-4 din lage.'}`,
+            }),
             say(context.language, {
                 en: 'Please keep this Order ID - quote it any time you want an update. Thank you for shopping with us.',
                 bn: 'Order ID টি রেখে দিন—আপডেট জানতে এটি বললেই হবে। আমাদের সাথে থাকার জন্য ধন্যবাদ।',
@@ -626,25 +717,103 @@ async function submitOrder(context: OrderTurnContext, draft: OrderDraft): Promis
         };
     } catch (error) {
         await restore();
-        const reason = error instanceof OrderCreationError ? error.message : '';
         console.error('Chat order confirmation failed:', error instanceof Error ? error.message : error);
-        const stockProblem = /stock|unavailable|not found/i.test(reason);
         return {
-            message_text: stockProblem
-                ? say(context.language, {
-                    en: `My apologies - I could not place the order: ${reason}. Tell me a smaller quantity or another product and I will arrange it right away.`,
-                    bn: `দুঃখিত, অর্ডারটি করা গেল না: ${reason}। কম quantity বা অন্য product বললে সাথে সাথে করে দিচ্ছি।`,
-                    banglish: `Dukkhito, order ta kora gelo na: ${reason}. Kom quantity ba onno product bolle sathe sathei kore dicchi.`,
-                })
-                : say(context.language, {
-                    en: 'My apologies - I could not complete the order just now. A colleague will confirm it for you shortly.',
-                    bn: 'দুঃখিত, এই মুহূর্তে অর্ডারটি সম্পন্ন করা গেল না। আমাদের একজন প্রতিনিধি শীঘ্রই এটি কনফার্ম করবেন।',
-                    banglish: 'Dukkhito, ei muhurte order ta complete kora gelo na. Amader ekjon representative shiggiri eta confirm korben.',
-                }),
+            message_text: checkoutFailureText(context, error),
             intent: 'ORDER_FLOW',
             memory: context.lightweightMemory,
         };
     }
+}
+
+/** What the customer hears when checkout refuses — grounded, kind, and actionable. */
+function checkoutFailureText(context: OrderTurnContext, error: unknown) {
+    const failure = error instanceof OrderCreationError ? error : undefined;
+    const item = failure?.product ? failure.product : say(context.language, { en: 'that item', bn: 'পণ্যটি', banglish: 'product ta' });
+    switch (failure?.code) {
+        case 'INSUFFICIENT_STOCK':
+            return typeof failure.available === 'number' && failure.available > 0
+                ? say(context.language, {
+                    en: `My apologies - only ${failure.available} of ${item} is left. Shall I place the order for ${failure.available}?`,
+                    bn: `দুঃখিত, ${item} এখন ${failure.available}টি আছে। ${failure.available}টি দিয়ে অর্ডারটি করে দেব?`,
+                    banglish: `Dukkhito, ${item} ekhon ${failure.available} ta ache. ${failure.available} ta diye order ta kore debo?`,
+                })
+                : say(context.language, {
+                    en: `My apologies - ${item} just went out of stock. I can show you the closest alternative right away.`,
+                    bn: `দুঃখিত, ${item} এইমাত্র শেষ হয়ে গেছে। চাইলে কাছাকাছি option এখনই দেখাতে পারি।`,
+                    banglish: `Dukkhito, ${item} eimatro shesh hoye geche. Chaile kachakachi option ekhoni dekhate pari.`,
+                });
+        case 'PRODUCT_UNAVAILABLE':
+        case 'VARIANT_UNAVAILABLE':
+        case 'VARIANT_NOT_FOUND':
+        case 'PRODUCT_NOT_FOUND':
+            return say(context.language, {
+                en: `My apologies - ${item} cannot be ordered right now. Tell me what you need and I will suggest what we do have.`,
+                bn: `দুঃখিত, ${item} এখন অর্ডার নেওয়া যাচ্ছে না। কী দরকার বলুন, যা আছে তা থেকে দেখিয়ে দিচ্ছি।`,
+                banglish: `Dukkhito, ${item} ekhon order neya jacche na. Ki dorkar bolun, ja ache ta theke dekhiye dicchi.`,
+            });
+        case 'INVALID_QUANTITY':
+            return say(context.language, {
+                en: 'Could you tell me how many pieces you need? I will place it right away.',
+                bn: 'কয়টি নেবেন বলবেন প্লিজ? সাথে সাথেই অর্ডারটি করে দিচ্ছি।',
+                banglish: 'Koyta niben bolben please? Sathe sathei order ta kore dicchi.',
+            });
+        default:
+            return say(context.language, {
+                en: 'My apologies - I could not complete the order just now. A colleague will confirm it for you shortly.',
+                bn: 'দুঃখিত, এই মুহূর্তে অর্ডারটি সম্পন্ন করা গেল না। আমাদের একজন প্রতিনিধি শীঘ্রই এটি কনফার্ম করবেন।',
+                banglish: 'Dukkhito, ei muhurte order ta complete kora gelo na. Amader ekjon representative shiggiri eta confirm korben.',
+            });
+    }
+}
+
+const SUBMIT_STUCK_MS = 90_000;
+
+/**
+ * A confirmation already in flight. If the submit crashed between claiming the
+ * draft and finishing, the customer must not be told "one moment" for three
+ * hours — look the order up by its durable key and answer honestly.
+ */
+async function submittingResponse(context: OrderTurnContext, draft: OrderDraft): Promise<OrderFlowResponse> {
+    const startedAt = draft.submittingAt ? new Date(draft.submittingAt).getTime() : 0;
+    const stuck = startedAt > 0 && Date.now() - startedAt > SUBMIT_STUCK_MS;
+    if (stuck && draft.orderKey) {
+        const placed = await Order.findOne({ businessId: context.businessId, idempotencyKey: draft.orderKey }).select('orderNumber total').lean().catch(() => null) as any;
+        if (placed) {
+            await clearDraft(context.businessId, context.conversationId!).catch(() => undefined);
+            return {
+                message_text: say(context.language, {
+                    en: `Good news - your order went through. Order ID: ${placed.orderNumber}.`,
+                    bn: `সুখবর—আপনার অর্ডারটি হয়ে গেছে। Order ID: ${placed.orderNumber}।`,
+                    banglish: `Sukhobor - apnar order ta hoye geche. Order ID: ${placed.orderNumber}.`,
+                }),
+                intent: 'ORDER_FLOW',
+                memory: { ...context.lightweightMemory, lastOrderNumber: placed.orderNumber },
+                orderCreated: { orderId: String(placed._id), orderNumber: placed.orderNumber, total: placed.total },
+            };
+        }
+        draft.stage = 'AWAITING_CONFIRMATION';
+        draft.submittingAt = undefined;
+        await saveDraft(context.businessId, context.conversationId!, draft);
+        return {
+            message_text: say(context.language, {
+                en: 'Sorry for the wait - that attempt did not go through. Reply "confirm" and I will place it now.',
+                bn: 'অপেক্ষা করানোর জন্য দুঃখিত—ওই চেষ্টাটি সম্পন্ন হয়নি। "confirm" লিখুন, এখনই করে দিচ্ছি।',
+                banglish: 'Opekkha koranor jonno dukkhito - oi chestata sompanno hoyni. "confirm" likhun, ekhoni kore dicchi.',
+            }),
+            intent: 'ORDER_FLOW',
+            memory: context.lightweightMemory,
+        };
+    }
+    return {
+        message_text: say(context.language, {
+            en: 'Your order is being placed right now — one moment please.',
+            bn: 'আপনার অর্ডারটি এই মুহূর্তে প্লেস হচ্ছে—একটু অপেক্ষা করুন প্লিজ।',
+            banglish: 'Apnar order ta ekhon place hocche - ektu opekkha korun please.',
+        }),
+        intent: 'ORDER_FLOW',
+        memory: context.lightweightMemory,
+    };
 }
 
 // ── Turn handling ────────────────────────────────────────────────────────────
@@ -652,17 +821,27 @@ async function submitOrder(context: OrderTurnContext, draft: OrderDraft): Promis
 async function continueDraft(context: OrderTurnContext, draft: OrderDraft): Promise<OrderFlowResponse | null> {
     const text = context.text.trim();
     const isQuestion = QUESTION_WORDS.test(text);
+    const reply = (message: string): OrderFlowResponse => ({ message_text: message, intent: 'ORDER_FLOW', memory: context.lightweightMemory });
 
-    if (draft.stage === 'SUBMITTING') {
-        return {
-            message_text: say(context.language, {
-                en: 'Your order is being placed right now — one moment.',
-                bn: 'আপনার অর্ডারটি এই মুহূর্তে প্লেস হচ্ছে—একটু অপেক্ষা করুন।',
-                banglish: 'Apnar order ta ekhon place hocche - ektu opekkha korun.',
-            }),
-            intent: 'ORDER_FLOW',
-            memory: context.lightweightMemory,
-        };
+    if (draft.stage === 'SUBMITTING') return submittingResponse(context, draft);
+
+    // A recap works at any stage: the customer asking "koto holo total" must never
+    // be answered with a catalog search for the word "total".
+    if (TOTAL_QUERY.test(text) && draft.items.length) return summaryResponse(context, draft);
+
+    // Dropping an item is a basket edit, not a new order line.
+    if (REMOVE_ITEM.test(text) && draft.items.length) {
+        const removal = await removeItem(context, draft, text);
+        if (removal) return removal;
+    }
+
+    // A customer mid-checkout who asks to see products is browsing, not answering.
+    // Let the catalog reply; the pending question is re-appended afterwards, so the
+    // order is neither lost nor allowed to swallow the conversation.
+    if (['AWAITING_NAME', 'AWAITING_PHONE', 'AWAITING_ADDRESS', 'AWAITING_CITY'].includes(draft.stage)
+        && ['CATALOG_BROWSE', 'PRODUCT_SEARCH', 'PRODUCT_PRICE', 'PRODUCT_STOCK', 'PRODUCT_IMAGE', 'PRODUCT_COMPARE'].includes(classifyLightweightIntent(text))
+        && parseSearchTerms(text).length > 0) {
+        return null;
     }
 
     // Whatever the customer labelled in this message is taken first, whichever
@@ -672,21 +851,19 @@ async function continueDraft(context: OrderTurnContext, draft: OrderDraft): Prom
     if (inline.fullName && inline.fullName !== draft.fullName) { draft.fullName = inline.fullName; absorbed = true; }
     if (inline.phone && inline.phone !== draft.phone) { draft.phone = inline.phone; absorbed = true; }
     if (inline.addressLine1 && inline.addressLine1 !== draft.addressLine1) {
-        draft.addressLine1 = inline.addressLine1;
-        draft.city = cityFrom(inline.addressLine1) || draft.city;
-        draft.zone = draft.zone || draft.city;
+        applyAddress(draft, inline.addressLine1);
         absorbed = true;
     }
     if (absorbed) {
-        const reply = await advance(context, draft);
+        const advanced = await advance(context, draft);
         if (inline.phoneRejected && !draft.phone) {
-            return { ...reply, message_text: say(context.language, {
+            return { ...advanced, message_text: say(context.language, {
                 en: 'That mobile number does not look complete. ',
                 bn: 'নম্বরটি পুরো মনে হচ্ছে না। ',
                 banglish: 'Number ta puro mone hocche na. ',
-            }) + reply.message_text };
+            }) + advanced.message_text };
         }
-        return reply;
+        return advanced;
     }
 
     if (draft.stage === 'AWAITING_VARIANT') {
@@ -696,15 +873,17 @@ async function continueDraft(context: OrderTurnContext, draft: OrderDraft): Prom
         const { variant, options } = pickVariant(product, text);
         const chosenByNumber = options[Number(text.trim()) - 1];
         const chosen = variant || chosenByNumber;
-        if (!chosen) return isQuestion ? null : { message_text: askVariant(draft, options, context.language), intent: 'ORDER_FLOW', memory: context.lightweightMemory };
+        if (!chosen) return isQuestion ? null : reply(askVariant(draft, options, context.language));
         const quantity = draft.items[0]?.quantity || 1;
         draft.items = [];
         return addItem(context, draft, product, `${chosen.name} ${quantity} ta`);
     }
 
     if (draft.stage === 'AWAITING_NAME') {
-        const name = NAME_NOISE.test(text) || ORDER_INTENT.test(text) ? undefined : cleanName(text);
-        if (!name) return isQuestion ? null : { message_text: askFor('AWAITING_NAME', context.language), intent: 'ORDER_FLOW', memory: context.lightweightMemory };
+        // A question is answered by the rest of the assistant, never stored as a name.
+        if (isQuestion || CONFIRM_ORDER_PHRASE.test(text) || ORDER_INTENT.test(text)) return null;
+        const name = NAME_NOISE.test(text) ? undefined : cleanName(text);
+        if (!name) return reply(askFor('AWAITING_NAME', context.language));
         draft.fullName = name;
         return advance(context, draft);
     }
@@ -712,60 +891,203 @@ async function continueDraft(context: OrderTurnContext, draft: OrderDraft): Prom
     if (draft.stage === 'AWAITING_PHONE') {
         const phone = phoneFrom(text);
         if (!phone) {
-            if (isQuestion && !/\d/.test(text)) return null;
-            return {
-                message_text: say(context.language, {
-                    en: 'Sorry, that does not look like a valid mobile number. Could you send it as 01XXXXXXXXX please?',
-                    bn: 'দুঃখিত, নম্বরটি ঠিক মনে হচ্ছে না। 01XXXXXXXXX ফরম্যাটে দেবেন প্লিজ।',
-                    banglish: 'Dukkhito, number ta thik mone hocche na. 01XXXXXXXXX format e diben please.',
-                }),
-                intent: 'ORDER_FLOW',
-                memory: context.lightweightMemory,
-            };
+            // "2 ta nile koto porbe?" carries digits but was never meant as a number.
+            if (isQuestion && !PHONE_SHAPED.test(text)) return null;
+            return reply(say(context.language, {
+                en: 'Sorry, that does not look like a valid mobile number. Could you send it as 01XXXXXXXXX please?',
+                bn: 'দুঃখিত, নম্বরটি ঠিক মনে হচ্ছে না। 01XXXXXXXXX ফরম্যাটে দেবেন প্লিজ।',
+                banglish: 'Dukkhito, number ta thik mone hocche na. 01XXXXXXXXX format e diben please.',
+            }));
         }
         draft.phone = phone;
         return advance(context, draft);
     }
 
     if (draft.stage === 'AWAITING_ADDRESS') {
+        // "amar ager address e pathan" means the saved one, not a place called that.
+        if (REUSE_ADDRESS.test(text)) {
+            const saved = await savedAddress(context);
+            if (saved) {
+                draft.fullName = draft.fullName || saved.fullName;
+                draft.phone = draft.phone || saved.phone;
+                draft.addressLine1 = saved.addressLine1;
+                draft.city = saved.city;
+                draft.zone = saved.zone || saved.city;
+                return advance(context, draft);
+            }
+            return reply(say(context.language, {
+                en: 'I could not find a saved address for you, so please send the full delivery address.',
+                bn: 'আপনার সেভ করা ঠিকানা পাইনি, তাই পুরো ডেলিভারি ঠিকানাটা লিখে দিন প্লিজ।',
+                banglish: 'Apnar save kora address paini, tai puro delivery address ta likhe din please.',
+            }));
+        }
         const phone = phoneFrom(text);
-        const addressText = (phone ? text.replace(/(?<!\d)(?:\+?88)?0?1[3-9]\d{8}(?!\d)/, ' ') : text).replace(/\s{2,}/g, ' ').replace(/^[\s,.-]+|[\s,.-]+$/g, '');
-        if (addressText.length < 8) {
+        const addressText = (phone ? text.replace(PHONE_SHAPED, ' ') : text).replace(/\s{2,}/g, ' ').replace(/^[\s,.-]+|[\s,.-]+$/g, '');
+        const looksLikeAddress = addressText.length >= 8
+            && (/\d/.test(addressText) || addressText.split(/\s+/).length >= 2 || Boolean(cityFrom(addressText)));
+        if (!looksLikeAddress || (isQuestion && !cityFrom(addressText) && !/\d/.test(addressText))) {
             if (isQuestion) return null;
-            return { message_text: askFor('AWAITING_ADDRESS', context.language), intent: 'ORDER_FLOW', memory: context.lightweightMemory };
+            return reply(askFor('AWAITING_ADDRESS', context.language));
         }
         if (phone && !draft.phone) draft.phone = phone;
-        draft.addressLine1 = addressText.slice(0, 200);
-        draft.city = cityFrom(addressText) || draft.city;
-        draft.zone = draft.zone || draft.city;
+        applyAddress(draft, addressText);
         return advance(context, draft);
     }
 
     if (draft.stage === 'AWAITING_CITY') {
-        const city = cityFrom(text) || (text.length <= 30 && !/\d/.test(text) ? text.replace(/[.।!]+$/, '').trim() : undefined);
-        if (!city) return isQuestion ? null : { message_text: askFor('AWAITING_CITY', context.language), intent: 'ORDER_FLOW', memory: context.lightweightMemory };
+        if (isQuestion && !cityFrom(text)) return null;
+        const area = areaFrom(text);
+        const freeText = text.split(/\s+/).length <= 3 && !NAME_NOISE.test(text) && !/[?]/.test(text)
+            ? text.replace(/[.।!]+$/, '').trim()
+            : undefined;
+        const city = area?.city || (freeText && freeText.length >= 3 ? freeText : undefined);
+        if (!city) return reply(askFor('AWAITING_CITY', context.language));
         draft.city = city;
-        draft.zone = draft.zone || city;
+        draft.zone = area?.zone || draft.zone || city;
         return advance(context, draft);
     }
 
-    // AWAITING_CONFIRMATION
-    if (CONFIRM_WORDS.test(text)) return submitOrder(context, draft);
+    // ── AWAITING_CONFIRMATION ────────────────────────────────────────────────
+    if (CONFIRM_WORDS.test(text) || CONFIRM_ORDER_PHRASE.test(text)) return submitOrder(context, draft);
+
     if (ADDRESS_CHANGE.test(text)) {
         draft.addressLine1 = undefined;
         draft.city = undefined;
         draft.zone = undefined;
         draft.stage = 'AWAITING_ADDRESS';
         await saveDraft(context.businessId, context.conversationId!, draft);
-        return { message_text: askFor('AWAITING_ADDRESS', context.language), intent: 'ORDER_FLOW', memory: context.lightweightMemory };
+        return reply(askFor('AWAITING_ADDRESS', context.language));
     }
-    const quantity = draft.items.length === 1 ? quantityFrom(text) : undefined;
-    if (quantity && !isQuestion) {
-        draft.items[0].quantity = quantity;
+
+    if (NAME_CHANGE.test(text)) {
+        draft.fullName = undefined;
+        draft.stage = 'AWAITING_NAME';
+        await saveDraft(context.businessId, context.conversationId!, draft);
+        return reply(askFor('AWAITING_NAME', context.language));
+    }
+
+    // "number ta vul hoise, 01812345678 ta den" — correct it and re-show the summary.
+    const correctedPhone = phoneFrom(text);
+    if (correctedPhone && correctedPhone !== draft.phone) {
+        draft.phone = correctedPhone;
         await saveDraft(context.businessId, context.conversationId!, draft);
         return summaryResponse(context, draft);
     }
+
+    const correctedCity = !isQuestion ? areaFrom(text) : undefined;
+    if (correctedCity && correctedCity.city !== draft.city) {
+        draft.city = correctedCity.city;
+        draft.zone = correctedCity.zone;
+        await saveDraft(context.businessId, context.conversationId!, draft);
+        return summaryResponse(context, draft);
+    }
+
+    const increment = quantityIncrementFrom(text);
+    const quantity = increment !== undefined ? undefined : quantityFrom(text);
+    if ((increment !== undefined || quantity !== undefined) && !isQuestion) {
+        const target = targetItem(draft, text);
+        if (target) {
+            const wanted = increment !== undefined ? target.quantity + increment : quantity!;
+            const capped = await cappedQuantity(context, target, wanted);
+            target.quantity = capped.quantity;
+            await saveDraft(context.businessId, context.conversationId!, draft);
+            const summary = await summaryResponse(context, draft);
+            return capped.notice ? { ...summary, message_text: capped.notice + summary.message_text } : summary;
+        }
+    }
     return null;
+}
+
+/** The item a basket edit refers to: the named one, or the only one there is. */
+function targetItem(draft: OrderDraft, text: string) {
+    if (draft.items.length === 1) return draft.items[0];
+    const lower = text.toLowerCase();
+    return draft.items.find((item) =>
+        (item.code && lower.includes(item.code.toLowerCase()))
+        || item.name.toLowerCase().split(/\s+/).some((word) => word.length > 2 && lower.includes(word)));
+}
+
+/** Never promise more than the shelf holds, and say so when trimming. */
+async function cappedQuantity(context: OrderTurnContext, item: OrderDraftItem, wanted: number) {
+    const requested = Math.max(1, Math.min(wanted, MAX_QUANTITY));
+    const products = await context.resolveProducts(item.code || item.name).catch(() => []);
+    const product = products.find((candidate: any) => String(candidate._id) === item.productId);
+    const variant = product && item.variantId ? (product.variants || []).find((candidate: any) => candidate.variantId === item.variantId) : undefined;
+    const available = product ? stockOf(product, variant) : undefined;
+    if (available === undefined || requested <= available) return { quantity: requested, notice: '' };
+    return {
+        quantity: Math.max(1, available),
+        notice: say(context.language, {
+            en: `We have ${available} of ${item.name} in stock right now. `,
+            bn: `${item.name} এখন ${available}টি stock-এ আছে। `,
+            banglish: `${item.name} ekhon ${available} ta stock e ache. `,
+        }),
+    };
+}
+
+/** "mug ta bad din" — take it out, and end the draft if nothing is left. */
+async function removeItem(context: OrderTurnContext, draft: OrderDraft, text: string): Promise<OrderFlowResponse | null> {
+    const target = targetItem(draft, text);
+    if (!target) return null;
+    draft.items = draft.items.filter((item) => item !== target);
+    if (!draft.items.length) {
+        await clearDraft(context.businessId, context.conversationId!);
+        return {
+            message_text: say(context.language, {
+                en: `No problem, I have taken ${target.name} out. Tell me whenever you want to order something else.`,
+                bn: `কোনো সমস্যা নেই, ${target.name} বাদ দিয়ে দিলাম। অন্য কিছু নিতে চাইলে বলবেন।`,
+                banglish: `Kono somossa nei, ${target.name} bad diye dilam. Onno kichu nite chaile bolben.`,
+            }),
+            intent: 'ORDER_FLOW',
+            memory: context.lightweightMemory,
+        };
+    }
+    await saveDraft(context.businessId, context.conversationId!, draft);
+    const summary = await summaryResponse(context, draft);
+    return { ...summary, message_text: say(context.language, {
+        en: `${target.name} is out of the order. `,
+        bn: `${target.name} অর্ডার থেকে বাদ দিলাম। `,
+        banglish: `${target.name} order theke bad dilam. `,
+    }) + summary.message_text };
+}
+
+/** One place that decides city and zone from an address line. */
+function applyAddress(draft: OrderDraft, addressText: string) {
+    const area = areaFrom(addressText);
+    draft.addressLine1 = addressText.slice(0, 200);
+    draft.city = area?.city || draft.city;
+    draft.zone = area?.zone || draft.zone || draft.city;
+}
+
+async function savedAddress(context: OrderTurnContext) {
+    const customer = await loadCustomer(context);
+    const saved = (customer?.addresses || []).find((address: any) => address.isDefault) || customer?.addresses?.[0];
+    return saved && saved.addressLine1 && saved.city ? saved : undefined;
+}
+
+/**
+ * Does this turn instruct us to place an order? A plain buy verb does; a soft
+ * "lagbe" only counts when the message also names the product or a quantity, and
+ * a question never does.
+ */
+/** Did this message itself carry the delivery details? */
+function hasLabelledDetails(text: string) {
+    const supplied = extractLabelledDetails(text);
+    return Boolean(supplied.fullName || supplied.phone || supplied.addressLine1);
+}
+
+function wantsToOrder(text: string, context: OrderTurnContext) {
+    if (CONFIRM_ORDER_PHRASE.test(text)) return true;
+    if (ASKS_RATHER_THAN_ORDERS.test(text) && !ORDER_INTENT.test(text)) return false;
+    if (ORDER_INTENT.test(text)) return true;
+    if (!SOFT_ORDER_INTENT.test(text)) return false;
+    if (ASKS_RATHER_THAN_ORDERS.test(text)) return false;
+    // "budget 600 er moddhe ekta mug lagbe" is a search: the customer has not seen
+    // a price yet, so answer with the product first and let them say "nibo".
+    if (BUDGET_PHRASE.test(text)) return false;
+    // A quoted code is unambiguous; otherwise the product must already be the one
+    // we just showed them.
+    return Boolean(requestedSku(text)) || Boolean(context.entity?.activeProductId);
 }
 
 export async function handleOrderTurn(rawContext: OrderTurnContext): Promise<OrderFlowResponse | null> {
@@ -782,10 +1104,18 @@ export async function handleOrderTurn(rawContext: OrderTurnContext): Promise<Ord
         ...rawContext,
         conversationId,
         ...(draft?.language ? { language: draft.language } : {}),
-        confirmRequested: CONFIRM_ORDER_PHRASE.test(text) || CONFIRM_WORDS.test(text),
+        // Skipping the summary is only safe when the customer is answering one they
+        // have already seen, or supplied every detail in this very message. A bare
+        // "confirm kore den" against a remembered product still gets a summary first.
+        confirmRequested: (CONFIRM_ORDER_PHRASE.test(text) || CONFIRM_WORDS.test(text))
+            && (draft?.stage === 'AWAITING_CONFIRMATION' || hasLabelledDetails(text)),
     };
 
-    if (draft && CANCEL_WORDS.test(text)) {
+    // "vai ekhon lagbe na, cancel kore den" — the verb decides, not the shape of the sentence.
+    // "cancel kore den" carries a confirmation-shaped verb too, so the cancel verb
+    // wins unless the customer literally said "confirm".
+    const saysConfirm = /(?:confirm|konfirm|cnfrm|conform)|কনফার্ম/i.test(text);
+    if (draft && (CANCEL_EXPLICIT.test(text) || CANCEL_WORDS.test(text)) && !saysConfirm) {
         await clearDraft(context.businessId, conversationId);
         return {
             message_text: say(context.language, {
@@ -805,7 +1135,7 @@ export async function handleOrderTurn(rawContext: OrderTurnContext): Promise<Ord
         if (handled) return handled;
     }
 
-    if (ORDER_INTENT.test(text) || CONFIRM_ORDER_PHRASE.test(text)) {
+    if (wantsToOrder(text, context)) {
         const added = await startOrAddItem(context, draft);
         if (added) return added;
     }

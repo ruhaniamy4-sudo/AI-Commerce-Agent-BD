@@ -31,11 +31,15 @@ async function getOfferingsSafe(businessId: string) {
 }
 
 const deliveryIntent = /status|where|track|parcel|delivery|koi|kothay|hoise|অবস্থা|কোথায়|পার্সেল|ডেলিভারি/i;
-const followupWords = /^(?:etar|etaar|eta|this|it|this one|ওটার|এটার|এটি|এইটার)?\s*(?:price|dam|দাম|stock|available|availability|ache|ase|আছে|ছবি|picture|photo|image|pic|black|white|blue|red|size|sizes|সাইজ).{0,35}$/i;
+const followupWords = /^(?:etar|etaar|eta|eita|eitar|oita|oitar|ei ta|oi ta|this|it|this one|ওটার|এটার|এটি|এইটার|ওইটা)?\s*(?:price|dam|দাম|koto|kot|kto|rate|taka|stock|available|availability|ache|ase|আছে|ছবি|picture|photo|image|pic|black|white|blue|red|size|sizes|সাইজ).{0,35}$/i;
 const sizeInquiryRegex = /\b(size|sizes|সাইজ)\b/i;
 
 
-const courierStatusLabels: Record<string, string> = { pending: 'pending courier processing', submitted: 'submitted to Steadfast', in_transit: 'in transit', delivered: 'delivered', cancelled: 'cancelled', returned: 'returned', failed: 'affected by a courier processing issue', unknown: 'awaiting a confirmed courier update' };
+const courierStatusLabels = {
+    en: { pending: 'being prepared', confirmed: 'confirmed', packed: 'packed', submitted: 'handed to the courier', shipped: 'on its way', in_transit: 'on its way', delivered: 'delivered', completed: 'delivered', cancelled: 'cancelled', returned: 'returned', refunded: 'refunded', failed: 'held up at the courier', unknown: 'awaiting a confirmed update' },
+    bn: { pending: 'প্রস্তুত করা হচ্ছে', confirmed: 'কনফার্ম করা হয়েছে', packed: 'প্যাক করা হয়েছে', submitted: 'কুরিয়ারে দেওয়া হয়েছে', shipped: 'পথে আছে', in_transit: 'পথে আছে', delivered: 'ডেলিভারি হয়ে গেছে', completed: 'ডেলিভারি হয়ে গেছে', cancelled: 'বাতিল হয়েছে', returned: 'ফেরত এসেছে', refunded: 'রিফান্ড হয়েছে', failed: 'কুরিয়ারে আটকে আছে', unknown: 'আপডেটের অপেক্ষায়' },
+    banglish: { pending: 'prostut kora hocche', confirmed: 'confirm kora hoyeche', packed: 'pack kora hoyeche', submitted: 'courier e deya hoyeche', shipped: 'pothe ache', in_transit: 'pothe ache', delivered: 'delivery hoye geche', completed: 'delivery hoye geche', cancelled: 'batil hoyeche', returned: 'ferot eseche', refunded: 'refund hoyeche', failed: 'courier e atke ache', unknown: 'update er opekkhay' },
+} as const;
 
 
 function variantAlternativeResponse(product: any, requestedColor: string, language: string, lightweightMemory: Record<string, unknown>): DeterministicTurnResponse | null {
@@ -84,6 +88,13 @@ function productText(intent: LightweightIntent, cards: CompactProductCard[], lan
             bn: `দুঃখিত, ${one.name} (${one.code})-এর confirmed ছবি এখনো যোগ করা হয়নি। অন্য কোনো details লাগলে বলবেন।`,
             banglish: `Dukkhito, ${one.name} (${one.code})-er confirmed chobi ekhono add kora hoyni. Onno kono details lagle bolben.`,
         });
+    if (intent === 'PRODUCT_PRICE' && one.availability === 'out_of_stock') {
+        return say(language, {
+            en: `${one.name} (${one.code}) is ${price}, but it is out of stock right now. I can show you a close alternative if you like.`,
+            bn: `${one.name} (${one.code})-এর দাম ${price}, তবে এখন stock-এ নেই। চাইলে কাছাকাছি option দেখাতে পারি।`,
+            banglish: `${one.name} (${one.code})-er price ${price}, tobe ekhon stock e nei. Chaile kachakachi option dekhate pari.`,
+        });
+    }
     if (intent === 'PRODUCT_PRICE') {
         const stock = typeof one.stock === 'number'
             ? say(language, { en: ` ${one.stock} in stock.`, bn: ` এখন ${one.stock}টি stock-এ আছে।`, banglish: ` Ekhon ${one.stock} ta stock e ache.` })
@@ -135,9 +146,16 @@ function productText(intent: LightweightIntent, cards: CompactProductCard[], lan
     if (cards.length === 1) {
         const stockNote = one.availability === 'out_of_stock'
             ? say(language, { en: 'It is out of stock right now.', bn: 'এটি এখন stock-এ নেই।', banglish: 'Eita ekhon stock e nei.' })
-            : typeof one.stock === 'number'
+            : typeof one.stock === 'number' && one.stock > 0
               ? say(language, { en: `${one.stock} in stock.`, bn: `${one.stock}টি stock-এ আছে।`, banglish: `${one.stock} ta stock e ache.` })
               : '';
+        if (one.availability === 'out_of_stock') {
+            return say(language, {
+                en: `${one.name} (${one.code}) is ${price}, but it is out of stock at the moment. Shall I show you the closest alternative?`,
+                bn: `${one.name} (${one.code})-এর দাম ${price}, তবে এই মুহূর্তে stock-এ নেই। কাছাকাছি option দেখাব?`,
+                banglish: `${one.name} (${one.code})-er price ${price}, tobe ei muhurte stock e nei. Kachakachi option dekhabo?`,
+            });
+        }
         return say(language, {
             en: `Yes, we have it:\n${one.name}, ${one.code}, ${price}\n${stockNote} Tell me and I will place the order.`,
             bn: `জি, এটি আমাদের কাছে আছে:\n${one.name}, ${one.code}, ${price}\n${stockNote} নিতে চাইলে বলবেন, আমি order-টা করে দিচ্ছি।`,
@@ -157,7 +175,113 @@ function productText(intent: LightweightIntent, cards: CompactProductCard[], lan
     return `${heading}\n${cardLines(cards, language)}${close}`;
 }
 
-function formatOrderStatus(order: any) { const status = order.courier?.status ? courierStatusLabels[order.courier.status] || courierStatusLabels.unknown : order.status; return `Order #${order.orderNumber} is currently ${status}.${order.courier?.trackingCode ? ` Tracking code: ${order.courier.trackingCode}.` : ''}`; }
+/**
+ * The four objections that dominate Bangladeshi commerce chat. Each one is
+ * acknowledged first, answered with something true from the catalog, and closed
+ * with a way forward — never argued with, never answered by inventing a discount.
+ */
+const OBJECTIONS: Array<[string, RegExp]> = [
+    ['PRICE', /\b(?:dam|daam)\s*(?:ta)?\s*(?:beshi|besi|onek|barti)\b|\bbeshi\s*dam\b|\bkom\s*(?:hobe|korun|koren|kora\s*jabe)\b|\bdiscount\b|\boffer\s*(?:ache|dao|den)\b|\bcheap\b|দাম.{0,12}(?:বেশি|কম)|কমানো\s*যাবে|ছাড়\s*(?:আছে|দিন)/i],
+    ['COMPETITOR', /\bonno\s*(?:jaygay|page|shop|dokane)\b|\bother\s*(?:shop|page)\b|\bfacebook\s*e\s*kom\b|\bdaraz\b|অন্য\s*(?:জায়গায়|পেজে|দোকানে)/i],
+    ['TRUST', /\bvejal\b|\bvejal\s*na\b|\bnokol\b|\bcopy\b|\bfake\b|\boriginal\s*(?:to|kina|naki)\b|\basol\b|\bquality\s*(?:valo|thik|kemon)\b|\bgenuine\b|ভেজাল|নকল|আসল\s*(?:তো|কিনা)|কোয়ালিটি/i],
+    ['URGENCY', /\b(?:aj(?:ke)?|kal(?:ke)?|porshu|ekhoni|ajker\s*moddhe|urgent)\b.{0,18}\b(?:lagbe|dorkar|chai|pabo|dibe|delivery)\b|\b(?:lagbe|dorkar|chai|pabo)\b.{0,12}\b(?:aj(?:ke)?|kal(?:ke)?|ekhoni|urgent)\b|আজকে?.{0,14}(?:লাগবে|দরকার|পাবো)|কালকে?.{0,14}(?:লাগবে|দরকার|পাবো)/i],
+];
+
+async function objectionResponse(businessId: string, text: string, language: string, entity: Record<string, any>, lightweightMemory: Record<string, unknown>): Promise<DeterministicTurnResponse | null> {
+    const matched = OBJECTIONS.find(([, pattern]) => pattern.test(text));
+    if (!matched) return null;
+    const [kind] = matched;
+
+    const business = await getBusinessSafe(businessId) as any;
+    const fees = business?.commerce?.deliveryFees || {};
+    const active = entity.activeProductName
+        ? { name: String(entity.activeProductName), code: entity.activeProductCode, price: entity.activeProductPrice }
+        : undefined;
+    const itemLabel = active ? `${active.name}${active.code ? ` (${active.code})` : ''}` : say(language, { en: 'this item', bn: 'এটি', banglish: 'eita' });
+
+    if (kind === 'PRICE') {
+        const live = (await retrieveRelevantAwareness(businessId, text, 1).catch(() => []))[0];
+        if (live) {
+            const claim = live.claimType === 'UP_TO_PERCENT' && Number.isFinite(Number(live.claimValue))
+                ? `${Number(live.claimValue)}%`
+                : '';
+            const target = live.targetReference || say(language, { en: 'selected products', bn: 'নির্বাচিত কিছু প্রোডাক্টে', banglish: 'kichu product e' });
+            const followUp = active
+                ? say(language, {
+                    en: ` Shall I check it for ${itemLabel}?`,
+                    bn: ` ${itemLabel}-এর জন্য দেখে দেব?`,
+                    banglish: ` ${itemLabel}-er jonno dekhe debo?`,
+                })
+                : say(language, {
+                    en: ' Tell me which product you are interested in and I will check it for you.',
+                    bn: ' কোন প্রোডাক্টটি নিয়ে আগ্রহী বলুন, আমি দেখে জানিয়ে দিচ্ছি।',
+                    banglish: ' Kon product ta niye agrohi bolun, ami dekhe janiye dicchi.',
+                });
+            return { message_text: say(language, {
+                en: `Good timing - ${target} currently has ${claim ? `up to ${claim} off` : 'a running offer'}. The catalog price and live stock still apply.${followUp}`,
+                bn: `ভালো সময়ে বলেছেন—${target} এখন ${claim ? `${claim} পর্যন্ত ছাড়` : 'একটি অফার'} চলছে। Catalog দাম ও live stock প্রযোজ্য থাকবে।${followUp}`,
+                banglish: `Valo somoye bolechen - ${target} ekhon ${claim ? `${claim} porjonto chhar` : 'ekta offer'} cholche. Catalog dam o live stock projojjo thakbe.${followUp}`,
+            }), intent: 'BUSINESS_FACT', memory: lightweightMemory };
+        }
+        // No invented discounts: the listed price is the price, and the value is stated instead.
+        return { message_text: say(language, {
+            en: `I understand. ${itemLabel} is already at our listed price${active?.price ? ` of ${money(Number(active.price), 'BDT')}` : ''}, and it comes with cash on delivery so you only pay once it reaches you. If you tell me your budget, I will find the closest option we have.`,
+            bn: `বুঝতে পারছি। ${itemLabel} আমাদের listed দামেই${active?.price ? ` (${money(Number(active.price), 'BDT')})` : ''} দেওয়া, আর ক্যাশ অন ডেলিভারি—হাতে পেয়ে তবেই টাকা দেবেন। আপনার বাজেট বললে সেই অনুযায়ী সবচেয়ে কাছের option বের করে দিচ্ছি।`,
+            banglish: `Bujhte parchi. ${itemLabel} amader listed dame${active?.price ? ` (${money(Number(active.price), 'BDT')})` : ''} deya, ar cash on delivery - hate peye tarpor taka diben. Apnar budget bolle sei onujayi sobcheye kachher option ber kore dicchi.`,
+        }), intent: 'BUSINESS_FACT', memory: lightweightMemory };
+    }
+
+    if (kind === 'COMPETITOR') {
+        return { message_text: say(language, {
+            en: `That is fair. What I can promise is what we control: the stock you see here is live, you pay on delivery, and if anything is wrong our team handles it directly. Tell me which one you were comparing and I will give you the exact price and stock.`,
+            bn: `ঠিক আছে, বুঝতে পারছি। আমরা যেটা নিশ্চিত করতে পারি: এখানে যে stock দেখছেন সেটা live, টাকা দেবেন ডেলিভারির সময়, আর কোনো সমস্যা হলে আমাদের team সরাসরি দেখবে। কোনটার সাথে তুলনা করছেন বলুন, আমি exact দাম ও stock বলে দিচ্ছি।`,
+            banglish: `Thik ache, bujhte parchi. Amra ja nishchit korte pari: ekhane je stock dekhchen seta live, taka diben delivery-r somoy, ar kono somossa hole amader team sorasori dekhbe. Kon tar sathe tulona korchen bolun, ami exact dam o stock bole dicchi.`,
+        }), intent: 'BUSINESS_FACT', memory: lightweightMemory };
+    }
+
+    if (kind === 'TRUST') {
+        return { message_text: say(language, {
+            en: `A fair question. We list only what we actually stock, with the details on the product itself, and you pay only after the parcel reaches you. If anything does not match what I told you, tell us straight away and our team will sort it out.`,
+            bn: `প্রশ্নটা যৌক্তিক। আমাদের কাছে যা সত্যিই stock-এ আছে সেটাই listing-এ থাকে, details প্রোডাক্টের সাথেই দেওয়া, আর টাকা দেবেন পার্সেল হাতে পাওয়ার পরেই। আমি যা বলেছি তার সাথে না মিললে সাথে সাথে জানাবেন, আমাদের team ব্যবস্থা নেবে।`,
+            banglish: `Proshno ta jouktik. Amader kache ja sotti stock e ache seta-i listing e thake, details product er sathei deya, ar taka diben parcel hate pawar porei. Ami ja bolechi tar sathe na mille sathe sathe janaben, amader team bebostha nebe.`,
+        }), intent: 'BUSINESS_FACT', memory: lightweightMemory };
+    }
+
+    // URGENCY — answer with the real delivery window, never a promise we cannot keep.
+    const inside = Number(fees.insideDhaka ?? 80);
+    const outside = Number(fees.outsideDhaka ?? 130);
+    return { message_text: say(language, {
+        en: `I will do my best. Inside Dhaka parcels usually reach in 1-2 days (delivery ${money(inside, 'BDT')}) and outside Dhaka in 2-4 days (delivery ${money(outside, 'BDT')}). Confirm the order today and I will send it to the courier straight away — tell me your area and I will give you the closest date we can hold to.`,
+        bn: `আমি চেষ্টা করব। ঢাকার ভেতরে সাধারণত ১-২ দিনে পৌঁছায় (ডেলিভারি ${money(inside, 'BDT')}), ঢাকার বাইরে ২-৪ দিন (ডেলিভারি ${money(outside, 'BDT')})। আজ order confirm করলে সাথে সাথেই courier-এ দিয়ে দেব—আপনার এলাকা বললে সবচেয়ে কাছের সম্ভাব্য তারিখটা বলে দিচ্ছি।`,
+        banglish: `Ami chesta korbo. Dhaka-r vitore sadharonoto 1-2 dine pouchay (delivery ${money(inside, 'BDT')}), Dhaka-r baire 2-4 din (delivery ${money(outside, 'BDT')}). Aj order confirm korle sathe sathei courier e diye debo - apnar elaka bolle sobcheye kachher shomvabbo tarikh ta bole dicchi.`,
+    }), intent: 'BUSINESS_FACT', memory: lightweightMemory };
+}
+
+function formatOrderStatus(order: any, language: string) {
+    const stage = order.courier?.status ? String(order.courier.status) : String(order.status || 'pending');
+    const label = say(language, {
+        en: (courierStatusLabels.en as any)[stage] || courierStatusLabels.en.unknown,
+        bn: (courierStatusLabels.bn as any)[stage] || courierStatusLabels.bn.unknown,
+        banglish: (courierStatusLabels.banglish as any)[stage] || courierStatusLabels.banglish.unknown,
+    });
+    const tracking = order.courier?.trackingCode
+        ? say(language, {
+            en: ` Tracking code: ${order.courier.trackingCode}.`,
+            bn: ` ট্র্যাকিং কোড: ${order.courier.trackingCode}।`,
+            banglish: ` Tracking code: ${order.courier.trackingCode}.`,
+        })
+        : '';
+    const closing = say(language, {
+        en: ' If anything looks wrong, tell me and I will have the team check it.',
+        bn: ' কোনো সমস্যা মনে হলে বলবেন, আমি team-কে দিয়ে দেখিয়ে নেব।',
+        banglish: ' Kono somossa mone hole bolben, ami team ke diye dekhiye nebo.',
+    });
+    return say(language, {
+        en: `Order ${order.orderNumber} is ${label}.${tracking}${closing}`,
+        bn: `আপনার অর্ডার ${order.orderNumber} এখন ${label}।${tracking}${closing}`,
+        banglish: `Apnar order ${order.orderNumber} ekhon ${label}.${tracking}${closing}`,
+    });
+}
 
 async function findProducts(businessId: string, text: string, activeProductId?: string, recentProductIds: string[] = []) {
     const intent = classifyLightweightIntent(text);
@@ -166,7 +290,8 @@ async function findProducts(businessId: string, text: string, activeProductId?: 
         const exactSkuProduct = await Product.findOne({ businessId, isActive: true, merchantConfirmed: { $ne: false }, $or: [{ slug: sku.toLowerCase() }, { 'variants.sku': sku }, { publicCode: sku.toUpperCase() }, { barcode: sku }] }).select(PRODUCT_CARD_FIELDS).lean();
         if (exactSkuProduct) return [exactSkuProduct];
     }
-    if (activeProductId && (followupWords.test(text.trim()) || ['PRODUCT_IMAGE','PRODUCT_STOCK','PRODUCT_VARIANT'].includes(intent))) {
+    // "eta koto?" three turns later still means the product we last quoted.
+    if (activeProductId && (followupWords.test(text.trim()) || ['PRODUCT_IMAGE','PRODUCT_STOCK','PRODUCT_VARIANT','PRODUCT_PRICE'].includes(intent))) {
         const active = await Product.findOne({ _id: activeProductId, businessId, isActive: true, merchantConfirmed: { $ne: false } }).select(PRODUCT_CARD_FIELDS).lean();
         if (active) return [active];
     }
@@ -193,11 +318,13 @@ async function findProducts(businessId: string, text: string, activeProductId?: 
 }
 
 async function stableBusinessFact(businessId: string, text: string, language: string, existingBusiness?: any) {
-    const business = existingBusiness || await Business.findById(businessId).select('phone businessType').lean();
+    const business = existingBusiness || await Business.findById(businessId).select('phone businessType commerce').lean() as any;
+    const commerce = business?.commerce || {};
+
     if (/\b(?:support|contact|phone|mobile|whatsapp)\s*(?:number|no\b)|\bnumber\s*(?:ta|ti)?\s*(?:den|din|deo|dao|chai)\b|ফোন\s*নাম্বার|নাম্বার/i.test(text) && business?.phone) return language === 'en' ? `You can contact us at ${business.phone}.` : `যোগাযোগের number: ${business.phone}।`;
     const selectors: Array<[RegExp, string[], string[]]> = [
         [/(?:delivery|shipping).*(?:charge|cost|fee|time)|(?:charge|cost|fee).*(?:delivery|shipping)|dhaka.*delivery|delivery.*dhaka|ডেলিভারি/i, ['DELIVERY'], ['delivery_charge','delivery_time','delivery']],
-        [/\bcod\b|cash on delivery/i, ['PAYMENT'], ['cod']], [/payment method|pay(?:ment)? options?|bkash|nagad/i, ['PAYMENT'], ['payment']],
+        [/\bcod\b|cash on delivery/i, ['PAYMENT'], ['cod']], [/payment|pay(?:ment)? options?|bkash|bikash|nagad|rocket|upay|ক্যাশ|বিকাশ|নগদ/i, ['PAYMENT'], ['payment']],
         [/return|exchange|refund|cancel|রিটার্ন|রিফান্ড/i, ['RETURN','REFUND','POLICY'], ['return','refund','cancellation']],
         [/address|location|office|ঠিকানা/i, ['LOCATION','CONTACT'], ['office','location','store_location']],
         [/opening hour|working hour|open today|কখন খোলা/i, ['HOURS'], ['hours']],
@@ -218,7 +345,30 @@ async function stableBusinessFact(businessId: string, text: string, language: st
     const titleTerms: Record<string, string> = { DELIVERY: 'delivery|shipping', PAYMENT: 'payment|cod|cash on delivery', LOCATION: 'address|location', CONTACT: 'contact|address', HOURS: 'opening|working hours', FEE: 'fee|charge', PRICING: 'pricing|fee' };
     const entry = await Knowledge.findOne({ businessId, status: 'active', merchantConfirmed: { $ne: false }, $or: [{ knowledgeDomain: { $in: domains } }, { title: { $regex: domains.map((domain) => titleTerms[domain]).filter(Boolean).join('|'), $options: 'i' } }] }).sort({ isPinned: -1, sourcePriority: 1 }).select('content').lean();
     const content = String(entry?.content || '').replace(/\s+/g, ' ').trim();
-    return content && content.length <= 500 ? content : undefined;
+    if (content && content.length <= 500) return content;
+
+    // Nothing confirmed by the merchant: answer from the same commerce settings the
+    // checkout charges from, so the quote and the answer can never disagree.
+    if (/\b(?:delivery|shipping)\b.{0,20}\b(?:charge|cost|fee|koto|kotodin|koydin|somoy|time)\b|\b(?:charge|cost|fee)\b.{0,20}\b(?:delivery|shipping)\b|ডেলিভারি.{0,12}(?:চার্জ|খরচ|কত|কতদিন|সময়)/i.test(text)) {
+        const inside = Number(commerce?.deliveryFees?.insideDhaka ?? 80);
+        const outside = Number(commerce?.deliveryFees?.outsideDhaka ?? 130);
+        return say(language, {
+            en: `Delivery is ${money(inside, 'BDT')} inside Dhaka and ${money(outside, 'BDT')} outside Dhaka, usually 1-2 days in Dhaka and 2-4 days elsewhere. Tell me your area and I will confirm it exactly.`,
+            bn: `ডেলিভারি চার্জ ঢাকার ভেতরে ${money(inside, 'BDT')}, ঢাকার বাইরে ${money(outside, 'BDT')}—ঢাকায় সাধারণত ১-২ দিন, বাইরে ২-৪ দিন। আপনার এলাকা বললে নিশ্চিত করে বলে দিচ্ছি।`,
+            banglish: `Delivery charge Dhaka-r vitore ${money(inside, 'BDT')}, baire ${money(outside, 'BDT')} - Dhaka-y sadharonoto 1-2 din, baire 2-4 din. Apnar elaka bolle nishchit kore bole dicchi.`,
+        });
+    }
+    if (/\b(?:bkash|bikash|nagad|rocket|upay|cod|cash on delivery|payment|advance)\b|বিকাশ|নগদ|রকেট|পেমেন্ট|ক্যাশ অন ডেলিভারি/i.test(text)) {
+        const methods = (commerce?.paymentMethods || []).filter(Boolean);
+        const list = methods.length ? methods.join(', ') : 'Cash on Delivery';
+        const cod = /cash on delivery|cod/i.test(list);
+        return say(language, {
+            en: `We accept ${list}.${cod ? ' With cash on delivery you pay only when the parcel reaches you.' : ''} Shall I place the order for you?`,
+            bn: `আমরা ${list} নিই।${cod ? ' ক্যাশ অন ডেলিভারিতে পার্সেল হাতে পাওয়ার পরেই টাকা দেবেন।' : ''} অর্ডারটি করে দেব?`,
+            banglish: `Amra ${list} nii.${cod ? ' Cash on delivery te parcel hate pawar porei taka diben.' : ''} Order ta kore debo?`,
+        });
+    }
+    return undefined;
 }
 
 const CATALOG_BROWSE_LIMIT = 5;
@@ -321,7 +471,8 @@ async function catalogBrowseResponse(businessId: string, text: string, language:
         message_text: `${intro}\n${lines}${more}${close}`,
         suggested_products: cards,
         intent: 'CATALOG_BROWSE',
-        memory: { ...lightweightMemory, recentProductIds: cards.map((item) => item.id) },
+        // A browse that lands on one product makes it the product "eta" refers to next.
+        memory: { ...lightweightMemory, ...activeProductMemory(cards, {}), recentProductIds: cards.map((item) => item.id) },
     };
 }
 
@@ -340,18 +491,42 @@ async function resolveDeterministicResponse(context: DeterministicTurnContext): 
     const { businessId, text, language, intent, entity, lightweightMemory, explicitLanguage, customerReference } = context;
     if (explicitLanguage) return { message_text: explicitLanguage === 'en' ? 'Sure — I’ll reply in English.' : explicitLanguage === 'bn' ? 'অবশ্যই—আমি বাংলায় উত্তর দেব।' : 'Thik ache—ami Banglish-e reply dibo.', intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
     if (/\b(are you|r u)\s+(?:an?\s+)?(?:ai|bot|human)|তুমি কি (?:এআই|বট|মানুষ)|আপনি কি (?:এআই|বট|মানুষ)/i.test(text)) return { message_text: language === 'en' ? "I'm this business's automated SellPilot assistant." : 'আমি এই business-এর SellPilot automated assistant।', intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
-    if (/^(?:hi(?:\s+there)?|hello(?:\s+there)?|hey(?:\s+there)?|good\s+(?:morning|afternoon|evening)|assalamu\s+alaikum|assalamualaykum|assalamu['’]?alaikum|salam(?:(?:\s+bhai|\s+apu|\s+alaikum))?|kemon\s+achen\??|kemon\s+acho\??|ki\s+khobor\??|আসসালামু\s+আলাইকুম|সালাম|হ্যালো|হাই|কেমন\s+আছেন\??|কেমন\s+আছো\??|thanks?(?:\s+(?:you|u|a\s+lot|so\s+much))?|thank\s+(?:you|u)(?:\s+so\s+much)?|thx|many\s+thanks|ধন্যবাদ(?:\s+(?:আপনাকে|ভাই|আপু))?|অনেক\s+ধন্যবাদ)[!.\s]*$/i.test(text.trim())) {
+    if (/^(?:hi(?:\s+there)?|hello(?:\s+there)?|hey(?:\s+there)?|good\s+(?:morning|afternoon|evening)|assalamu\s+alaikum|assalamualaykum|assalamu['’]?alaikum|salam(?:(?:\s+bhai|\s+apu|\s+alaikum))?|kemon\s+achen\??|kemon\s+acho\??|ki\s+khobor\??|আসসালামু\s+আলাইকুম|সালাম|হ্যালো|হাই|কেমন\s+আছেন\??|কেমন\s+আছো\??|thanks?(?:\s+(?:you|u|a\s+lot|so\s+much))?|thank\s+(?:you|u)(?:\s+so\s+much)?|thx|many\s+thanks|ধন্যবাদ(?:\s+(?:আপনাকে|ভাই|আপু))?|অনেক\s+ধন্যবাদ)(?:\s+(?:vai|bhai|apu|apa|bro|brother|sir|madam|ji))?[!.\s]*$/i.test(text.trim())) {
         const business = await Business.findById(businessId).select('name brandVoice').lean();
         if (business?.brandVoice?.tone === 'custom' && (business.brandVoice.customTone || business.brandVoice.examples?.length)) return null;
-        const thanks = /thank|ধন্যবাদ/i.test(text);
-        return { message_text: thanks ? (language === 'en' ? "You're welcome!" : language === 'bn' ? 'আপনাকে স্বাগতম!' : 'Welcome!') : (language === 'en' ? `Hi! How can I help with ${business?.name || 'the business'}?` : language === 'bn' ? `হ্যালো! ${business?.name || 'এই ব্যবসা'} সম্পর্কে কী জানতে চান?` : `Hello! ${business?.name || 'ei business'} niye ki jante chan?`), intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
+        const thanks = /thank|thx|ধন্যবাদ/i.test(text);
+        const salaam = /assalamu|assalam|salam|আসসালামু|সালাম/i.test(text);
+        const shop = business?.name || say(language, { en: 'us', bn: 'আমাদের', banglish: 'amader' });
+        if (thanks) {
+            return { message_text: say(language, {
+                en: "You are most welcome. If you need anything else, I am right here.",
+                bn: 'আপনাকেও ধন্যবাদ! আর কিছু লাগলে নির্দ্বিধায় বলবেন, আমি আছি।',
+                banglish: 'Apnake-o dhonnobad! Ar kichu lagle nirdhidhay bolben, ami achi.',
+            }), intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
+        }
+        // A salaam is returned in kind, whatever script it arrived in.
+        const opening = salaam
+            ? say(language, { en: 'Walaikum assalam! ', bn: 'ওয়ালাইকুম আসসালাম! ', banglish: 'Walaikum assalam! ' })
+            : '';
+        return { message_text: opening + say(language, {
+            en: `Welcome to ${shop}. What are you looking for today? I am happy to help you find it.`,
+            bn: `${shop}-এ স্বাগতম। আজ কী খুঁজছেন বলুন, আমি খুঁজে দিতে সাহায্য করছি।`,
+            banglish: `${shop}-e swagotom. Aj ki khujchen bolun, ami khuje dite help korchi.`,
+        }), intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
     }
+
     if (intent === 'ORDER_STATUS') {
         const orderMatch = text.match(/\border\s*#?\s*([a-z0-9-]{6,})\b/i);
         const query = orderMatch ? Order.findOne({ businessId, orderNumber: orderMatch[1].toUpperCase() }) : customerReference?.psid ? Order.findOne({ businessId, psid: customerReference.psid }).sort({ createdAt: -1 }) : null;
         const order = query ? await query.select('orderNumber status courier').lean() : null;
-        if (order) return { message_text: formatOrderStatus(order), intent, memory: lightweightMemory };
+        if (order) return { message_text: formatOrderStatus(order, language), intent, memory: { ...lightweightMemory, lastOrderNumber: order.orderNumber } };
     }
+    // "dam beshi", "onno jaygay kom", "vejal na to", "kalke lagbe" are objections,
+    // not product names — answering them as a search echoes them back as missing
+    // products and loses the sale.
+    const objection = await objectionResponse(businessId, text, language, entity, lightweightMemory);
+    if (objection) return objection;
+
     if (intent === 'BUSINESS_FACT') { const fact = await stableBusinessFact(businessId, text, language); if (fact) return { message_text: fact, intent, memory: lightweightMemory }; }
     if (intent === 'CATALOG_BROWSE') { const browse = await catalogBrowseResponse(businessId, text, language, lightweightMemory); if (browse) return browse; }
     if (!['GENERAL_CONVERSATION','KNOWLEDGE','HUMAN_HANDOFF','ORDER_STATUS','BUSINESS_FACT','CATALOG_BROWSE'].includes(intent)) {
