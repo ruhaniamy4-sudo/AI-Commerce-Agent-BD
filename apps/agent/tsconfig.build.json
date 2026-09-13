@@ -6,7 +6,8 @@
     "**/*.test.ts",
     "**/*.spec.ts",
     "**/__tests__/**",
-    "src/scripts/validate-customer-intelligence.ts",
-    "src/scripts/validate-product-management.ts"
+    "src/scripts/validate-*.ts",
+    "src/scripts/measure-*.ts",
+    "src/scripts/verify-*.ts"
   ]
 }
