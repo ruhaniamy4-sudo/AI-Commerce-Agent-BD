@@ -477,19 +477,39 @@ describe('chat order flow', () => {
         expect(reply.message_text).toContain('৳630');   // the total is shown before anything is placed
     });
 
-    it('rehearses the confirmation in the Test AI sandbox without creating an order or moving stock', async () => {
-        const createOrder = vi.spyOn(checkoutService, 'createOrderWithStock');
+    it('places a real, clearly tagged order from the Test AI sandbox', async () => {
+        const createOrder = vi.spyOn(checkoutService, 'createOrderWithStock').mockResolvedValue({ _id: 'o-test', orderNumber: 'ORD-TEST-9', total: 630 } as never);
         const sandboxSay = (text: string) => tenant(() => getDeterministicResponse(businessId, text, { conversationId, psid: 'web-1', eventIdentifier: `evt-${text}`, sandbox: true })) as Promise<any>;
         await sandboxSay('ei ta nibo');
         await sandboxSay('Rafiul Islam');
         await sandboxSay('01712345678');
         await sandboxSay('Dhanmondi, Dhaka');
         const confirmed = await sandboxSay('confirm');
-        expect(createOrder).not.toHaveBeenCalled();
-        expect(confirmed.message_text).toMatch(/ORD-SANDBOX-/);
-        expect(confirmed.message_text).toMatch(/test mode/i);
-        expect(confirmed.orderCreated).toBeUndefined();
+
+        expect(createOrder).toHaveBeenCalledTimes(1);
+        // A test order is a real order, marked so the merchant can tell it apart.
+        expect(createOrder.mock.calls[0][0].adminNote).toMatch(/Test AI/i);
+        expect(confirmed.message_text).toContain('ORD-TEST-9');
+        expect(confirmed.orderCreated).toMatchObject({ orderNumber: 'ORD-TEST-9' });
         expect(metadata.orderDraft).toBeUndefined();
+    });
+
+    it('creates the customer record when the conversation has none, so checkout is never refused', async () => {
+        const createOrder = vi.spyOn(checkoutService, 'createOrderWithStock').mockResolvedValue({ _id: 'o2', orderNumber: 'ORD-NEWCUST', total: 630 } as never);
+        // A sandbox conversation has no linked customer.
+        vi.spyOn(Customer, 'findById').mockReturnValue({ lean: () => Promise.resolve(null) } as never);
+        vi.spyOn(Customer, 'findOne').mockReturnValue({ lean: () => Promise.resolve(null) } as never);
+        const upsert = vi.spyOn(Customer, 'findOneAndUpdate').mockResolvedValue({ _id: customerId } as never);
+
+        await say('ei ta nibo');
+        await say('Rafiul Islam');
+        await say('01712345678');
+        await say('Dhanmondi, Dhaka');
+        const confirmed = await say('confirm');
+
+        expect(upsert).toHaveBeenCalled();
+        expect(createOrder).toHaveBeenCalledTimes(1);
+        expect(confirmed.message_text).toContain('ORD-NEWCUST');
     });
 
     it('skips questions a returning customer has already answered', async () => {

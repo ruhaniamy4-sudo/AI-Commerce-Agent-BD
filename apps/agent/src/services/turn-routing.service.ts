@@ -50,7 +50,9 @@ export function classifyLightweightIntent(text: string): LightweightIntent {
     // matches "headphone" and `fee` matches "coffee", which used to route real
     // product questions to the business-fact and price answers.
     if (/\b(?:human|agent|staff)\b|মানুষ|কাস্টমার কেয়ার/i.test(text)) return 'HUMAN_HANDOFF';
-    if (/\b(?:order|track|parcel)\b|অর্ডার|পার্সেল/i.test(text) && /\b(?:status|where|track|parcel|delivery|koi|kothay|hoise)\b|অবস্থা|কোথায়|পার্সেল|ডেলিভারি/i.test(text)) return 'ORDER_STATUS';
+    // A quoted order number is a status question on its own, however it is phrased.
+    if (/\bORD[-_ ]?[A-Z0-9][A-Z0-9-]{3,}\b/i.test(text)) return 'ORDER_STATUS';
+    if (/\b(?:order|track|parcel)\b|অর্ডার|পার্সেল/i.test(text) && /\b(?:status|where|track|parcel|delivery|koi|kothay|hoise|khobor|janaben|update|kobe|peye)\b|অবস্থা|কোথায়|পার্সেল|ডেলিভারি|খবর|কবে/i.test(text)) return 'ORDER_STATUS';
     if (/\b(?:picture|photo|image|pic)\b|ছবি/i.test(text)) return 'PRODUCT_IMAGE';
     if (/\b(?:compare|better|best|versus|vs)\b|কোনটা ভালো|konta better/i.test(text)) return 'PRODUCT_COMPARE';
     if (isCatalogBrowseQuery(text)) return 'CATALOG_BROWSE';

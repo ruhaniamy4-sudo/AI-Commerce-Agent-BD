@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { Business } from '../models/Business';
 import { Conversation } from '../models/Conversation';
+import { Customer } from '../models/Customer';
 import { Knowledge } from '../models/Knowledge';
 import { Offering } from '../models/Offering';
 import { Order } from '../models/Order';
@@ -11,7 +12,7 @@ import { retrieveRelevantAwareness } from './business-awareness.service';
 import { classifyLightweightIntent, detectExplicitLanguagePreference, extractBudget, extractLightweightMemory, LightweightIntent, parseSearchTerms } from './turn-routing.service';
 import { setupQuestionStorageKey } from './business-setup.service';
 import { businessTypeLabel } from './adaptive-training.service';
-import { handleOrderTurn, pendingOrderPrompt, setOrderDraftLanguage } from './order-flow.service';
+import { handleOrderTurn, pendingOrderPrompt, phoneFrom, setOrderDraftLanguage } from './order-flow.service';
 import { extractTurnMemory } from './conversation-memory.service';
 import { availableVariant, card, cardLines, catalogQueryable, CompactProductCard, COLOR_WORDS, escaped, money, PRODUCT_CARD_FIELDS, requestedSku, say, sellable, termMatchScore, termPredicate } from './product-card';
 
@@ -257,6 +258,157 @@ async function objectionResponse(businessId: string, text: string, language: str
     }), intent: 'BUSINESS_FACT', memory: lightweightMemory };
 }
 
+/** "apni ki AI?", "apnara ki bot?", "manush naki?" — in every script customers use. */
+/**
+ * "ok", "hmm", "accha", a lone emoji — the most frequent messages on Messenger and
+ * the least worth a model call. Answered with one short line that keeps the door
+ * open without nagging.
+ */
+/**
+ * Courtesy turns — "ok", "thanks vai", "Okay vaiya thank you", "assalamu
+ * alaikum bhai", "accha thik ache apu" — are the most common messages in a
+ * Bangladeshi chat and the least worth a model call. Rather than enumerate every
+ * combination, the message is tokenised: if every word is courtesy, it is a
+ * courtesy turn, and the strongest signal present decides the reply.
+ */
+const COURTESY_PHRASES: Array<[RegExp, string]> = [
+    [/\bwalaikum\s*(?:as)?salam\b|ওয়ালাইকুম\s*আসসালাম/gi, ' salaam '],
+    [/\bassalamu?\s*(?:o\s*)?alaikum\b|assalamualaykum|আসসালামু\s*আলাইকুম/gi, ' salaam '],
+    [/\bthank\s*(?:you|u)\b|\bmany\s*thanks\b/gi, ' thanks '],
+    [/\bthik\s*(?:ache|ase)\b|ঠিক\s*আছে/gi, ' ack '],
+    [/\bkemon\s*(?:achen|acho|ase)\b|কেমন\s*আছেন/gi, ' greeting '],
+    [/\bki\s*khobor\b|কি\s*খবর/gi, ' greeting '],
+    [/\bgood\s*(?:morning|afternoon|evening|night)\b/gi, ' greeting '],
+];
+const COURTESY_WORDS: Record<string, 'salaam' | 'thanks' | 'greeting' | 'ack' | 'honorific' | 'filler'> = {
+    salaam: 'salaam', salam: 'salaam', সালাম: 'salaam',
+    thanks: 'thanks', thank: 'thanks', thnx: 'thanks', thx: 'thanks', tnx: 'thanks', shukriya: 'thanks',
+    dhonnobad: 'thanks', dhonyobad: 'thanks', ধন্যবাদ: 'thanks',
+    hi: 'greeting', hello: 'greeting', hey: 'greeting', greeting: 'greeting', হ্যালো: 'greeting', হাই: 'greeting',
+    ok: 'ack', okay: 'ack', okk: 'ack', okey: 'ack', k: 'ack', hmm: 'ack', hm: 'ack', hmmm: 'ack',
+    acha: 'ack', accha: 'ack', achcha: 'ack', ack: 'ack', ji: 'ack', jee: 'ack', hae: 'ack', ha: 'ack', haa: 'ack',
+    yes: 'ack', yeah: 'ack', right: 'ack', done: 'ack', fine: 'ack', bujhlam: 'ack', bujhechi: 'ack',
+    nice: 'ack', great: 'ack', good: 'ack', shundor: 'ack', sundor: 'ack',
+    আচ্ছা: 'ack', হুম: 'ack', জি: 'ack', হ্যাঁ: 'ack', ভালো: 'ack', সুন্দর: 'ack',
+    vai: 'honorific', vaia: 'honorific', vaiya: 'honorific', bhai: 'honorific', bhaiya: 'honorific', bhaiyya: 'honorific',
+    apu: 'honorific', apa: 'honorific', apuni: 'honorific', bro: 'honorific', brother: 'honorific',
+    sir: 'honorific', madam: 'honorific', dada: 'honorific', ভাই: 'honorific', ভাইয়া: 'honorific', আপু: 'honorific', স্যার: 'honorific',
+    you: 'filler', u: 'filler', a: 'filler', lot: 'filler', so: 'filler', much: 'filler', very: 'filler',
+    amar: 'filler', apnake: 'filler', onek: 'filler', আপনাকে: 'filler', অনেক: 'filler',
+};
+
+/** The kind of courtesy this message is, or nothing if it says something else too. */
+export function classifyCourtesy(text: string): 'salaam' | 'thanks' | 'greeting' | 'ack' | undefined {
+    let normalized = ` ${text.toLowerCase()} `;
+    for (const [pattern, token] of COURTESY_PHRASES) normalized = normalized.replace(pattern, token);
+    const words = normalized.split(/[^a-zঀ-৿]+/i).filter(Boolean);
+    if (!words.length) return undefined;
+    const kinds = words.map((word) => COURTESY_WORDS[word]);
+    if (kinds.some((kind) => !kind)) return undefined;   // something real was said too
+    if (kinds.includes('salaam')) return 'salaam';
+    if (kinds.includes('thanks')) return 'thanks';
+    if (kinds.includes('greeting')) return 'greeting';
+    return kinds.includes('ack') ? 'ack' : undefined;
+}
+
+const EMOJI_ONLY = /^[\p{Extended_Pictographic}\p{Emoji_Component}\s‍]+$/u;
+/** "pore dekhbo", "ekhon na", "bye" — a polite close, not a dead end. */
+const SIGN_OFF = /^(?:pore\s*(?:dekhbo|kotha\s*hobe|janabo)|ekhon\s*na|ekhon\s*lagbe\s*na|kichu\s*na|bye|byee|allah\s*hafez|khoda\s*hafez|tata|later|আপাতত\s*না|পরে\s*দেখব|এখন\s*না|বিদায়|আল্লাহ\s*হাফেজ)[\s!.।]*$/i;
+
+const IDENTITY_QUESTION = /\b(?:are|r)\s*(?:you|u)\s*(?:an?\s*)?(?:ai|a\.i\.?|bot|robot|human|machine|real\s*person)\b|\b(?:apni|apnara|tumi|tomra)\s*(?:ki|kii)\s*(?:ekta\s*)?(?:ai|a\.i\.?|bot|robot|manush|human)\b|\b(?:ai|bot|robot|manush)\s*(?:naki|na\s*ki)\b|\bkotha\s*bolche\s*(?:ke|kew)\b|(?:আপনি|আপনারা|তুমি|তোমরা)\s*কি\s*(?:একটা\s*)?(?:এআই|এ\s*আই|বট|রোবট|মানুষ)|(?:এআই|বট|রোবট|মানুষ)\s*নাকি/i;
+
+/** An order number wherever it appears: quoted alone, after "order", or with a hash. */
+export function orderNumberFrom(text: string) {
+    const direct = text.match(/\bORD[-_ ]?([A-Z0-9][A-Z0-9-]{3,})\b/i);
+    if (direct) return `ORD-${direct[1].replace(/[_ ]/g, '-')}`.toUpperCase();
+    const labelled = text.match(/\border\s*(?:id|no\.?|number|#)?\s*[:#-]?\s*([a-z0-9][a-z0-9-]{4,})\b/i)?.[1]
+        || text.match(/#\s*([a-z0-9][a-z0-9-]{4,})\b/i)?.[1];
+    // "amar order status ta ki?" — the word after "order" is not an order number
+    // unless it actually looks like one.
+    return labelled && /\d/.test(labelled) ? labelled.toUpperCase() : undefined;
+}
+
+/**
+ * Every order-status turn is answered here, so none of them reaches the model:
+ * a quoted number, the number we remember from this conversation, or the
+ * customer's latest order — and a clear ask when we genuinely cannot tell.
+ */
+async function orderStatusResponse(
+    businessId: string,
+    text: string,
+    language: string,
+    entity: Record<string, any>,
+    lightweightMemory: Record<string, unknown>,
+    customerReference?: DeterministicCustomerReference,
+): Promise<DeterministicTurnResponse | null> {
+    const quoted = orderNumberFrom(text);
+
+    // A Test AI rehearsal never created a real order; say so instead of hunting for it.
+    if (quoted && /^ORD-SANDBOX/i.test(quoted)) {
+        return { message_text: say(language, {
+            en: `${quoted} came from a test-mode rehearsal, so no real order exists for it. Place the order again outside test mode and I will track it for you.`,
+            bn: `${quoted} টেস্ট মোডের একটি রিহার্সাল—এর বিপরীতে আসল কোনো অর্ডার তৈরি হয়নি। টেস্ট মোডের বাইরে অর্ডারটি করলে আমি ট্র্যাক করে জানাব।`,
+            banglish: `${quoted} test mode-er ekta rehearsal - er biporite asol kono order toiri hoyni. Test mode-er baire order ta korle ami track kore janabo.`,
+        }), intent: 'ORDER_STATUS', memory: lightweightMemory };
+    }
+
+    if (!orderQueryable()) return null;
+    const remembered = !quoted && typeof entity.lastOrderNumber === 'string' ? String(entity.lastOrderNumber) : undefined;
+    const wanted = quoted || remembered;
+    // "number: 01632149759" — the mobile number is how most customers identify
+    // their order, so it is looked up here instead of costing a model call.
+    const phone = !wanted ? phoneFrom(text) : undefined;
+
+    const order = wanted
+        ? await Order.findOne({ businessId, orderNumber: wanted }).select('orderNumber status courier createdAt').lean().catch(() => null) as any
+        : phone
+          ? await orderByPhone(businessId, phone)
+          : customerReference?.psid
+            ? await Order.findOne({ businessId, psid: customerReference.psid }).sort({ createdAt: -1 }).select('orderNumber status courier createdAt').lean().catch(() => null) as any
+            : null;
+
+    if (order) {
+        return { message_text: formatOrderStatus(order, language), intent: 'ORDER_STATUS', memory: { ...lightweightMemory, lastOrderNumber: order.orderNumber, awaitingOrderLookup: false } };
+    }
+
+    if (phone) {
+        return { message_text: say(language, {
+            en: `I could not find an order placed with ${phone}. Could you check the number, or send the Order ID (it looks like ORD-XXXXX-XXXX)?`,
+            bn: `${phone} দিয়ে করা কোনো অর্ডার পেলাম না। নম্বরটি একবার দেখবেন, নাকি Order ID (ORD-XXXXX-XXXX এমন) দেবেন?`,
+            banglish: `${phone} diye kora kono order pelam na. Number ta ekbar dekhben, naki Order ID (ORD-XXXXX-XXXX emon) diben?`,
+        }), intent: 'ORDER_STATUS', memory: { ...lightweightMemory, awaitingOrderLookup: true } };
+    }
+
+    if (quoted) {
+        return { message_text: say(language, {
+            en: `I could not find an order with the number ${quoted}. Could you check it once, or send the mobile number you ordered with? I will look it up straight away.`,
+            bn: `${quoted} নম্বরের কোনো অর্ডার খুঁজে পেলাম না। নম্বরটি একবার দেখে বলবেন, বা যে মোবাইল নম্বর দিয়ে অর্ডার করেছিলেন সেটি দিন—আমি সাথে সাথে দেখে জানাচ্ছি।`,
+            banglish: `${quoted} number-er kono order khuje pelam na. Number ta ekbar dekhe bolben, ba je mobile number diye order korechilen seta din - ami sathe sathe dekhe janachchi.`,
+        }), intent: 'ORDER_STATUS', memory: { ...lightweightMemory, awaitingOrderLookup: true } };
+    }
+
+    return { message_text: say(language, {
+        en: 'Happy to check that for you. Could you send the Order ID (it looks like ORD-XXXXX-XXXX), or the mobile number you ordered with?',
+        bn: 'অবশ্যই দেখে দিচ্ছি। Order ID টি (ORD-XXXXX-XXXX এমন) বা যে মোবাইল নম্বর দিয়ে অর্ডার করেছিলেন সেটি দেবেন প্লিজ?',
+        banglish: 'Obosshoi dekhe dicchi. Order ID ta (ORD-XXXXX-XXXX emon) ba je mobile number diye order korechilen seta diben please?',
+    }), intent: 'ORDER_STATUS', memory: { ...lightweightMemory, awaitingOrderLookup: true } };
+}
+
+/** The customer's latest order, found from the mobile number they ordered with. */
+async function orderByPhone(businessId: string, phone: string) {
+    const byAddress = await Order.findOne({ businessId, 'shippingAddress.phone': phone })
+        .sort({ createdAt: -1 }).select('orderNumber status courier createdAt').lean().catch(() => null) as any;
+    if (byAddress) return byAddress;
+    const customer = await Customer.findOne({ businessId, phone }).select('_id').lean().catch(() => null) as any;
+    if (!customer) return null;
+    return await Order.findOne({ businessId, customerId: customer._id })
+        .sort({ createdAt: -1 }).select('orderNumber status courier createdAt').lean().catch(() => null) as any;
+}
+
+function orderQueryable() {
+    return mongoose.connection.readyState === 1 || Boolean((Order.findOne as any)?.mock);
+}
+
 function formatOrderStatus(order: any, language: string) {
     const stage = order.courier?.status ? String(order.courier.status) : String(order.status || 'pending');
     const label = say(language, {
@@ -490,22 +642,45 @@ interface DeterministicTurnContext {
 async function resolveDeterministicResponse(context: DeterministicTurnContext): Promise<string|DeterministicTurnResponse|null> {
     const { businessId, text, language, intent, entity, lightweightMemory, explicitLanguage, customerReference } = context;
     if (explicitLanguage) return { message_text: explicitLanguage === 'en' ? 'Sure — I’ll reply in English.' : explicitLanguage === 'bn' ? 'অবশ্যই—আমি বাংলায় উত্তর দেব।' : 'Thik ache—ami Banglish-e reply dibo.', intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
-    if (/\b(are you|r u)\s+(?:an?\s+)?(?:ai|bot|human)|তুমি কি (?:এআই|বট|মানুষ)|আপনি কি (?:এআই|বট|মানুষ)/i.test(text)) return { message_text: language === 'en' ? "I'm this business's automated SellPilot assistant." : 'আমি এই business-এর SellPilot automated assistant।', intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
-    if (/^(?:hi(?:\s+there)?|hello(?:\s+there)?|hey(?:\s+there)?|good\s+(?:morning|afternoon|evening)|assalamu\s+alaikum|assalamualaykum|assalamu['’]?alaikum|salam(?:(?:\s+bhai|\s+apu|\s+alaikum))?|kemon\s+achen\??|kemon\s+acho\??|ki\s+khobor\??|আসসালামু\s+আলাইকুম|সালাম|হ্যালো|হাই|কেমন\s+আছেন\??|কেমন\s+আছো\??|thanks?(?:\s+(?:you|u|a\s+lot|so\s+much))?|thank\s+(?:you|u)(?:\s+so\s+much)?|thx|many\s+thanks|ধন্যবাদ(?:\s+(?:আপনাকে|ভাই|আপু))?|অনেক\s+ধন্যবাদ)(?:\s+(?:vai|bhai|apu|apa|bro|brother|sir|madam|ji))?[!.\s]*$/i.test(text.trim())) {
+    if (IDENTITY_QUESTION.test(text)) {
+        return { message_text: say(language, {
+            en: "I am this shop's automated assistant - I can check prices, stock and place your order right away. A colleague joins in whenever you need one.",
+            bn: 'আমি এই দোকানের automated assistant—দাম, stock দেখে অর্ডারটাও করে দিতে পারি। প্রয়োজনে আমাদের একজন প্রতিনিধিও যুক্ত হবেন।',
+            banglish: 'Ami ei shop-er automated assistant - dam, stock dekhe order tao kore dite pari. Proyojone amader ekjon representative-o jukto hoben.',
+        }), intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
+    }
+    const courtesy = classifyCourtesy(text);
+    if (courtesy) {
         const business = await Business.findById(businessId).select('name brandVoice').lean();
-        if (business?.brandVoice?.tone === 'custom' && (business.brandVoice.customTone || business.brandVoice.examples?.length)) return null;
-        const thanks = /thank|thx|ধন্যবাদ/i.test(text);
-        const salaam = /assalamu|assalam|salam|আসসালামু|সালাম/i.test(text);
+        // A merchant who wrote their own greeting voice gets to use it.
+        if ((courtesy === 'greeting' || courtesy === 'salaam')
+            && business?.brandVoice?.tone === 'custom'
+            && (business.brandVoice.customTone || business.brandVoice.examples?.length)) return null;
+
         const shop = business?.name || say(language, { en: 'us', bn: 'আমাদের', banglish: 'amader' });
-        if (thanks) {
+        if (courtesy === 'thanks') {
             return { message_text: say(language, {
-                en: "You are most welcome. If you need anything else, I am right here.",
+                en: 'You are most welcome. If you need anything else, I am right here.',
                 bn: 'আপনাকেও ধন্যবাদ! আর কিছু লাগলে নির্দ্বিধায় বলবেন, আমি আছি।',
                 banglish: 'Apnake-o dhonnobad! Ar kichu lagle nirdhidhay bolben, ami achi.',
             }), intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
         }
+        if (courtesy === 'ack') {
+            const viewing = typeof entity.activeProductName === 'string' ? String(entity.activeProductName) : undefined;
+            return { message_text: viewing
+                ? say(language, {
+                    en: `Of course. Tell me whenever you want ${viewing}, and I will place the order for you.`,
+                    bn: `জি। ${viewing} নিতে চাইলে বলবেন, আমি অর্ডারটি করে দেব।`,
+                    banglish: `Ji. ${viewing} nite chaile bolben, ami order ta kore debo.`,
+                })
+                : say(language, {
+                    en: 'Of course. Tell me what you are looking for and I will find it for you.',
+                    bn: 'জি। কী খুঁজছেন বলুন, আমি বের করে দিচ্ছি।',
+                    banglish: 'Ji. Ki khujchen bolun, ami ber kore dicchi.',
+                }), intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
+        }
         // A salaam is returned in kind, whatever script it arrived in.
-        const opening = salaam
+        const opening = courtesy === 'salaam'
             ? say(language, { en: 'Walaikum assalam! ', bn: 'ওয়ালাইকুম আসসালাম! ', banglish: 'Walaikum assalam! ' })
             : '';
         return { message_text: opening + say(language, {
@@ -515,12 +690,42 @@ async function resolveDeterministicResponse(context: DeterministicTurnContext): 
         }), intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
     }
 
-    if (intent === 'ORDER_STATUS') {
-        const orderMatch = text.match(/\border\s*#?\s*([a-z0-9-]{6,})\b/i);
-        const query = orderMatch ? Order.findOne({ businessId, orderNumber: orderMatch[1].toUpperCase() }) : customerReference?.psid ? Order.findOne({ businessId, psid: customerReference.psid }).sort({ createdAt: -1 }) : null;
-        const order = query ? await query.select('orderNumber status courier').lean() : null;
-        if (order) return { message_text: formatOrderStatus(order, language), intent, memory: { ...lightweightMemory, lastOrderNumber: order.orderNumber } };
+    if (SIGN_OFF.test(text.trim())) {
+        return { message_text: say(language, {
+            en: 'Of course - whenever you are ready, I am right here. Have a good day.',
+            bn: 'অবশ্যই—যেকোনো সময় বলবেন, আমি আছি। ভালো থাকবেন।',
+            banglish: 'Obosshoi - jekono somoy bolben, ami achi. Valo thakben.',
+        }), intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
     }
+
+    if (EMOJI_ONLY.test(text.trim())) {
+        const viewing = typeof entity.activeProductName === 'string' ? String(entity.activeProductName) : undefined;
+        return { message_text: viewing
+            ? say(language, {
+                en: `Of course. Tell me whenever you want ${viewing}, and I will place the order for you.`,
+                bn: `জি। ${viewing} নিতে চাইলে বলবেন, আমি অর্ডারটি করে দেব।`,
+                banglish: `Ji. ${viewing} nite chaile bolben, ami order ta kore debo.`,
+            })
+            : say(language, {
+                en: 'Of course. Tell me what you are looking for and I will find it for you.',
+                bn: 'জি। কী খুঁজছেন বলুন, আমি বের করে দিচ্ছি।',
+                banglish: 'Ji. Ki khujchen bolun, ami ber kore dicchi.',
+            }), intent: 'GENERAL_CONVERSATION', memory: lightweightMemory };
+    }
+
+    // A message that is essentially just a mobile number is the customer
+    // identifying their order, whether or not we asked for it a moment ago.
+    const carriesPhone = Boolean(phoneFrom(text));
+    const barePhoneMessage = carriesPhone && text
+        .replace(/(?<!\d)(?:\+?88)?0?1\d{6,9}(?!\d)/, ' ')
+        .replace(/(?:number|mobile|phone|amar|my|is|ta|ei|no|nong|নম্বর|মোবাইল|আমার)/gi, ' ')
+        .replace(/[^a-zঀ-৿]/gi, '').length <= 6;
+    const answeringOrderLookup = (Boolean(entity.awaitingOrderLookup) || barePhoneMessage) && (carriesPhone || Boolean(orderNumberFrom(text)));
+    if (intent === 'ORDER_STATUS' || answeringOrderLookup) {
+        const answered = await orderStatusResponse(businessId, text, language, entity, lightweightMemory, customerReference);
+        if (answered) return answered;
+    }
+
     // "dam beshi", "onno jaygay kom", "vejal na to", "kalke lagbe" are objections,
     // not product names — answering them as a search echoes them back as missing
     // products and loses the sale.

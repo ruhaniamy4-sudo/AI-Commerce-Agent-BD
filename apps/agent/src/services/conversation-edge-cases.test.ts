@@ -73,6 +73,28 @@ describe('objections get a salesperson answer, not a catalog search', () => {
 });
 
 describe('courtesy', () => {
+    it.each([
+        ['Okay vaiya thank you.', /welcome|dhonnobad|ধন্যবাদ/i],
+        ['ok thanks', /welcome|dhonnobad|ধন্যবাদ/i],
+        ['thik ache bhai, dhonnobad', /welcome|dhonnobad|ধন্যবাদ/i],
+        ['accha vaiya', /khujchen|looking for|নিতে চাইলে|order/i],
+        ['hmm thik ache', /khujchen|looking for|নিতে চাইলে|order/i],
+        ['ji apu', /khujchen|looking for|নিতে চাইলে|order/i],
+        ['assalamu alaikum bhai', /walaikum/i],
+        ['hello vai', /swagotom|welcome|স্বাগতম/i],
+    ])('answers the combined courtesy message "%s" without a model call', async (message, expected) => {
+        const reply = await say(message);
+        expect(reply).toBeTruthy();
+        expect(reply.message_text).toMatch(expected);
+    });
+
+    it('does not mistake a real question for courtesy', async () => {
+        // "ki ache" and "thik ache to?" say something; they must reach the catalog.
+        expect(await say('ki ki ache?')).toBeTruthy();
+        const real = await say('ok, power bank er dam koto?');
+        expect(real.message_text).toContain('৳2600');
+    });
+
     it('returns the salaam', async () => {
         const reply = await say('Assalamu alaikum');
         expect(reply.message_text).toMatch(/walaikum/i);
@@ -132,5 +154,96 @@ describe('order status speaks the customer’s language', () => {
         expect(reply.message_text).toContain('ORD-77');
         expect(reply.message_text).not.toMatch(/steadfast/i);
         expect(reply.message_text).toMatch(/pothe ache|in transit|পথে/i);
+    });
+});
+
+describe('turns that used to cost a model call now cost none', () => {
+    it.each([
+        'Accha apni ki AI?',
+        'apni ki bot?',
+        'apnara ki manush naki AI?',
+        'are you a human?',
+        'আপনি কি এআই?',
+        'tumi ki robot?',
+    ])('answers "%s" without a model call', async (message) => {
+        const reply = await say(message);
+        expect(reply).toBeTruthy();
+        expect(reply.intent).toBe('GENERAL_CONVERSATION');
+        // Honest about being automated, and still useful.
+        expect(reply.message_text).toMatch(/assistant/i);
+        expect(reply.message_text).not.toMatch(/\bI am a human\b/i);
+    });
+
+    it('answers an order-status question that quotes the number first', async () => {
+        vi.spyOn(Order, 'findOne').mockReturnValue({
+            select: () => ({ lean: () => Promise.resolve({ orderNumber: 'ORD-M9X2K-7A4C', status: 'shipped', courier: { status: 'in_transit', trackingCode: 'TRK9' } }) }),
+            sort: () => ({ select: () => ({ lean: () => Promise.resolve(null) }) }),
+        } as never);
+        const reply = await say('ORD-M9X2K-7A4C ei order er status ta janaben?');
+        expect(reply.intent).toBe('ORDER_STATUS');
+        expect(reply.message_text).toContain('ORD-M9X2K-7A4C');
+        expect(reply.message_text).not.toMatch(/human agent will continue/i);
+    });
+
+    it('explains a sandbox order id instead of hunting for an order that was never created', async () => {
+        const reply = await say('ORD-SANDBOX-MTZ4VXO2 ei order er status ta janaben?');
+        expect(reply.intent).toBe('ORDER_STATUS');
+        expect(reply.message_text).toMatch(/test mode|টেস্ট মোড/i);
+        expect(reply.message_text).not.toMatch(/human agent will continue/i);
+    });
+
+    it('asks for the order id rather than handing a status question to a person', async () => {
+        vi.spyOn(Order, 'findOne').mockReturnValue({
+            select: () => ({ lean: () => Promise.resolve(null) }),
+            sort: () => ({ select: () => ({ lean: () => Promise.resolve(null) }) }),
+        } as never);
+        const reply = await say('amar order ta koi vai?');
+        expect(reply.intent).toBe('ORDER_STATUS');
+        expect(reply.message_text).toMatch(/ORD-|order id/i);
+        expect(reply.message_text).not.toMatch(/human agent will continue/i);
+    });
+
+    it('does not read "status" as an order number', async () => {
+        const findOne = vi.spyOn(Order, 'findOne').mockReturnValue({
+            select: () => ({ lean: () => Promise.resolve(null) }),
+            sort: () => ({ select: () => ({ lean: () => Promise.resolve(null) }) }),
+        } as never);
+        const reply = await say('Amar order status ta ki?');
+        expect(reply.message_text).not.toMatch(/STATUS/);
+        // It asks for a real identifier instead of hunting for an order called "STATUS".
+        expect(reply.message_text).toMatch(/ORD-|order id|mobile/i);
+        expect(JSON.stringify(findOne.mock.calls)).not.toContain('"STATUS"');
+    });
+
+    it('finds the order from the mobile number the customer replies with', async () => {
+        vi.spyOn(Order, 'findOne').mockReturnValue({
+            sort: () => ({ select: () => ({ lean: () => Promise.resolve({ orderNumber: 'ORD-BYPHONE', status: 'confirmed', courier: undefined }) }) }),
+            select: () => ({ lean: () => Promise.resolve(null) }),
+        } as never);
+        // No flag needed: a message that is essentially just a number identifies an order.
+        const reply = await say('number: 01632149759');
+        expect(reply.intent).toBe('ORDER_STATUS');
+        expect(reply.message_text).toContain('ORD-BYPHONE');
+    });
+
+    it('says plainly when a quoted order number does not exist', async () => {
+        vi.spyOn(Order, 'findOne').mockReturnValue({
+            select: () => ({ lean: () => Promise.resolve(null) }),
+            sort: () => ({ select: () => ({ lean: () => Promise.resolve(null) }) }),
+        } as never);
+        const reply = await say('ORD-NOPE-1234 ta check korben?');
+        expect(reply.message_text).toContain('ORD-NOPE-1234');
+        expect(reply.message_text).toMatch(/khuje pelam na|could not find|খুঁজে পেলাম না/i);
+    });
+
+    it('uses the order number it remembered from earlier in the conversation', async () => {
+        const findOne = vi.spyOn(Order, 'findOne').mockReturnValue({
+            select: () => ({ lean: () => Promise.resolve({ orderNumber: 'ORD-REMEMBERED', status: 'pending', courier: undefined }) }),
+            sort: () => ({ select: () => ({ lean: () => Promise.resolve(null) }) }),
+        } as never);
+        metadata.entityState.lastOrderNumber = 'ORD-REMEMBERED';
+        const reply = await say('order ta kobe pabo?');
+        expect(JSON.stringify(findOne.mock.calls[0][0])).toContain('ORD-REMEMBERED');
+        expect(reply.message_text).toContain('ORD-REMEMBERED');
     });
 });

@@ -254,7 +254,8 @@ export function extractLabelledDetails(text: string) {
 function plausibleName(value?: string) {
     const name = String(value || '').trim();
     if (name.length < 2 || name.length > 60) return undefined;
-    if (/^(?:web user|facebook user|guest|customer)$/i.test(name)) return undefined;
+    // Placeholder identities are not names: the flow must still ask the customer.
+    if (/^(?:web user|facebook user|guest|customer|sandbox tester|test user|tester|test|demo|user|na|n\/a)$/i.test(name)) return undefined;
     if (/\d/.test(name)) return undefined;
     // A question or a flow keyword is never somebody's name.
     if (/[?？]/.test(name)) return undefined;
@@ -609,36 +610,7 @@ async function submitOrder(context: OrderTurnContext, draft: OrderDraft): Promis
     };
 
     const { deliveryFee: previewFee, paymentMethod: previewPayment } = await deliveryFeeFor(context.businessId, draft.city);
-    if (context.sandbox) {
-        // The merchant is testing the assistant — rehearse the confirmation but
-        // never create an order or move real stock.
-        await clearDraft(context.businessId, conversationId);
-        const previewTotals = draftTotals(draft, previewFee);
-        const currency = draft.items[0].currency;
-        return {
-            message_text: [
-                say(context.language, {
-                en: 'Thank you - your order is confirmed.',
-                bn: 'ধন্যবাদ! আপনার অর্ডারটি কনফার্ম হয়েছে।',
-                banglish: 'Dhonnobad! Apnar order ta confirm hoyeche.',
-            }),
-                `Order ID: ORD-SANDBOX-${Date.now().toString(36).toUpperCase()}`,
-                itemLines(draft),
-                `${say(context.language, { en: 'Total', bn: 'মোট', banglish: 'Total' })}: ${money(previewTotals.total, currency)} (${previewPayment})`,
-                `${draft.fullName} - ${draft.phone}`,
-                addressLine(draft),
-                say(context.language, {
-                    en: '(Test mode — no real order was created and stock did not change.)',
-                    bn: '(টেস্ট মোড—আসল অর্ডার তৈরি হয়নি এবং stock পরিবর্তন হয়নি।)',
-                    banglish: '(Test mode - asol order toiri hoyni, stock o bodlayni.)',
-                }),
-            ].join('\n'),
-            intent: 'ORDER_FLOW',
-            memory: context.lightweightMemory,
-        };
-    }
-
-    const customer = await loadCustomer(context);
+    const customer = await loadCustomer(context) || await createCustomerFromDraft(context, draft);
     if (!customer) {
         await restore();
         return {
@@ -674,6 +646,8 @@ async function submitOrder(context: OrderTurnContext, draft: OrderDraft): Promis
             deliveryFee,
             paymentMethod,
             source: context.conversation?.platform === 'facebook' || context.conversation?.platform === 'whatsapp' ? 'messenger' : 'web',
+            // Test AI orders are real orders, tagged so the merchant can tell them apart.
+            ...(context.sandbox ? { adminNote: 'Placed from the Test AI sandbox' } : {}),
             idempotencyKey: draft.orderKey,
         });
 
@@ -1057,6 +1031,24 @@ function applyAddress(draft: OrderDraft, addressText: string) {
     draft.addressLine1 = addressText.slice(0, 200);
     draft.city = area?.city || draft.city;
     draft.zone = area?.zone || draft.zone || draft.city;
+}
+
+/** No customer record yet (a sandbox or an unlinked web chat) — create one from the draft. */
+async function createCustomerFromDraft(context: OrderTurnContext, draft: OrderDraft) {
+    const psid = context.conversation?.psid || `chat:${context.conversationId}`;
+    try {
+        return await Customer.findOneAndUpdate(
+            { psid },
+            {
+                $set: { name: draft.fullName, phone: draft.phone, lastMessageAt: new Date() },
+                $setOnInsert: { language: 'bn', tags: ['chat-customer'], notes: '', optedOut: false },
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true },
+        );
+    } catch (error) {
+        console.error('Could not create the customer for this order:', error instanceof Error ? error.message : error);
+        return null;
+    }
 }
 
 async function savedAddress(context: OrderTurnContext) {
