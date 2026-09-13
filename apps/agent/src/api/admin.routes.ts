@@ -21,136 +21,113 @@ import {
 
 const router = Router();
 
-// Get all conversations with pagination, search, and sort
+/**
+ * The merchant inbox.
+ *
+ * Every connected channel lands in the same list, so the filters carry the
+ * meaning: which channel a thread came from, and who owes the customer a reply.
+ * Test AI rehearsals live on their own tab rather than burying real customers,
+ * and threads with no messages are never listed at all.
+ */
+export type InboxChannel = 'all' | 'messenger' | 'whatsapp' | 'web' | 'test';
+export type InboxState = 'all' | 'needs_attention' | 'human' | 'ai';
+
+const TEST_THREAD = { platform: 'manual', 'metadata.testMode': true } as const;
+const CHANNEL_PLATFORMS: Record<Exclude<InboxChannel, 'all' | 'test'>, string[]> = {
+    messenger: ['facebook', 'instagram'],
+    whatsapp: ['whatsapp'],
+    web: ['web-widget', 'web'],
+};
+
+/** The channel a thread belongs to, as the inbox tabs name it. */
+export function inboxChannelOf(conversation: { platform?: string; metadata?: { testMode?: boolean } }): InboxChannel | 'other' {
+    if (conversation.platform === 'manual' && conversation.metadata?.testMode) return 'test';
+    const found = (Object.keys(CHANNEL_PLATFORMS) as Array<keyof typeof CHANNEL_PLATFORMS>)
+        .find((channel) => CHANNEL_PLATFORMS[channel].includes(String(conversation.platform)));
+    return found || 'other';
+}
+
+/** Mongo filter for one inbox tab. Empty threads never appear on any of them. */
+export function inboxFilter(channel: InboxChannel, state: InboxState) {
+    const filter: Record<string, unknown> = { messageCount: { $gt: 0 } };
+
+    if (channel === 'test') Object.assign(filter, TEST_THREAD);
+    else if (channel === 'all') filter.$nor = [TEST_THREAD];
+    else filter.platform = { $in: CHANNEL_PLATFORMS[channel] };
+
+    if (state === 'needs_attention') filter.needsHumanHandoff = true;
+    if (state === 'human') filter.controlMode = 'HUMAN_ACTIVE';
+    if (state === 'ai') filter.controlMode = 'AI_ACTIVE';
+    return filter;
+}
+
 router.get("/conversations", async (req, res) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const search = (req.query.search as string) || "";
-    const sortBy = (req.query.sortBy as string) || "updatedAt";
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 10));
+    const search = String(req.query.search || "").trim();
+    const sortBy = ["updatedAt", "messageCount", "lastMessageAt"].includes(String(req.query.sortBy))
+      ? String(req.query.sortBy)
+      : "lastMessageAt";
     const order = (req.query.order as string) === "asc" ? 1 : -1;
-    const skip = (page - 1) * limit;
+    const channel: InboxChannel = ['messenger', 'whatsapp', 'web', 'test'].includes(String(req.query.channel))
+      ? (req.query.channel as InboxChannel)
+      : 'all';
+    const state: InboxState = ['needs_attention', 'human', 'ai'].includes(String(req.query.state))
+      ? (req.query.state as InboxState)
+      : 'all';
 
-    const pipeline: any[] = [];
+    const filter: Record<string, unknown> = inboxFilter(channel, state);
 
-    // 1. Lookup Customer details
-    pipeline.push({
-      $lookup: {
-        from: "customers",
-        let: { customerId: "$customerId", businessId: "$businessId" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$_id", "$$customerId"] },
-                  { $eq: ["$businessId", "$$businessId"] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "customerData",
-      },
-    });
-
-    // 2. Lookup message count
-    pipeline.push({
-      $lookup: {
-        from: "messages",
-        let: { convId: "$conversationId", businessId: "$businessId" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$conversationId", "$$convId"] },
-                  { $eq: ["$businessId", "$$businessId"] },
-                ],
-              },
-            },
-          },
-          { $count: "count" },
-        ],
-        as: "msgCount",
-      },
-    });
-
-    // 3. Lookup last message
-    pipeline.push({
-      $lookup: {
-        from: "messages",
-        let: { convId: "$conversationId", businessId: "$businessId" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$conversationId", "$$convId"] },
-                  { $eq: ["$businessId", "$$businessId"] },
-                ],
-              },
-            },
-          },
-          { $sort: { createdAt: -1 } },
-          { $limit: 1 },
-        ],
-        as: "lastMessageData",
-      },
-    });
-
-    // 4. Project and flatten fields
-    pipeline.push({
-      $addFields: {
-        customer: { $arrayElemAt: ["$customerData", 0] },
-        messageCount: {
-          $ifNull: [{ $arrayElemAt: ["$msgCount.count", 0] }, 0],
-        },
-        lastMessage: {
-          $ifNull: [{ $arrayElemAt: ["$lastMessageData.content", 0] }, ""],
-        },
-      },
-    });
-
-    // 5. Build search query
+    // Searching by customer resolves the people first, so the thread query stays
+    // a plain indexed find rather than an aggregation over every conversation.
     if (search) {
-      const searchRegex = new RegExp(search, "i");
-      pipeline.push({
-        $match: {
-          $or: [
-            { conversationId: searchRegex },
-            { lastMessage: searchRegex },
-            { "customer.name": searchRegex },
-            { "customer.phone": searchRegex },
-          ],
-        },
-      });
+      const pattern = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      const matchedCustomers = await Customer.find({ $or: [{ name: pattern }, { phone: pattern }] })
+        .select("_id").limit(100).lean();
+      filter.$and = [{
+        $or: [
+          { conversationId: pattern },
+          { lastMessagePreview: pattern },
+          { psid: pattern },
+          ...(matchedCustomers.length ? [{ customerId: { $in: matchedCustomers.map((customer) => customer._id) } }] : []),
+        ],
+      }];
     }
 
-    // 6. Sorting
-    const sortStage: any = {};
-    sortStage[sortBy] = order;
-    pipeline.push({ $sort: sortStage });
-
-    // 7. Calculate total count
-    const countPipeline = [...pipeline, { $count: "total" }];
-    const [totalResult] = await Conversation.aggregate(countPipeline);
-    const total = totalResult ? totalResult.total : 0;
-
-    // 8. Pagination
-    pipeline.push({ $skip: skip });
-    pipeline.push({ $limit: limit });
-
-    const conversations = await Conversation.aggregate(pipeline);
+    const [conversations, total, counts] = await Promise.all([
+      Conversation.find(filter)
+        .select("conversationId platform customerId psid controlMode needsHumanHandoff handoffReason messageCount lastMessagePreview lastMessageAt salesStage updatedAt metadata.testMode")
+        .populate("customerId", "name phone")
+        .sort({ [sortBy]: order })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Conversation.countDocuments(filter),
+      inboxCounts(state),
+    ]);
 
     res.json({
-      data: conversations,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      data: conversations.map((conversation: any) => ({
+        _id: conversation._id,
+        conversationId: conversation.conversationId,
+        platform: conversation.platform,
+        channel: inboxChannelOf(conversation),
+        customer: conversation.customerId
+          ? { _id: conversation.customerId._id, name: conversation.customerId.name, phone: conversation.customerId.phone }
+          : null,
+        psid: conversation.psid,
+        controlMode: conversation.controlMode,
+        needsHumanHandoff: Boolean(conversation.needsHumanHandoff),
+        handoffReason: conversation.handoffReason,
+        salesStage: conversation.salesStage,
+        messageCount: conversation.messageCount || 0,
+        lastMessage: conversation.lastMessagePreview || "",
+        lastMessageAt: conversation.lastMessageAt || conversation.updatedAt,
+        updatedAt: conversation.updatedAt,
+      })),
+      counts,
+      pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
     });
   } catch (error) {
     console.error("Error fetching conversations:", error);
@@ -158,14 +135,34 @@ router.get("/conversations", async (req, res) => {
   }
 });
 
+/** How many threads sit behind each tab, so the merchant sees where the work is. */
+async function inboxCounts(state: InboxState) {
+  const [all, messenger, whatsapp, web, test, needsAttention] = await Promise.all([
+    Conversation.countDocuments(inboxFilter('all', state)),
+    Conversation.countDocuments(inboxFilter('messenger', state)),
+    Conversation.countDocuments(inboxFilter('whatsapp', state)),
+    Conversation.countDocuments(inboxFilter('web', state)),
+    Conversation.countDocuments(inboxFilter('test', state)),
+    Conversation.countDocuments(inboxFilter('all', 'needs_attention')),
+  ]);
+  return { all, messenger, whatsapp, web, test, needsAttention };
+}
+
 // Get messages for a specific conversation
 router.get("/conversations/:id", async (req, res) => {
   const conversation = await Conversation.findOne({
     $or: [{ _id: req.params.id }, { conversationId: req.params.id }],
-  }).lean();
+  }).populate("customerId", "name phone email").lean() as any;
   if (!conversation)
     return res.status(404).json({ error: "Conversation not found" });
-  res.json(conversation);
+  // The thread header needs the person and the channel, not raw platform strings.
+  res.json({
+    ...conversation,
+    channel: inboxChannelOf(conversation),
+    customer: conversation.customerId
+      ? { _id: conversation.customerId._id, name: conversation.customerId.name, phone: conversation.customerId.phone, email: conversation.customerId.email }
+      : null,
+  });
 });
 
 router.post("/conversations/:id/take-over", async (req, res) => {

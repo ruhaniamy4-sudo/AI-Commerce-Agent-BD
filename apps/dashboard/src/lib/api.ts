@@ -35,6 +35,20 @@ export const agentApi = {
 export interface MerchantBilling {subscription?:Subscription;plans:SubscriptionPlan[];transactions:Array<{_id:string;type:string;amount:number;currency:string;status:string;paymentMethod?:string;provider?:string;providerReference?:string;invoiceNumber?:string;paidAt?:string;createdAt:string}>;usage:{requests:number;tokens:number};paymentProviderConfigured:boolean}
 export const billingApi={get:()=>apiClient.get<MerchantBilling>('/api/billing'),checkout:(planSlug:string,billingPeriod:'monthly'|'annual')=>apiClient.post<{status:string;error?:string}>('/api/billing/checkout',{planSlug,billingPeriod})};
 
+/** One inbox row, plus the per-tab counts the merchant navigates by. */
+export interface InboxConversation extends Conversation {
+  channel?: "messenger" | "whatsapp" | "web" | "test" | "other";
+  psid?: string;
+  lastMessage?: string;
+  lastMessageAt?: string;
+}
+
+export interface InboxResponse {
+  data: InboxConversation[];
+  counts?: { all: number; messenger: number; whatsapp: number; web: number; test: number; needsAttention: number };
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
 export const conversationsApi = {
   getAll: (params?: {
     page?: number;
@@ -42,14 +56,16 @@ export const conversationsApi = {
     search?: string;
     sortBy?: string;
     order?: "asc" | "desc";
+    channel?: string;
+    state?: string;
   }) =>
-    apiClient.get<PaginatedResponse<Conversation>>("/admin/conversations", {
+    apiClient.get<InboxResponse>("/admin/conversations", {
       params,
     }),
   getMessages: (id: string) =>
     apiClient.get<Message[]>(`/admin/conversations/${id}/messages`),
   getById: (id: string) =>
-    apiClient.get<Conversation>(`/admin/conversations/${id}`),
+    apiClient.get<InboxConversation>(`/admin/conversations/${id}`),
   takeOver: (id: string) =>
     apiClient.post<Conversation>(`/admin/conversations/${id}/take-over`),
   returnToAI: (id: string) =>
@@ -283,6 +299,39 @@ export interface FacebookPageChoice {
   picture?: string;
   category?: string;
 }
+/** A connected WhatsApp Business number, as the Integrations page shows it. */
+export interface WhatsAppConnection {
+  id: string;
+  phoneNumberId: string;
+  name: string;
+  connectionStatus: string;
+  aiEnabled: boolean;
+  lastEventAt?: string;
+  lastInboundAt?: string;
+  lastOutboundAt?: string;
+  lastVerifiedAt?: string;
+  lastErrorCode?: string;
+  reauthorizationRequired: boolean;
+}
+
+export const whatsappIntegrationsApi = {
+  list: () =>
+    apiClient.get<{ channels: WhatsAppConnection[] }>("/api/integrations/whatsapp"),
+  connect: (phoneNumberId: string, accessToken: string) =>
+    apiClient.post<{ connected: boolean }>("/api/integrations/whatsapp", {
+      phoneNumberId,
+      accessToken,
+    }),
+  verify: (id: string) =>
+    apiClient.post<{ verified: boolean; name: string; displayPhoneNumber?: string }>(
+      `/api/integrations/whatsapp/${id}/verify`,
+    ),
+  setAI: (id: string, enabled: boolean) =>
+    apiClient.patch<{ aiEnabled: boolean }>(`/api/integrations/whatsapp/${id}/ai`, { enabled }),
+  disconnect: (id: string) =>
+    apiClient.delete<{ disconnected: boolean }>(`/api/integrations/whatsapp/${id}`),
+};
+
 export const facebookIntegrationsApi = {
   list: () => apiClient.get<FacebookConnection[]>("/api/facebook/connections"),
   start: (includeContent = false) =>

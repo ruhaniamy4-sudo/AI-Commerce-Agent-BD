@@ -25,7 +25,8 @@
     "migrate:product-codes": "ts-node src/scripts/migrate-product-codes.ts",
     "measure:context": "ts-node src/scripts/measure-context-budget.ts",
     "validate:product-actions": "ts-node src/scripts/validate-merchant-product-actions.ts",
-    "measure:coverage": "ts-node src/scripts/measure-turn-coverage.ts"
+    "measure:coverage": "ts-node src/scripts/measure-turn-coverage.ts",
+    "validate:inbox": "ts-node src/scripts/validate-inbox.ts"
   },
   "dependencies": {
     "@edutechs/shared": "*",
