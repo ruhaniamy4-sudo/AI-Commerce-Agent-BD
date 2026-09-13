@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { whatsappIntegrationsApi, type WhatsAppConnection } from '@/lib/api';
+import { whatsappIntegrationsApi, type ChannelHealthReport, type WhatsAppConnection } from '@/lib/api';
 import { ConnectionState, IntegrationPanel, PanelMessage, SetupSteps } from './integration-shell';
+import { ChannelHealthList, PlatformWarning } from './channel-health';
 
 export const WHATSAPP_ACCENT = 'bg-[#25D366]/10 text-[#128C7E]';
 
@@ -28,7 +29,15 @@ function activity(connection: WhatsAppConnection) {
     return 'Waiting for the first customer message';
 }
 
-export function WhatsAppPanel({ canManage }: { canManage: boolean }) {
+export function WhatsAppPanel({
+    canManage, health, webhookUrl, platformReady, onHealthChanged,
+}: {
+    canManage: boolean;
+    health?: ChannelHealthReport;
+    webhookUrl?: string | null;
+    platformReady?: boolean;
+    onHealthChanged: () => void;
+}) {
     const queryClient = useQueryClient();
     const [phoneNumberId, setPhoneNumberId] = useState('');
     const [accessToken, setAccessToken] = useState('');
@@ -50,6 +59,7 @@ export function WhatsAppPanel({ canManage }: { canManage: boolean }) {
             setAccessToken('');
             setMessage({ tone: 'success', text: 'WhatsApp number connected. Incoming messages will now appear in your inbox.' });
             void refresh();
+            onHealthChanged();
         },
         onError: fail,
     });
@@ -58,6 +68,7 @@ export function WhatsAppPanel({ canManage }: { canManage: boolean }) {
         onSuccess: (result) => {
             setMessage({ tone: 'success', text: `Verified with Meta${result.displayPhoneNumber ? ` · ${result.displayPhoneNumber}` : ''}.` });
             void refresh();
+            onHealthChanged();
         },
         onError: fail,
     });
@@ -66,6 +77,7 @@ export function WhatsAppPanel({ canManage }: { canManage: boolean }) {
         onSuccess: (result) => {
             setMessage({ tone: 'success', text: result.aiEnabled ? 'AI replies resumed on WhatsApp.' : 'AI replies paused. Your team can still reply from the inbox.' });
             void refresh();
+            onHealthChanged();
         },
         onError: fail,
     });
@@ -74,6 +86,7 @@ export function WhatsAppPanel({ canManage }: { canManage: boolean }) {
         onSuccess: () => {
             setMessage({ tone: 'success', text: 'WhatsApp disconnected and the stored token removed.' });
             void refresh();
+            onHealthChanged();
         },
         onError: fail,
     });
@@ -91,6 +104,25 @@ export function WhatsAppPanel({ canManage }: { canManage: boolean }) {
             state={state}
         >
             {message && <PanelMessage tone={message.tone}>{message.text}</PanelMessage>}
+
+            {platformReady === false && (
+                <PlatformWarning
+                    ready={false}
+                    label="This deployment is missing its WhatsApp webhook settings (verify token, app secret, Graph API version or the encryption key), so incoming messages cannot be accepted yet."
+                />
+            )}
+
+            {health && (
+                <ChannelHealthList
+                    health={health}
+                    webhookUrl={webhookUrl}
+                    busy={busy}
+                    onAction={(action, id) => {
+                        if (action === 'verify' || action === 'reconnect') verify.mutate(id);
+                        if (action === 'enable_ai') toggleAI.mutate({ id, enabled: true });
+                    }}
+                />
+            )}
 
             {connections.map((connection) => (
                 <div key={connection.id} className="flex flex-col gap-4 rounded-2xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between">

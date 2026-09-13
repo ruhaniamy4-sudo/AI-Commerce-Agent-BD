@@ -41,11 +41,53 @@ export interface InboxConversation extends Conversation {
   psid?: string;
   lastMessage?: string;
   lastMessageAt?: string;
+  lastCustomerMessageAt?: string;
+  unread?: boolean;
+}
+
+/** The few numbers the inbox polls for; the heavy list is refetched only when `version` moves. */
+export interface InboxPulse {
+  version: string;
+  lastActivityAt: string | null;
+  unread: number;
+  needsAttention: number;
+}
+
+export interface ConversationContext {
+  customer: {
+    _id: string;
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+    language: string | null;
+    tags: string[];
+    firstSeenAt: string | null;
+    address: { line1: string; city: string; zone: string; phone: string } | null;
+  } | null;
+  stats: { orders: number; spent: number; currency: string; lastOrderAt: string | null };
+  recentOrders: Array<{
+    _id: string;
+    orderNumber: string;
+    status: string;
+    paymentStatus?: string;
+    total: number;
+    currency: string;
+    items: number;
+    createdAt: string;
+  }>;
+  draft: {
+    stage: string;
+    items: Array<{ name: string; code: string | null; quantity: number; unitPrice: number; currency: string }>;
+    total: number;
+    fullName: string | null;
+    phone: string | null;
+    address: string | null;
+  } | null;
 }
 
 export interface InboxResponse {
   data: InboxConversation[];
-  counts?: { all: number; messenger: number; whatsapp: number; web: number; test: number; needsAttention: number };
+  counts?: { all: number; messenger: number; whatsapp: number; web: number; test: number; needsAttention: number; unread: number };
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
@@ -72,6 +114,11 @@ export const conversationsApi = {
     apiClient.post<Conversation>(`/admin/conversations/${id}/return-to-ai`),
   reply: (id: string, content: string) =>
     apiClient.post<{ message: Message; delivery: "sent" | "stored" }>(`/admin/conversations/${id}/messages`, { content }),
+  pulse: () => apiClient.get<InboxPulse>("/admin/conversations/pulse"),
+  markRead: (id: string) =>
+    apiClient.post<{ conversationId: string; unread: boolean }>(`/admin/conversations/${id}/read`),
+  getContext: (id: string) =>
+    apiClient.get<ConversationContext>(`/admin/conversations/${id}/context`),
 };
 
 // Customers API (Replaces Clients)
@@ -314,6 +361,40 @@ export interface WhatsAppConnection {
   reauthorizationRequired: boolean;
 }
 
+/** One line of the connection-health checklist. */
+export interface HealthCheck {
+  key: string;
+  label: string;
+  state: "pass" | "warn" | "fail" | "unknown";
+  detail: string;
+  action?: "verify" | "reconnect" | "resubscribe" | "enable_ai" | "configure_webhook";
+}
+
+export interface ChannelHealthReport {
+  channel: "messenger" | "whatsapp";
+  id: string;
+  name: string;
+  state: "connected" | "attention" | "disconnected" | "idle";
+  checks: HealthCheck[];
+  lastInboundAt?: string;
+  lastOutboundAt?: string;
+  lastVerifiedAt?: string;
+}
+
+export interface IntegrationHealth {
+  platform: {
+    messengerReady: boolean;
+    whatsappReady: boolean;
+    queueReady: boolean;
+    webhooks: { messenger: string; whatsapp: string } | null;
+  };
+  channels: ChannelHealthReport[];
+}
+
+export const integrationHealthApi = {
+  get: () => apiClient.get<IntegrationHealth>("/api/integrations/health"),
+};
+
 export const whatsappIntegrationsApi = {
   list: () =>
     apiClient.get<{ channels: WhatsAppConnection[] }>("/api/integrations/whatsapp"),
@@ -357,6 +438,10 @@ export const facebookIntegrationsApi = {
     apiClient.patch<FacebookConnection>(`/api/facebook/connections/${id}/ai`, {
       enabled,
     }),
+  resubscribe: (id: string) =>
+    apiClient.post<FacebookConnection>(
+      `/api/facebook/connections/${id}/resubscribe`,
+    ),
   disconnect: (id: string) =>
     apiClient.delete<FacebookConnection>(`/api/facebook/connections/${id}`),
 };

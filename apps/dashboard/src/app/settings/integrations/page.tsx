@@ -18,7 +18,8 @@ import {
     SetupSteps,
 } from '@/components/integrations/integration-shell';
 import { WhatsAppPanel, WHATSAPP_ACCENT, whatsappState } from '@/components/integrations/whatsapp-panel';
-import { businessApi, courierIntegrationsApi, facebookIntegrationsApi, whatsappIntegrationsApi } from '@/lib/api';
+import { ChannelHealthList, PlatformWarning } from '@/components/integrations/channel-health';
+import { businessApi, courierIntegrationsApi, facebookIntegrationsApi, integrationHealthApi, whatsappIntegrationsApi } from '@/lib/api';
 import { useSession } from 'next-auth/react';
 
 const MESSENGER_ACCENT = 'bg-[#0084FF]/10 text-[#0084FF]';
@@ -49,6 +50,13 @@ export default function IntegrationsPage() {
     const channelsQuery = useQuery({ queryKey: ['business-channels'], queryFn: businessApi.channels, enabled: canManage });
     const facebookQuery = useQuery({ queryKey: ['facebook-connections'], queryFn: facebookIntegrationsApi.list, enabled: canManage });
     const whatsappQuery = useQuery({ queryKey: ['whatsapp-connections'], queryFn: whatsappIntegrationsApi.list, enabled: canManage });
+    const healthQuery = useQuery({
+        queryKey: ['integration-health'],
+        queryFn: integrationHealthApi.get,
+        enabled: canManage,
+        refetchInterval: 60_000,
+    });
+    const refreshHealth = () => queryClient.invalidateQueries({ queryKey: ['integration-health'] });
     const pageChoices = useQuery({
         queryKey: ['facebook-session', facebookSession],
         queryFn: () => facebookIntegrationsApi.session(facebookSession),
@@ -76,9 +84,14 @@ export default function IntegrationsPage() {
         },
         onError: failFacebook,
     });
-    const verifyFacebook = useMutation({ mutationFn: facebookIntegrationsApi.verify, onSuccess: () => { setFacebookMessage({ tone: 'success', text: 'Facebook connection verified.' }); void refreshFacebook(); }, onError: failFacebook });
+    const verifyFacebook = useMutation({ mutationFn: facebookIntegrationsApi.verify, onSuccess: () => { setFacebookMessage({ tone: 'success', text: 'Facebook connection verified.' }); void refreshFacebook(); refreshHealth(); }, onError: failFacebook });
+    const resubscribeFacebook = useMutation({
+        mutationFn: facebookIntegrationsApi.resubscribe,
+        onSuccess: () => { setFacebookMessage({ tone: 'success', text: 'Messenger webhook subscription restored.' }); void refreshFacebook(); refreshHealth(); },
+        onError: failFacebook,
+    });
     const disconnectFacebook = useMutation({ mutationFn: facebookIntegrationsApi.disconnect, onSuccess: () => { setFacebookMessage({ tone: 'success', text: 'Facebook Page disconnected and its stored Page token removed.' }); void refreshFacebook(); }, onError: failFacebook });
-    const toggleFacebookAI = useMutation({ mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => facebookIntegrationsApi.setAI(id, enabled), onSuccess: () => void refreshFacebook(), onError: failFacebook });
+    const toggleFacebookAI = useMutation({ mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => facebookIntegrationsApi.setAI(id, enabled), onSuccess: () => { void refreshFacebook(); refreshHealth(); }, onError: failFacebook });
 
     const saveCourier = useMutation({
         mutationFn: () => courierIntegrationsApi.saveSteadfast({ apiKey, secretKey, deliveryType: 0 }),
@@ -128,6 +141,8 @@ export default function IntegrationsPage() {
     const courierState: ConnectionState = courierQuery.isLoading ? 'loading' : courier?.connected ? 'connected' : courier?.configured ? 'attention' : 'idle';
     const waState = whatsappState(whatsappConnections, whatsappQuery.isLoading);
 
+    const messengerHealth = healthQuery.data?.channels.find((entry) => entry.channel === 'messenger');
+    const whatsappHealth = healthQuery.data?.channels.find((entry) => entry.channel === 'whatsapp');
     const liveChannels = [messengerState, waState, webState].filter((state) => state === 'connected').length;
     const courierBusy = saveCourier.isPending || testCourier.isPending || disconnectCourier.isPending;
 
@@ -153,6 +168,13 @@ export default function IntegrationsPage() {
                         Retry status check
                     </button>
                 </PanelMessage>
+            )}
+
+            {healthQuery.data?.platform.queueReady === false && (
+                <PlatformWarning
+                    ready={false}
+                    label="Inbound messages are queued before the AI answers them, and this deployment has no queue configured (REDIS_URL). Messenger and WhatsApp messages will not be processed until it is set."
+                />
             )}
 
             <section aria-label="Customer channels" className="space-y-3">
@@ -238,13 +260,38 @@ export default function IntegrationsPage() {
                     </div>
                 ))}
 
+                {messengerHealth && (
+                    <ChannelHealthList
+                        health={messengerHealth}
+                        webhookUrl={healthQuery.data?.platform.webhooks?.messenger}
+                        busy={verifyFacebook.isPending || resubscribeFacebook.isPending || toggleFacebookAI.isPending}
+                        onAction={(action, id) => {
+                            if (action === 'verify') verifyFacebook.mutate(id);
+                            if (action === 'resubscribe') resubscribeFacebook.mutate(id);
+                            if (action === 'reconnect') startFacebook.mutate(false);
+                            if (action === 'enable_ai') toggleFacebookAI.mutate({ id, enabled: true });
+                        }}
+                    />
+                )}
+
+                <PlatformWarning
+                    ready={healthQuery.data?.platform.messengerReady !== false}
+                    label="This deployment is missing its Facebook app settings (app id, secret, verify token or public URL), so Messenger cannot receive events yet."
+                />
+
                 <div className="flex gap-3 rounded-2xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
                     <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
                     <p>Core authorization requests Page listing, Messenger replies and webhook management only. Page-content learning is optional and stays unavailable until its separate permission and App Review are approved.</p>
                 </div>
             </IntegrationPanel>
 
-            <WhatsAppPanel canManage={canManage} />
+            <WhatsAppPanel
+                canManage={canManage}
+                health={whatsappHealth}
+                webhookUrl={healthQuery.data?.platform.webhooks?.whatsapp}
+                platformReady={healthQuery.data?.platform.whatsappReady}
+                onHealthChanged={refreshHealth}
+            />
 
             <IntegrationPanel
                 id="website"

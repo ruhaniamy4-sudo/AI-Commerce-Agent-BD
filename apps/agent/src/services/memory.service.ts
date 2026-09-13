@@ -150,13 +150,16 @@ export async function saveMessage(
         if (error?.code !== 11000 || !options?.messageId) throw error;
         return Message.findOne({ conversationId, 'metadata.messageId': options.messageId });
     }
+    const now = new Date();
     const conversation = await Conversation.findOneAndUpdate(
         { conversationId },
         {
             $inc: { messageCount: 1 },
             $set: {
-                lastMessageAt: new Date(),
+                lastMessageAt: now,
                 lastMessagePreview: content.slice(0, 200),
+                // A customer message reopens the thread; our own replies never do.
+                ...(role === 'user' ? { lastCustomerMessageAt: now, unread: true } : {}),
             },
         },
         { new: true }

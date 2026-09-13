@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import { AuthenticatedRequest, requireAdministrator } from '../auth/middleware';
-import { beginMetaConnection, completeMetaOAuthCallback, connectSelectedMetaPage, disconnectMetaConnection, getMetaOAuthSession, listMetaConnections, setMetaConnectionAI, verifyMetaConnection } from '../services/meta-connection.service';
+import { beginMetaConnection, completeMetaOAuthCallback, connectSelectedMetaPage, disconnectMetaConnection, getMetaOAuthSession, listMetaConnections, resubscribeMetaConnection, setMetaConnectionAI, verifyMetaConnection } from '../services/meta-connection.service';
 import { getMetaConfig } from '../services/meta-config.service';
+import { getChannelHealth } from '../services/channel-health.service';
 import { redactMetaSecrets } from '../services/meta-credentials.service';
 import { MetaGraphError } from '../services/meta-graph.service';
 import { MetaDataDeletionRequest } from '../models/MetaDataDeletionRequest';
@@ -42,8 +43,15 @@ router.post('/facebook/connections/:id/verify', requireAdministrator, async (req
 router.patch('/facebook/connections/:id/ai', requireAdministrator, async (req: AuthenticatedRequest, res) => {
     try { res.json(await setMetaConnectionAI(req.auth!.businessId, String(req.params.id), req.body?.enabled === true)); } catch (error) { sendError(res, error); }
 });
+router.post('/facebook/connections/:id/resubscribe', requireAdministrator, async (req: AuthenticatedRequest, res) => {
+    try { res.json(await resubscribeMetaConnection(req.auth!.businessId, String(req.params.id))); } catch (error) { sendError(res, error); }
+});
 router.delete('/facebook/connections/:id', requireAdministrator, async (req: AuthenticatedRequest, res) => {
     try { res.json(await disconnectMetaConnection(req.auth!.businessId, String(req.params.id))); } catch (error) { sendError(res, error); }
+});
+
+router.get('/integrations/health', requireAdministrator, async (req: AuthenticatedRequest, res) => {
+    try { res.json(await getChannelHealth(req.auth!.businessId)); } catch (error) { sendError(res, error); }
 });
 
 export const metaPublicRouter = Router();

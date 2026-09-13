@@ -67,6 +67,12 @@ export interface IConversation extends Document {
     // Denormalized Metrics (for performance)
     messageCount: number;
     lastMessageAt?: Date;
+    /** When the customer last wrote — what "unread" is actually about. */
+    lastCustomerMessageAt?: Date;
+    /** True from a customer message until someone on the team opens the thread. */
+    unread: boolean;
+    lastReadAt?: Date;
+    lastReadBy?: string;
     lastMessagePreview?: string; // First 200 chars
 
     // Visual Product Search Context
@@ -153,6 +159,10 @@ const ConversationSchema = new Schema(
 
         messageCount: { type: Number, default: 0 },
         lastMessageAt: { type: Date },
+        lastCustomerMessageAt: { type: Date },
+        unread: { type: Boolean, default: false },
+        lastReadAt: { type: Date },
+        lastReadBy: { type: String },
         lastMessagePreview: { type: String, maxlength: 200 },
 
         // Visual Product Search Context
@@ -178,6 +188,7 @@ ConversationSchema.plugin(tenantPlugin);
 ConversationSchema.index({ businessId: 1, conversationId: 1 }, { unique: true });
 ConversationSchema.index({ businessId: 1, customerId: 1, createdAt: -1 });
 ConversationSchema.index({ businessId: 1, status: 1, lastMessageAt: -1 });
+ConversationSchema.index({ businessId: 1, unread: 1, lastMessageAt: -1 });
 ConversationSchema.index({ businessId: 1, platform: 1, status: 1 });
 ConversationSchema.index({ businessId: 1, assignedTo: 1, status: 1 });
 ConversationSchema.index({ businessId: 1, needsHumanHandoff: 1, status: 1 });

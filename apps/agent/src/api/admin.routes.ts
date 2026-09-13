@@ -1,4 +1,5 @@
 import { Router } from "express";
+import mongoose from "mongoose";
 import NodeCache from "node-cache";
 import { AuthenticatedRequest, requireAdministrator } from "../auth/middleware";
 import { requireTenantContext, tenantDocument } from "../tenancy/context";
@@ -22,6 +23,18 @@ import {
 const router = Router();
 
 /**
+ * A thread can be addressed by its Mongo id or by the channel conversation id.
+ * Casting a channel id like "wa_555_880171" to an ObjectId would throw, so the
+ * _id branch is only offered when the id could actually be one.
+ */
+function conversationBy(rawId: string | string[]) {
+  const id = String(rawId);
+  return mongoose.isValidObjectId(id)
+    ? { $or: [{ _id: id }, { conversationId: id }] }
+    : { conversationId: id };
+}
+
+/**
  * The merchant inbox.
  *
  * Every connected channel lands in the same list, so the filters carry the
@@ -30,7 +43,7 @@ const router = Router();
  * and threads with no messages are never listed at all.
  */
 export type InboxChannel = 'all' | 'messenger' | 'whatsapp' | 'web' | 'test';
-export type InboxState = 'all' | 'needs_attention' | 'human' | 'ai';
+export type InboxState = 'all' | 'unread' | 'needs_attention' | 'human' | 'ai';
 
 const TEST_THREAD = { platform: 'manual', 'metadata.testMode': true } as const;
 const CHANNEL_PLATFORMS: Record<Exclude<InboxChannel, 'all' | 'test'>, string[]> = {
@@ -55,6 +68,7 @@ export function inboxFilter(channel: InboxChannel, state: InboxState) {
     else if (channel === 'all') filter.$nor = [TEST_THREAD];
     else filter.platform = { $in: CHANNEL_PLATFORMS[channel] };
 
+    if (state === 'unread') filter.unread = true;
     if (state === 'needs_attention') filter.needsHumanHandoff = true;
     if (state === 'human') filter.controlMode = 'HUMAN_ACTIVE';
     if (state === 'ai') filter.controlMode = 'AI_ACTIVE';
@@ -73,7 +87,7 @@ router.get("/conversations", async (req, res) => {
     const channel: InboxChannel = ['messenger', 'whatsapp', 'web', 'test'].includes(String(req.query.channel))
       ? (req.query.channel as InboxChannel)
       : 'all';
-    const state: InboxState = ['needs_attention', 'human', 'ai'].includes(String(req.query.state))
+    const state: InboxState = ['unread', 'needs_attention', 'human', 'ai'].includes(String(req.query.state))
       ? (req.query.state as InboxState)
       : 'all';
 
@@ -97,7 +111,7 @@ router.get("/conversations", async (req, res) => {
 
     const [conversations, total, counts] = await Promise.all([
       Conversation.find(filter)
-        .select("conversationId platform customerId psid controlMode needsHumanHandoff handoffReason messageCount lastMessagePreview lastMessageAt salesStage updatedAt metadata.testMode")
+        .select("conversationId platform customerId psid controlMode needsHumanHandoff handoffReason messageCount lastMessagePreview lastMessageAt lastCustomerMessageAt unread salesStage updatedAt metadata.testMode")
         .populate("customerId", "name phone")
         .sort({ [sortBy]: order })
         .skip((page - 1) * limit)
@@ -119,6 +133,7 @@ router.get("/conversations", async (req, res) => {
         psid: conversation.psid,
         controlMode: conversation.controlMode,
         needsHumanHandoff: Boolean(conversation.needsHumanHandoff),
+        unread: Boolean(conversation.unread),
         handoffReason: conversation.handoffReason,
         salesStage: conversation.salesStage,
         messageCount: conversation.messageCount || 0,
@@ -137,21 +152,63 @@ router.get("/conversations", async (req, res) => {
 
 /** How many threads sit behind each tab, so the merchant sees where the work is. */
 async function inboxCounts(state: InboxState) {
-  const [all, messenger, whatsapp, web, test, needsAttention] = await Promise.all([
+  const [all, messenger, whatsapp, web, test, needsAttention, unread] = await Promise.all([
     Conversation.countDocuments(inboxFilter('all', state)),
     Conversation.countDocuments(inboxFilter('messenger', state)),
     Conversation.countDocuments(inboxFilter('whatsapp', state)),
     Conversation.countDocuments(inboxFilter('web', state)),
     Conversation.countDocuments(inboxFilter('test', state)),
     Conversation.countDocuments(inboxFilter('all', 'needs_attention')),
+    Conversation.countDocuments(inboxFilter('all', 'unread')),
   ]);
-  return { all, messenger, whatsapp, web, test, needsAttention };
+  return { all, messenger, whatsapp, web, test, needsAttention, unread };
 }
+
+/**
+ * A cheap "has anything changed?" check.
+ *
+ * The dashboard asks for this every few seconds and only refetches the inbox when
+ * the version moves, so a quiet shop costs two counts and a timestamp instead of
+ * a full conversation listing. Long-lived streams were the alternative, but this
+ * deployment sleeps idle connections, so a small poll is the reliable choice.
+ */
+router.get("/conversations/pulse", async (_req, res) => {
+  try {
+    const activeFilter = inboxFilter('all', 'all');
+    const [latest, unread, needsAttention] = await Promise.all([
+      Conversation.findOne(activeFilter).select('lastMessageAt').sort({ lastMessageAt: -1 }).lean(),
+      Conversation.countDocuments(inboxFilter('all', 'unread')),
+      Conversation.countDocuments(inboxFilter('all', 'needs_attention')),
+    ]);
+    const lastActivityAt = (latest as any)?.lastMessageAt || null;
+    res.json({
+      // Anything that should repaint the inbox changes this string.
+      version: `${lastActivityAt ? new Date(lastActivityAt).getTime() : 0}:${unread}:${needsAttention}`,
+      lastActivityAt,
+      unread,
+      needsAttention,
+    });
+  } catch (error) {
+    console.error("Error reading inbox pulse:", error);
+    res.status(500).json({ error: "Failed to read the inbox pulse" });
+  }
+});
+
+/** Opening a thread clears its unread mark for the whole team. */
+router.post("/conversations/:id/read", async (req: AuthenticatedRequest, res) => {
+  const conversation = await Conversation.findOneAndUpdate(
+    conversationBy(req.params.id),
+    { $set: { unread: false, lastReadAt: new Date(), lastReadBy: req.auth!.userId } },
+    { new: true },
+  ).select('conversationId unread lastReadAt').lean();
+  if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+  res.json(conversation);
+});
 
 // Get messages for a specific conversation
 router.get("/conversations/:id", async (req, res) => {
   const conversation = await Conversation.findOne({
-    $or: [{ _id: req.params.id }, { conversationId: req.params.id }],
+    ...conversationBy(req.params.id),
   }).populate("customerId", "name phone email").lean() as any;
   if (!conversation)
     return res.status(404).json({ error: "Conversation not found" });
@@ -163,6 +220,95 @@ router.get("/conversations/:id", async (req, res) => {
       ? { _id: conversation.customerId._id, name: conversation.customerId.name, phone: conversation.customerId.phone, email: conversation.customerId.email }
       : null,
   });
+});
+
+/**
+ * Everything the person answering a thread needs beside the messages: who this
+ * is, what they have bought before, and what the AI is in the middle of taking
+ * down. Without it, replying means guessing or opening three other pages.
+ */
+router.get("/conversations/:id/context", async (req, res) => {
+  try {
+    const conversation = await Conversation.findOne({
+      ...conversationBy(req.params.id),
+    }).populate("customerId", "name phone email language tags addresses totalOrders totalSpent createdAt").lean() as any;
+    if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+
+    const customer = conversation.customerId || null;
+    // Orders are the source of truth for the totals; the customer counters are a cache.
+    const orders = customer
+      ? await Order.find({ customerId: customer._id })
+          .select("orderNumber status paymentStatus total items createdAt")
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .lean()
+      : [];
+    // Orders are priced in the business currency, which is BDT for every merchant today.
+    const currency = "BDT";
+    const [totals] = customer
+      ? await Order.aggregate([
+          { $match: { customerId: customer._id } },
+          { $group: { _id: null, count: { $sum: 1 }, spent: { $sum: "$total" } } },
+        ])
+      : [];
+
+    const address = customer?.addresses?.find((entry: any) => entry.isDefault) || customer?.addresses?.[0] || null;
+    const draft = conversation.metadata?.orderDraft;
+
+    res.json({
+      customer: customer && {
+        _id: customer._id,
+        name: customer.name || null,
+        phone: customer.phone || null,
+        email: customer.email || null,
+        language: customer.language || null,
+        tags: customer.tags || [],
+        firstSeenAt: customer.createdAt || null,
+        address: address && {
+          line1: address.addressLine1,
+          city: address.city,
+          zone: address.zone,
+          phone: address.phone,
+        },
+      },
+      stats: {
+        orders: totals?.count || 0,
+        spent: totals?.spent || 0,
+        currency,
+        lastOrderAt: (orders[0] as any)?.createdAt || null,
+      },
+      recentOrders: orders.map((order: any) => ({
+        _id: order._id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        total: order.total,
+        currency,
+        items: (order.items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0),
+        createdAt: order.createdAt,
+      })),
+      // What the AI has collected so far, so a takeover does not start from nothing.
+      draft: draft?.items?.length
+        ? {
+            stage: draft.stage,
+            items: draft.items.map((item: any) => ({
+              name: item.variantName ? `${item.name} (${item.variantName})` : item.name,
+              code: item.code || item.sku || null,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              currency: item.currency || "BDT",
+            })),
+            total: draft.items.reduce((sum: number, item: any) => sum + item.unitPrice * item.quantity, 0),
+            fullName: draft.fullName || null,
+            phone: draft.phone || null,
+            address: [draft.addressLine1, draft.zone, draft.city].filter(Boolean).join(", ") || null,
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error("Error building conversation context:", error);
+    res.status(500).json({ error: "Failed to load conversation context" });
+  }
 });
 
 router.post("/conversations/:id/take-over", async (req, res) => {
@@ -188,7 +334,7 @@ router.post("/conversations/:id/messages", async (req: AuthenticatedRequest, res
   if (content.length > 2000) return res.status(400).json({ error: "Message is too long" });
 
   const conversation = await Conversation.findOne({
-    $or: [{ _id: req.params.id }, { conversationId: req.params.id }],
+    ...conversationBy(req.params.id),
   });
   if (!conversation) return res.status(404).json({ error: "Conversation not found" });
   if (conversation.controlMode !== "HUMAN_ACTIVE") {
@@ -225,7 +371,7 @@ router.get("/conversations/:id/messages", async (req, res) => {
   try {
     const { id } = req.params;
     const conversation = await Conversation.findOne({
-      $or: [{ _id: id }, { conversationId: id }],
+      ...conversationBy(id),
     });
 
     if (!conversation) {

@@ -41,6 +41,13 @@ describe('inbox filters', () => {
         expect(inboxFilter('all', 'ai')).toMatchObject({ controlMode: 'AI_ACTIVE' });
     });
 
+    it('has an unread tab that asks the database for unread threads only', () => {
+        expect(inboxFilter('all', 'unread')).toMatchObject({ unread: true });
+        expect(inboxFilter('whatsapp', 'unread')).toMatchObject({ unread: true, platform: { $in: ['whatsapp'] } });
+        // Unread is a stored flag, so the tab is an index lookup rather than a scan.
+        expect(inboxFilter('all', 'all')).not.toHaveProperty('unread');
+    });
+
     it('labels each thread with the channel the customer used', () => {
         expect(inboxChannelOf({ platform: 'facebook' })).toBe('messenger');
         expect(inboxChannelOf({ platform: 'whatsapp' })).toBe('whatsapp');
@@ -79,6 +86,16 @@ describe('inbox endpoint', () => {
             messageCount: 8,
         });
         expect(response.body.counts).toHaveProperty('needsAttention');
+        expect(response.body.counts).toHaveProperty('unread');
+    });
+
+    it('tells the dashboard which rows are still unread', async () => {
+        mockInbox([
+            { _id: 'c1', conversationId: 'fb_1', platform: 'facebook', unread: true, messageCount: 3, updatedAt: new Date() },
+            { _id: 'c2', conversationId: 'fb_2', platform: 'facebook', messageCount: 3, updatedAt: new Date() },
+        ]);
+        const response = await request(app).get('/api/conversations').expect(200);
+        expect(response.body.data.map((row: any) => row.unread)).toEqual([true, false]);
     });
 
     it('asks the database for the tab the merchant selected', async () => {
@@ -86,6 +103,35 @@ describe('inbox endpoint', () => {
         await request(app).get('/api/conversations?channel=whatsapp&state=needs_attention').expect(200);
         const filter = (Conversation.find as any).mock.calls[0][0];
         expect(filter).toMatchObject({ platform: { $in: ['whatsapp'] }, needsHumanHandoff: true, messageCount: { $gt: 0 } });
+    });
+
+    it('moves the pulse version whenever activity or unread changes', async () => {
+        vi.spyOn(Conversation, 'findOne').mockReturnValue({
+            select: () => ({ sort: () => ({ lean: () => Promise.resolve({ lastMessageAt: new Date('2026-09-13T09:00:00Z') }) }) }),
+        } as never);
+        const counts = vi.spyOn(Conversation, 'countDocuments');
+        counts.mockResolvedValue(2 as never);
+
+        const first = await request(app).get('/api/conversations/pulse').expect(200);
+        expect(first.body).toMatchObject({ unread: 2, needsAttention: 2 });
+        expect(first.body.version).toContain(String(new Date('2026-09-13T09:00:00Z').getTime()));
+
+        counts.mockResolvedValue(1 as never);
+        const second = await request(app).get('/api/conversations/pulse').expect(200);
+        expect(second.body.version).not.toBe(first.body.version);
+    });
+
+    it('resolves a thread by its channel id without casting it to an ObjectId', async () => {
+        const update = vi.spyOn(Conversation, 'findOneAndUpdate').mockReturnValue({
+            select: () => ({ lean: () => Promise.resolve({ conversationId: 'wa_555_880171', unread: false, lastReadAt: new Date() }) }),
+        } as never);
+
+        await request(app).post('/api/conversations/wa_555_880171/read').expect(200);
+        expect(update.mock.calls[0][0]).toEqual({ conversationId: 'wa_555_880171' });
+
+        const objectId = new mongoose.Types.ObjectId().toString();
+        await request(app).post(`/api/conversations/${objectId}/read`).expect(200);
+        expect(update.mock.calls[1][0]).toMatchObject({ $or: [{ _id: objectId }, { conversationId: objectId }] });
     });
 
     it('finds a thread by the customer name, not only by message text', async () => {

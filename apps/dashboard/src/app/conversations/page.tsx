@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { conversationsApi } from "@/lib/api";
 import { PageHeader } from "@/components/layout/page-header";
 import { WorkspacePanel, WorkspaceSearch, WorkspacePagination, WorkspaceEmpty } from "@/components/layout/workspace-surface";
@@ -20,6 +20,7 @@ const CHANNEL_TABS = [
 
 const STATE_TABS = [
     { key: "all", label: "Everything" },
+    { key: "unread", label: "Unread" },
     { key: "needs_attention", label: "Needs you" },
     { key: "human", label: "You are replying" },
     { key: "ai", label: "AI is handling" },
@@ -36,12 +37,34 @@ export default function ConversationsPage() {
     const [channel, setChannel] = useState<ChannelKey>("all");
     const [state, setState] = useState<StateKey>("all");
 
+    const queryClient = useQueryClient();
+
     const { data: response, isLoading, error, refetch } = useQuery({
         queryKey: ["conversations", page, searchQuery, sortBy, order, channel, state],
         queryFn: () => conversationsApi.getAll({ page, limit: 12, search: searchQuery, sortBy, order, channel, state }),
-        // A merchant inbox is only useful if it keeps up with the customer.
-        refetchInterval: 15_000,
     });
+
+    /**
+     * The inbox keeps up with the customer without reloading itself every few
+     * seconds: a tiny pulse request carries a version string, and only a change
+     * in that string costs a real refetch.
+     */
+    const { data: pulse } = useQuery({
+        queryKey: ["conversations", "pulse"],
+        queryFn: () => conversationsApi.pulse(),
+        refetchInterval: 5_000,
+        refetchIntervalInBackground: false,
+    });
+    const seenVersion = useRef<string>();
+    useEffect(() => {
+        if (!pulse?.version) return;
+        if (seenVersion.current && seenVersion.current !== pulse.version) {
+            queryClient.invalidateQueries({
+                predicate: (query) => query.queryKey[0] === "conversations" && query.queryKey[1] !== "pulse",
+            });
+        }
+        seenVersion.current = pulse.version;
+    }, [pulse?.version, queryClient]);
 
     const conversations = response?.data;
     const pagination = response?.pagination;
@@ -80,11 +103,20 @@ export default function ConversationsPage() {
                         </Button>
                     );
                 })}
-                {Boolean(counts?.needsAttention) && state !== "needs_attention" && (
-                    <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => pick(setState, "needs_attention")}>
-                        {counts?.needsAttention} waiting for you
+                {Boolean(pulse?.unread) && state !== "unread" && (
+                    <Button size="sm" variant="ghost" className="text-primary" onClick={() => pick(setState, "unread")}>
+                        {pulse?.unread} unread
                     </Button>
                 )}
+                {Boolean(pulse?.needsAttention) && state !== "needs_attention" && (
+                    <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => pick(setState, "needs_attention")}>
+                        {pulse?.needsAttention} waiting for you
+                    </Button>
+                )}
+                <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground" title="This inbox updates on its own">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
+                    Live
+                </span>
             </div>
 
             <WorkspacePanel
@@ -143,20 +175,26 @@ export default function ConversationsPage() {
                                     const name = c.customer?.name || "Unnamed customer";
                                     const identity = c.customer?.phone || c.psid || "No contact saved";
                                     return (
-                                        <tr key={c._id}>
+                                        <tr key={c._id} className={c.unread ? "bg-primary/[0.04]" : undefined}>
                                             <td>
                                                 <div className="flex items-center gap-3">
-                                                    <span className="grid w-9 h-9 place-items-center bg-primary/10 text-primary rounded-full text-xs shrink-0">
+                                                    <span className="relative grid w-9 h-9 place-items-center bg-primary/10 text-primary rounded-full text-xs shrink-0">
                                                         {name.slice(0, 2).toUpperCase()}
+                                                        {c.unread && (
+                                                            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-primary ring-2 ring-card" aria-hidden />
+                                                        )}
                                                     </span>
                                                     <div>
-                                                        <Link href={`/conversations/${c._id}`} className="font-semibold hover:text-primary">{name}</Link>
+                                                        <Link href={`/conversations/${c._id}`} className="font-semibold hover:text-primary">
+                                                            {name}
+                                                            {c.unread && <span className="sr-only"> (unread)</span>}
+                                                        </Link>
                                                         <small>{identity}</small>
                                                     </div>
                                                 </div>
                                             </td>
                                             <td><ChannelBadge channel={c.channel} /></td>
-                                            <td><p className="work-message-preview">{c.lastMessage}</p></td>
+                                            <td><p className={`work-message-preview${c.unread ? " font-semibold text-foreground" : ""}`}>{c.lastMessage}</p></td>
                                             <td><HandlerBadge controlMode={c.controlMode} needsHumanHandoff={c.needsHumanHandoff} /></td>
                                             <td className="whitespace-nowrap" title={format(new Date(c.lastMessageAt || c.updatedAt), "PPpp")}>
                                                 {formatDistanceToNowStrict(new Date(c.lastMessageAt || c.updatedAt), { addSuffix: true })}

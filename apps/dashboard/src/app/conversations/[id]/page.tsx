@@ -10,10 +10,11 @@ import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { customerFacingText } from "@/lib/assistant-response"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Send } from "lucide-react"
 import {CustomerIntelligencePanel} from '@/components/customers/customer-intelligence-panel'
 import { ChannelBadge, HandlerBadge } from '@/components/conversations/channel-badge'
+import { ConversationContextPanel } from '@/components/conversations/conversation-context'
 
 
 export default function ConversationDetailPage() {
@@ -33,6 +34,38 @@ export default function ConversationDetailPage() {
     queryFn: () => conversationsApi.getMessages(conversationId),
   })
 
+  // Opening the thread is what "read" means, so clear the mark once per visit.
+  const markedRead = useRef(false)
+  useEffect(() => {
+    if (markedRead.current || !conversationId) return
+    markedRead.current = true
+    conversationsApi.markRead(conversationId)
+      .then(() => queryClient.invalidateQueries({ queryKey: ["conversations"] }))
+      .catch(() => { markedRead.current = false })
+  }, [conversationId, queryClient])
+
+  /**
+   * While a thread is open, the same cheap pulse the inbox uses tells us when a
+   * new message has landed — so an open conversation stays current without
+   * re-downloading the whole history every few seconds.
+   */
+  const { data: pulse } = useQuery({
+    queryKey: ["conversations", "pulse"],
+    queryFn: () => conversationsApi.pulse(),
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
+  })
+  const seenActivity = useRef<string | null>(null)
+  useEffect(() => {
+    const activity = pulse?.lastActivityAt ?? null
+    if (!activity) return
+    if (seenActivity.current && seenActivity.current !== activity) {
+      queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] })
+      queryClient.invalidateQueries({ queryKey: ["conversation-context", conversationId] })
+    }
+    seenActivity.current = activity
+  }, [pulse?.lastActivityAt, conversationId, queryClient])
+
   const controlMutation = useMutation({
     mutationFn: () => conversation?.controlMode === "HUMAN_ACTIVE"
       ? conversationsApi.returnToAI(conversationId)
@@ -48,6 +81,7 @@ export default function ConversationDetailPage() {
     onSuccess: () => {
       setReply("")
       queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] })
+      queryClient.invalidateQueries({ queryKey: ["conversation-context", conversationId] })
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
     },
   })
@@ -67,6 +101,6 @@ export default function ConversationDetailPage() {
         <p className={cn('max-w-[95%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm leading-6 sm:max-w-[80%]',message.role === 'user' ? 'border border-border bg-muted text-foreground' : 'bg-primary text-primary-foreground')}>{message.role === 'user' || message.metadata?.source === 'human' ? message.content : customerFacingText(message.content)}</p>
       </article>)}</div>}
       <footer className="border-t border-border p-4">{conversation?.controlMode === 'HUMAN_ACTIVE' ? <form className="flex gap-2" onSubmit={event => { event.preventDefault(); if (reply.trim()) replyMutation.mutate() }}><input className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary" value={reply} onChange={event => setReply(event.target.value)} placeholder="Reply as your team…" maxLength={2000}/><Button type="submit" disabled={!reply.trim() || replyMutation.isPending}>{replyMutation.isPending ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>}<span className="ml-2">Send</span></Button></form> : <p className="text-center text-xs text-muted-foreground">Take over this conversation to reply manually.</p>}{replyMutation.isError && <p role="alert" className="mt-2 text-xs text-destructive">{(replyMutation.error as Error)?.message || 'The reply could not be delivered. Check the channel connection and try again.'}</p>}</footer>
-    </WorkspacePanel><CustomerIntelligencePanel conversationId={conversationId}/></div>
+    </WorkspacePanel><div className="space-y-4"><ConversationContextPanel conversationId={conversationId}/><CustomerIntelligencePanel conversationId={conversationId}/></div></div>
   </div>
 }

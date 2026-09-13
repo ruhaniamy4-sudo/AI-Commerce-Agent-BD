@@ -176,6 +176,30 @@ export async function disconnectMetaConnection(businessId: string, connectionId:
     return publicMetaConnection(channel.toObject());
 }
 
+/**
+ * A Page whose webhook subscription lapsed does not need a new token — just the
+ * subscription back. This repairs it in place, so the merchant is not sent
+ * through Meta's whole authorization flow again.
+ */
+export async function resubscribeMetaConnection(businessId: string, connectionId: string) {
+    const channel = await loadOwnedChannel(businessId, connectionId);
+    if (!channel.encryptedAccessToken) throw new Error('Facebook Page token is unavailable');
+    const token = decryptMetaAccessToken(channel.encryptedAccessToken);
+    const result = await metaGraph.subscribe(channel.externalId, token, META_MESSAGING_WEBHOOK_FIELDS);
+    if (!result.success) throw new Error('Facebook did not confirm the webhook subscription');
+    const subscriptions = await metaGraph.subscriptions(channel.externalId, token);
+    const fields = subscriptions.data.flatMap((item) => item.subscribed_fields || []);
+    const subscribed = META_MESSAGING_WEBHOOK_FIELDS.every((field) => fields.includes(field));
+    Object.assign(channel, {
+        subscription: { subscribed, fields, verifiedAt: new Date() },
+        connectionStatus: subscribed ? 'CONNECTED' : 'NEEDS_ATTENTION',
+        lastErrorCode: subscribed ? undefined : 'SUBSCRIPTION_MISSING',
+        lastVerifiedAt: new Date(),
+    });
+    await channel.save();
+    return publicMetaConnection(channel.toObject());
+}
+
 export async function setMetaConnectionAI(businessId: string, connectionId: string, enabled: boolean) {
     const channel = await BusinessChannel.findOne({ _id: connectionId, businessId, platform: 'facebook' });
     if (!channel) throw new Error('Facebook connection not found');

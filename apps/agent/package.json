@@ -26,7 +26,8 @@
     "measure:context": "ts-node src/scripts/measure-context-budget.ts",
     "validate:product-actions": "ts-node src/scripts/validate-merchant-product-actions.ts",
     "measure:coverage": "ts-node src/scripts/measure-turn-coverage.ts",
-    "validate:inbox": "ts-node src/scripts/validate-inbox.ts"
+    "validate:inbox": "ts-node src/scripts/validate-inbox.ts",
+    "validate:channel-health": "ts-node src/scripts/validate-channel-health.ts"
   },
   "dependencies": {
     "@edutechs/shared": "*",
