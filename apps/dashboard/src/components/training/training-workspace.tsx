@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { PageHeader } from '@/components/layout/page-header';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -494,6 +495,7 @@ function CandidateCard({ candidate, refresh, selected, onSelect }: { candidate: 
 }
 
 export function TrainingWorkspace({ onboarding = false, onFinish }: { onboarding?: boolean; onFinish?: () => Promise<void> }) {
+    const confirm = useConfirm();
     const client = useQueryClient(); const [website, setWebsite] = useState(''); const [reference, setReference] = useState(''); const [facebookConnectionId, setFacebookConnectionId] = useState(''); const [error, setError] = useState('');
     const [sourceFeedback, setSourceFeedback] = useState(''); const [profileFeedback, setProfileFeedback] = useState('');
     const [businessType, setBusinessType] = useState(''); const [businessSubType, setBusinessSubType] = useState(''); const [customBusinessType, setCustomBusinessType] = useState('');
@@ -551,7 +553,7 @@ export function TrainingWorkspace({ onboarding = false, onFinish }: { onboarding
         return { processed, approved, failed, failedIds };
     }, onSuccess: () => { setSelected(new Set()); setAllMatching(false); refresh(); }, onError: (reason) => setError(reason instanceof Error ? reason.message : 'Bulk approval failed') });
     const clearMutation = useMutation({ mutationFn: async (mode: 'selected'|'filtered'|'rejected'|'failed'|'all') => {
-        if (!window.confirm('Clear staged candidates only? Canonical Products and Knowledge will be preserved.')) return { cleared: 0 };
+        if (!await confirm({title:'Clear the staged candidates?',description:'Only what is waiting for review is discarded.',consequences:['Approved products and knowledge are kept','Uploaded files stay where they are'],confirmLabel:'Clear staged',tone:'warning'})) return { cleared: 0 };
         const filter: Record<string, string> = mode === 'all' ? {} : mode === 'rejected' || mode === 'failed' ? { status: mode } : candidateFilter;
         return trainingApi.clearCandidates({ ...(mode === 'selected' ? { ids: [...selected] } : { filter }), confirm: 'CLEAR_STAGED_CANDIDATES' });
     }, onSuccess: () => { setSelected(new Set()); setAllMatching(false); refresh(); } });

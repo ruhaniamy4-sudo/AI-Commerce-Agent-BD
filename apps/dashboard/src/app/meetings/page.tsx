@@ -1,6 +1,7 @@
 'use client';
 
 import { PageHeader } from '@/components/layout/page-header';
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -91,6 +92,7 @@ interface MeetingDetailsDialogProps {
 }
 
 function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
+    const confirm = useConfirm();
     const queryClient = useQueryClient();
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState<Partial<Meeting>>({});
@@ -378,8 +380,8 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                         <>
                             <Button
                                 variant="ghost"
-                                onClick={() => {
-                                    if (confirm('Verify: Purge this engagement protocol?')) {
+                                onClick={async () => {
+                                    if (await confirm({ title: 'Cancel this meeting?', description: 'The booked slot opens back up and the customer is no longer expected.', confirmLabel: 'Cancel meeting', cancelLabel: 'Keep it' })) {
                                         deleteMutation.mutate();
                                     }
                                 }}

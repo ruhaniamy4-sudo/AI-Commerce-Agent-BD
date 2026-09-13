@@ -1,5 +1,7 @@
 'use client';
 import { PageHeader } from '@/components/layout/page-header';
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { TableSkeleton } from "@/components/layout/skeleton";
 import { WorkspacePanel, WorkspaceSearch, WorkspaceEmpty, WorkspacePagination } from '@/components/layout/workspace-surface';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -13,6 +15,7 @@ import { BookOpen, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 export default function KnowledgeBasePage() {
+    const confirm = useConfirm();
     const queryClient = useQueryClient();
     const [searchQuery, setSearchQuery] = useState('');
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -104,7 +107,7 @@ export default function KnowledgeBasePage() {
                 actions={<Button onClick={() => setIsDialogOpen(true)}><Plus size={16} className="mr-2" />Add knowledge</Button>} />
             <WorkspacePanel title="Knowledge library" description={`${pagination?.total || 0} entries available to your assistant`}
                 actions={<WorkspaceSearch value={searchQuery} onChange={(value) => { setSearchQuery(value); setPage(1); }} placeholder="Search knowledge" />}>
-                {isLoading ? <p role="status" className="p-8 text-sm text-muted-foreground">Loading your knowledge…</p>
+                {isLoading ? <TableSkeleton rows={7} columns={4} />
                 : isError ? <WorkspaceEmpty title="Knowledge couldn't load" copy="Please try again when your connection is available." />
                 : !knowledgeEntries.length ? <WorkspaceEmpty title={searchQuery ? 'No matching entries' : 'Give your AI a reliable starting point'} copy={searchQuery ? 'Try a different title or keyword.' : 'Add your delivery policy, opening hours, and frequently asked questions.'} />
                 : <div className="divide-y divide-border">{knowledgeEntries.map((entry) => (
@@ -118,7 +121,7 @@ export default function KnowledgeBasePage() {
                         </div>
                         <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
                             <Button variant="ghost" size="icon" aria-label={`Edit ${entry.title}`} onClick={() => setEditingEntry(entry)}><Pencil size={16} /></Button>
-                            <Button variant="ghost" size="icon" aria-label={`Delete ${entry.title}`} disabled={deleteMutation.isPending} onClick={() => { if (window.confirm('Delete this knowledge entry? This cannot be undone.')) deleteMutation.mutate(entry._id); }}><Trash2 size={16} /></Button>
+                            <Button variant="ghost" size="icon" aria-label={`Delete ${entry.title}`} disabled={deleteMutation.isPending} onClick={async () => { if (await confirm({ title: `Delete “${entry.title}”?`, description: 'Your AI stops using this answer straight away. This cannot be undone.', confirmLabel: 'Delete entry' })) deleteMutation.mutate(entry._id); }}><Trash2 size={16} /></Button>
                         </div>
                     </article>
                 ))}</div>}

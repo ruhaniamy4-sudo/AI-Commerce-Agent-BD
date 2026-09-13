@@ -5,9 +5,11 @@ import { platformApi } from "@/lib/platform-api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 export default function BusinessDetail() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const { data, isLoading } = useQuery({
     queryKey: ["platform-business", id],
     queryFn: () => platformApi.business(id),
@@ -22,14 +24,17 @@ export default function BusinessDetail() {
     mutationFn: async () => {
       const current = requireData();
       const next = current.business.status === "active" ? "suspended" : "active";
-      if (
-        !confirm(
-          `${next === "suspended" ? "Suspend" : "Reactivate"} ${current.business.name}?`,
-        )
-      )
-        throw new Error("Cancelled");
-      const reason = prompt("Reason (required)")?.trim();
-      if (!reason) throw new Error("Reason required");
+      const reason = await confirm({
+        title: `${next === "suspended" ? "Suspend" : "Reactivate"} ${current.business.name}?`,
+        description:
+          next === "suspended"
+            ? "The team loses access to this workspace until it is reactivated."
+            : "The team gets access to this workspace again.",
+        confirmLabel: next === "suspended" ? "Suspend business" : "Reactivate business",
+        tone: next === "suspended" ? "danger" : "neutral",
+        reason: { label: "Reason (kept in the audit log)", placeholder: "Why this is happening" },
+      });
+      if (!reason) throw new Error("Cancelled");
       return platformApi.setBusinessStatus(id, next, reason);
     },
     onSuccess: refresh,
@@ -39,14 +44,14 @@ export default function BusinessDetail() {
       const current = requireData();
       const suspended =
         current.business.aiAccess?.status === "SUSPENDED_BY_PLATFORM";
-      if (
-        !confirm(
-          `${suspended ? "Resume" : "Suspend"} AI for ${current.business.name}?`,
-        )
-      )
-        throw new Error("Cancelled");
-      const reason = prompt("Reason (required)")?.trim();
-      if (!reason) throw new Error("Reason required");
+      const reason = await confirm({
+        title: `${suspended ? "Resume" : "Suspend"} AI for ${current.business.name}?`,
+        description: "This affects future automated replies only; nothing already sent changes.",
+        confirmLabel: suspended ? "Resume AI" : "Suspend AI",
+        tone: suspended ? "neutral" : "danger",
+        reason: { label: "Reason (kept in the audit log)", placeholder: "Why this is happening" },
+      });
+      if (!reason) throw new Error("Cancelled");
       return platformApi.setAIStatus(
         id,
         suspended ? "ENABLED" : "SUSPENDED_BY_PLATFORM",
@@ -69,7 +74,11 @@ export default function BusinessDetail() {
       if (!status) throw new Error("Status required");
       if (
         status === "CANCELLED" &&
-        !confirm(`Cancel ${current.business.name}'s subscription?`)
+        !(await confirm({
+          title: `Cancel ${current.business.name}'s subscription?`,
+          description: "Their plan moves to cancelled and the change is recorded against this business.",
+          confirmLabel: "Cancel subscription",
+        }))
       )
         throw new Error("Cancelled");
       return platformApi.setSubscription(id, {
@@ -89,9 +98,12 @@ export default function BusinessDetail() {
     mutationFn: async () => {
       const current = requireData();
       if (
-        !confirm(
-          `Record a manual billing adjustment for ${current.business.name}?`,
-        )
+        !(await confirm({
+          title: `Record a manual billing adjustment for ${current.business.name}?`,
+          description: "You will be asked for the amount, the type and a reason next.",
+          confirmLabel: "Continue",
+          tone: "warning",
+        }))
       )
         throw new Error("Cancelled");
       const amount = Number(prompt("Amount in BDT"));

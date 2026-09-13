@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CreditCard, Globe, KeyRound, Loader2, MessageCircle, PlugZap, ShieldCheck, Truck, Unplug } from 'lucide-react';
@@ -35,6 +36,7 @@ function openPanel(id: string) {
 }
 
 export default function IntegrationsPage() {
+    const confirm = useConfirm();
     const { data: session, status: sessionStatus } = useSession();
     const queryClient = useQueryClient();
     const canManage = session?.role === 'Owner' || session?.role === 'Admin';
@@ -253,7 +255,7 @@ export default function IntegrationsPage() {
                             <Button variant="outline" size="sm" onClick={() => toggleFacebookAI.mutate({ id: connection.id, enabled: !connection.aiEnabled })}>{connection.aiEnabled ? 'Pause AI' : 'Enable AI'}</Button>
                             {!connection.capabilities.canReadPageContent && <Button variant="outline" size="sm" onClick={() => startFacebook.mutate(true)}>Authorize Page learning</Button>}
                             {connection.reauthorizationRequired && <Button size="sm" onClick={() => startFacebook.mutate(false)}>Reconnect</Button>}
-                            <Button variant="destructive" size="sm" onClick={() => { if (window.confirm(`Disconnect ${connection.pageName}?`)) disconnectFacebook.mutate(connection.id); }} disabled={disconnectFacebook.isPending}>
+                            <Button variant="destructive" size="sm" onClick={async () => { if (await confirm({title:`Disconnect ${connection.pageName}?`,description:'New Messenger messages from this Page stop reaching your AI.',consequences:['Existing conversations stay in your inbox','You can reconnect this Page at any time'],confirmLabel:'Disconnect',tone:'warning'})) disconnectFacebook.mutate(connection.id); }} disabled={disconnectFacebook.isPending}>
                                 <Unplug className="mr-1 h-4 w-4" />Disconnect
                             </Button>
                         </div>
@@ -346,7 +348,7 @@ export default function IntegrationsPage() {
                             {saveCourier.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}Save & validate
                         </Button>
                         <Button variant="outline" onClick={() => testCourier.mutate()} disabled={courierBusy || !courier?.configured}>Test connection</Button>
-                        <Button variant="destructive" onClick={() => { if (window.confirm('Disconnect Steadfast and remove the saved courier credentials?')) disconnectCourier.mutate(); }} disabled={courierBusy || !courier?.configured}>
+                        <Button variant="destructive" onClick={async () => { if (await confirm({title:'Disconnect Steadfast?',description:'Your saved courier credentials are removed from this workspace.',consequences:['New orders can no longer be booked automatically','Already booked shipments are unaffected'],confirmLabel:'Disconnect',tone:'warning'})) disconnectCourier.mutate(); }} disabled={courierBusy || !courier?.configured}>
                             <Unplug className="mr-2 h-4 w-4" />Disconnect
                         </Button>
                     </div>

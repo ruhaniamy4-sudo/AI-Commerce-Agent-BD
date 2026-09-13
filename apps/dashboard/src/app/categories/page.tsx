@@ -1,6 +1,8 @@
 'use client';
 
 import { PageHeader } from '@/components/layout/page-header';
+import { toast } from 'sonner';
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,6 +45,7 @@ import { Textarea } from '@/components/ui/textarea';
 import React from 'react';
 
 export default function CategoriesPage() {
+    const confirm = useConfirm();
     const queryClient = useQueryClient();
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -68,7 +71,7 @@ export default function CategoriesPage() {
         },
         onError: (error: ApiError) => {
             const errorData = error.response as Record<string, unknown>;
-            alert(String(errorData?.error || 'Failed to delete category'));
+            toast.error(String(errorData?.error || 'This category could not be deleted.'));
         }
     });
 
@@ -227,8 +230,8 @@ export default function CategoriesPage() {
                                                             <Button variant="ghost" size="icon" onClick={() => openEdit(cat)} className="h-8 w-8 sm:h-10 sm:w-10 bg-secondary/50 border border-border text-foreground hover:text-primary hover:bg-secondary rounded-lg sm:rounded-xl transition-all">
                                                                 <Edit className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                                             </Button>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 bg-secondary/50 border border-border text-rose-400 hover:bg-rose-500/10 rounded-lg sm:rounded-xl transition-all" onClick={() => {
-                                                                if (confirm('Permanently deconstruct this classification?')) deleteMutation.mutate(cat._id);
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 bg-secondary/50 border border-border text-rose-400 hover:bg-rose-500/10 rounded-lg sm:rounded-xl transition-all" onClick={async () => {
+                                                                if (await confirm({ title: `Delete the ${cat.name} category?`, description: 'Products in it stay in your catalog; they simply lose this category.', confirmLabel: 'Delete category' })) deleteMutation.mutate(cat._id);
                                                             }}>
                                                                 <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                                             </Button>
@@ -262,8 +265,8 @@ export default function CategoriesPage() {
                                                                 <Button variant="ghost" size="icon" onClick={() => openEdit(child)} className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground/40 hover:text-primary transition-colors">
                                                                     <Edit className="h-3.5 w-3.5" />
                                                                 </Button>
-                                                                <Button variant="ghost" size="icon" className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground/20 hover:text-rose-400 transition-colors" onClick={() => {
-                                                                    if (confirm('Deconstruct sub-processor?')) deleteMutation.mutate(child._id);
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground/20 hover:text-rose-400 transition-colors" onClick={async () => {
+                                                                    if (await confirm({ title: `Delete the ${child.name} sub-category?`, description: 'Products in it stay in your catalog; they simply lose this sub-category.', confirmLabel: 'Delete sub-category' })) deleteMutation.mutate(child._id);
                                                                 }}>
                                                                     <Trash2 className="h-3.5 w-3.5" />
                                                                 </Button>

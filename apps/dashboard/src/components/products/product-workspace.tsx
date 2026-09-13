@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {ArrowUpRight,Bot,Package,Sparkles} from 'lucide-react';
 import {Area,AreaChart,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
@@ -20,6 +21,7 @@ type Report={totalSold:number;totalRevenue:number;totalOrders:number;conversionR
 export function productCategory(p:Product){const category=p.categoryId as unknown as {name?:string};return category?.name||'Uncategorized';}
 
 export function ProductWorkspace({products,loading,error,onAdd,onEdit,onDelete,onToggleVisibility,deleting,initialProductId,viewMode='grid',selectedIds,onToggleSelect}:{initialProductId?:string;products:Product[];loading:boolean;error:boolean;onAdd:()=>void;onEdit:(p:Product)=>void;onDelete:(id:string)=>void;onToggleVisibility?:(id:string,isActive:boolean)=>void;deleting?:boolean;viewMode?:ViewMode;selectedIds?:Set<string>;onToggleSelect?:(id:string)=>void}){
+ const confirm=useConfirm();
  const [selected,setSelected]=useState<Product|null>(null);
  const [linkError,setLinkError]=useState(false);
  const [linkLoading,setLinkLoading]=useState(false);
@@ -47,7 +49,7 @@ export function ProductWorkspace({products,loading,error,onAdd,onEdit,onDelete,o
  <button className="product-cover" onClick={()=>setSelected(p)} aria-label={`View ${p.name}`}><SafeProductImage src={p.images?.[0]} alt={p.name} imageClassName="object-contain p-5"/><span className="product-cover-arrow"><ArrowUpRight size={17}/></span>{!p.isActive&&<span className="product-archived">Hidden from store</span>}</button>
  <div className="product-card-body"><p className="product-category">{productCategory(p)}</p><button className="product-name" onClick={()=>setSelected(p)}>{p.name}</button><p className="product-price">{formatCurrency(p.salePrice??p.basePrice,p.currency)}</p><div className="product-inventory"><div><span>Available Units</span><strong className={units===0?'text-rose-600':''}>{units==null?'Unknown':units.toLocaleString()}</strong></div><div><span>Total Sold</span><strong>{(p.totalSold||0).toLocaleString()} <small>units</small></strong></div></div>
  <div className="product-selling-row"><div><span className="product-small-label">AI Selling</span><StatusLabel status={status}/></div><Switch aria-label={`AI selling for ${p.name}`} checked={status!=='disabled'} disabled={selling.isPending} onCheckedChange={v=>change(p,v?'active':'disabled')}/></div><button className="product-details-button" onClick={()=>setSelected(p)}>View Details<ArrowUpRight size={15}/></button></div></article>;})}</div>}
- <Dialog open={!!selected} onOpenChange={v=>{if(!v)setSelected(null);}}><DialogContent className="product-detail-dialog"><DialogHeader><DialogTitle>Product details</DialogTitle><DialogDescription>Inventory, sales performance and your AI’s product knowledge.</DialogDescription></DialogHeader>{selected&&<ProductDetail key={selected._id} product={selected} pending={selling.isPending} deleting={deleting} onStatus={s=>change(selected,s)} onEdit={p=>{setSelected(null);onEdit(p);}} onToggleVisibility={()=>{const next=!selected.isActive;setSelected({...selected,isActive:next});onToggleVisibility?.(selected._id,next);}} onDelete={()=>{if(confirm(`Delete ${selected.name}? It is removed from your catalog, the storefront and the AI. Past orders keep their records.`)){onDelete(selected._id);setSelected(null);}}}/>}</DialogContent></Dialog>
+ <Dialog open={!!selected} onOpenChange={v=>{if(!v)setSelected(null);}}><DialogContent className="product-detail-dialog"><DialogHeader><DialogTitle>Product details</DialogTitle><DialogDescription>Inventory, sales performance and your AI’s product knowledge.</DialogDescription></DialogHeader>{selected&&<ProductDetail key={selected._id} product={selected} pending={selling.isPending} deleting={deleting} onStatus={s=>change(selected,s)} onEdit={p=>{setSelected(null);onEdit(p);}} onToggleVisibility={()=>{const next=!selected.isActive;setSelected({...selected,isActive:next});onToggleVisibility?.(selected._id,next);}} onDelete={async()=>{if(await confirm({title:`Delete ${selected.name}?`,description:'This product is gone from everywhere customers can reach it.',consequences:['Removed from your catalog and your storefront','Your AI stops recommending and selling it','Past orders keep their records'],confirmLabel:'Delete product'})){onDelete(selected._id);setSelected(null);}}}/>}</DialogContent></Dialog>
  {selling.confirmation}
  {linkError&&<p role="alert" className="text-sm text-destructive">The requested product could not be opened. Choose a product from the catalog or try again.</p>}
  </>;

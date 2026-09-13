@@ -1,6 +1,7 @@
 'use client';
 
 import { PageHeader } from '@/components/layout/page-header';
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -39,6 +40,7 @@ import {
 import { useState } from 'react';
 
 export default function ErrorsPage() {
+    const confirm = useConfirm();
     const queryClient = useQueryClient();
     const [selectedError, setSelectedError] = useState<ErrorLog | null>(null);
 
@@ -94,8 +96,8 @@ export default function ErrorsPage() {
                         </Button>
                         <Button
                             variant="destructive"
-                            onClick={() => {
-                                if (confirm('Verify: Deep-purge all technical logs?')) {
+                            onClick={async () => {
+                                if (await confirm({ title: 'Clear every error log?', description: 'The whole technical log history is deleted. Nothing else about your shop changes.', confirmLabel: 'Clear all logs' })) {
                                     clearAllMutation.mutate();
                                 }
                             }}

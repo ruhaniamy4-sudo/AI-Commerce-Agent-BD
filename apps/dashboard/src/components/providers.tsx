@@ -6,6 +6,8 @@ import { SessionProvider, signOut, useSession } from "next-auth/react"
 import { useEffect } from "react"
 
 import { ThemeProvider } from "next-themes"
+import { Toaster } from "sonner"
+import { ConfirmProvider } from "@/components/ui/confirm-dialog"
 import { AUTHENTICATION_REQUIRED_EVENT, setApiSession, shouldRetryQuery } from "@/lib/api-client"
 
 function AuthSessionBridge() {
@@ -46,7 +48,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <SessionProvider refetchOnWindowFocus={false} refetchInterval={5 * 60}>
         <AuthSessionBridge />
         <QueryClientProvider client={queryClient}>
-          {children}
+          <ConfirmProvider>
+            {children}
+          </ConfirmProvider>
+          {/* Without this the app's toast() calls resolved to nothing at all. */}
+          <Toaster position="bottom-right" richColors closeButton toastOptions={{ duration: 5000 }} />
         </QueryClientProvider>
       </SessionProvider>
     </ThemeProvider>

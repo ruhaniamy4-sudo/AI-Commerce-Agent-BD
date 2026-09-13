@@ -1,6 +1,8 @@
 'use client';
 
 import {WorkspaceSearch,WorkspacePagination} from '@/components/layout/workspace-surface';
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { WorkspaceSkeleton } from "@/components/layout/skeleton";
 import {ProductWorkspace, productCategory} from '@/components/products/product-workspace';
 import {ProductImportDialog} from '@/components/products/product-import-dialog';
 import { PageHeader } from '@/components/layout/page-header';
@@ -50,8 +52,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import Link from 'next/link';
 
 
-export default function ProductsPage(){return <Suspense fallback={<p className="p-8 text-muted-foreground">Loading products…</p>}><ProductsContent/></Suspense>;}
+export default function ProductsPage(){return <Suspense fallback={<WorkspaceSkeleton label="Loading products" metrics={3} columns={6} rows={8} actions={2} />}><ProductsContent/></Suspense>;}
 function ProductsContent() {
+    const confirm = useConfirm();
     const params=useSearchParams();
     const searchParams={new:params.get('new'),product:params.get('product')||undefined};
     const queryClient = useQueryClient();
@@ -116,9 +119,9 @@ function ProductsContent() {
         },
     });
 
-    function handleDeleteSelected(){
+    async function handleDeleteSelected(){
         if(!selectedIds.size)return;
-        if(!confirm(`Delete ${selectedIds.size} selected product${selectedIds.size===1?'':'s'}? They are removed from your catalog, the storefront and the AI. Past orders keep their records.`))return;
+        if(!await confirm({title:`Delete ${selectedIds.size} selected product${selectedIds.size===1?'':'s'}?`,description:'These products are gone from everywhere customers can reach them.',consequences:['Removed from your catalog and your storefront','Your AI stops recommending and selling them','Past orders keep their records'],confirmLabel:`Delete ${selectedIds.size} product${selectedIds.size===1?'':'s'}`}))return;
         bulkDeleteMutation.mutate(Array.from(selectedIds));
     }
 

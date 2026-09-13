@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { conversationsApi } from "@/lib/api";
 import { PageHeader } from "@/components/layout/page-header";
+import { TableSkeleton } from "@/components/layout/skeleton";
 import { WorkspacePanel, WorkspaceSearch, WorkspacePagination, WorkspaceEmpty } from "@/components/layout/workspace-surface";
 import { Button } from "@/components/ui/button";
 import { ChannelBadge, HandlerBadge } from "@/components/conversations/channel-badge";
@@ -149,7 +150,7 @@ export default function ConversationsPage() {
                 }
             >
                 {isLoading ? (
-                    <p role="status" className="p-12 text-center text-sm text-muted-foreground">Loading conversations…</p>
+                    <TableSkeleton rows={8} columns={7} />
                 ) : error ? (
                     <WorkspaceEmpty
                         title="We couldn’t load your inbox."

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, MessageCircle, PlugZap, ShieldCheck, Unplug } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +39,7 @@ export function WhatsAppPanel({
     platformReady?: boolean;
     onHealthChanged: () => void;
 }) {
+    const confirm = useConfirm();
     const queryClient = useQueryClient();
     const [phoneNumberId, setPhoneNumberId] = useState('');
     const [accessToken, setAccessToken] = useState('');
@@ -149,7 +151,7 @@ export function WhatsAppPanel({
                             variant="destructive"
                             size="sm"
                             disabled={busy}
-                            onClick={() => { if (window.confirm(`Disconnect ${connection.name || 'this WhatsApp number'}?`)) disconnect.mutate(connection.id); }}
+                            onClick={async () => { if (await confirm({title:`Disconnect ${connection.name || 'this WhatsApp number'}?`,description:'New WhatsApp messages to this number stop reaching your AI.',consequences:['Existing conversations stay in your inbox','You can reconnect this number at any time'],confirmLabel:'Disconnect',tone:'warning'})) disconnect.mutate(connection.id); }}
                         >
                             <Unplug className="mr-1 h-4 w-4" />Disconnect
                         </Button>
