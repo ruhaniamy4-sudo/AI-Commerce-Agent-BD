@@ -1,8 +1,8 @@
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import mongoose from 'mongoose';
 import { repairLanguageNeutralTextIndexes } from '../db/text-index-migration';
 
-dotenv.config();
+loadEnv();
 
 async function main() {
     const uri = process.env.MONGODB_URI;

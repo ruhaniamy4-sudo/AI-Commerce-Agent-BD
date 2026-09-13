@@ -1,10 +1,10 @@
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import OpenAI from 'openai';
 import axios from 'axios';
 import { recordAIUsage } from './ai-usage.service';
 import { getAIMaxOutputTokens } from './ai-config';
 
-dotenv.config();
+loadEnv();
 
 const getOpenAI = () => {
     if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');

@@ -1,3 +1,8 @@
+// The dashboard reads the workspace-wide .env at the repository root.
+const { loadEnv, publicEnv } = require('../../scripts/load-env.cjs')
+
+const { values } = loadEnv('dashboard')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['@edutechs/shared'],
@@ -8,6 +13,9 @@ const nextConfig = {
   images: {
     domains: ['localhost', '127.0.0.1', 'localhost:3000', 'res.cloudinary.com'],
   },
+  // Next only inlines browser values it can see at build time, and the root file
+  // is loaded here rather than by Next itself.
+  env: publicEnv(values),
 }
 
 module.exports = nextConfig

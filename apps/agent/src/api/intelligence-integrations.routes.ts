@@ -1,7 +1,7 @@
 import {Router} from 'express';
 import {requireAdministrator} from '../auth/middleware';
 import {requireTenantContext} from '../tenancy/context';
-import {IntelligenceIntegration} from '../models/IntelligenceIntegration';
+import {IntelligenceIntegration,intelligenceProvider} from '../models/IntelligenceIntegration';
 import {encryptMetaAccessToken} from '../services/meta-credentials.service';
 const router=Router();
 export const integrationCapabilities={pathao:{supported:true,fields:['webhookSecret']},redx:{supported:true,fields:['accessToken']},sslcommerz:{supported:true,fields:['storeId','storePassword']},stripe:{supported:true,fields:['secretKey','webhookSecret']},bkash:{supported:false,fields:[],via:'sslcommerz'},nagad:{supported:false,fields:[],via:'sslcommerz'}};
@@ -18,5 +18,11 @@ router.put('/intelligence/integrations/:provider',requireAdministrator,async(req
  const row=await IntelligenceIntegration.findOneAndUpdate({businessId:requireTenantContext().businessId,provider},{$set:{credentials:encryptMetaAccessToken(JSON.stringify(credentials)),enabled:true}},{upsert:true,new:true,runValidators:true});
  res.json({integrationId:String(row!._id),configured:true});
 });
-router.delete('/intelligence/integrations/:provider',requireAdministrator,async(req,res)=>{await IntelligenceIntegration.deleteOne({businessId:requireTenantContext().businessId,provider:req.params.provider});res.json({disconnected:true});});
+router.delete('/intelligence/integrations/:provider',requireAdministrator,async(req,res)=>{
+ // An unrecognised name never reaches the database: it cannot match a provider, so it is a 404, not a query.
+ const provider=intelligenceProvider(req.params.provider);
+ if(!provider)return res.status(404).json({error:'Unknown provider'});
+ await IntelligenceIntegration.deleteOne({businessId:requireTenantContext().businessId,provider});
+ res.json({disconnected:true});
+});
 export default router;

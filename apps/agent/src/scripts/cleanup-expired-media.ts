@@ -1,11 +1,11 @@
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import mongoose from 'mongoose';
 import { connectMongo } from '../db/mongodb';
 import { Business } from '../models/Business';
 import { cleanupExpiredCustomerMedia } from '../services/media-storage.service';
 import { withTenantContext } from '../tenancy/context';
 
-dotenv.config();
+loadEnv();
 
 async function main() {
     await connectMongo();

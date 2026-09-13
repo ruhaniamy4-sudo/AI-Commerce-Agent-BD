@@ -1,8 +1,8 @@
 import { v2 as cloudinary } from 'cloudinary';
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import type { UploadApiResponse } from 'cloudinary';
 
-dotenv.config();
+loadEnv();
 
 const getCloudinaryConfig = () => {
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME;

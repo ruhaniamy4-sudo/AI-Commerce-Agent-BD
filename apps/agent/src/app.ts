@@ -1,5 +1,5 @@
 import cors from 'cors';
-import dotenv from 'dotenv';
+import { loadEnv } from './config/env';
 import express from 'express';
 
 import { llm } from './agent/agent';
@@ -43,7 +43,7 @@ import { TEST_AI_API } from '@edutechs/shared';
 import crypto from 'node:crypto';
 
 // var morgan = require('morgan');
-dotenv.config();
+loadEnv();
 const app = express();
 app.disable('etag');
 if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);

@@ -32,7 +32,7 @@ EMAIL_SERVICE=gmail
 AUTH_REQUIRE_VERIFIED_EMAIL=true
 ```
 
-For Gmail, enable 2-Step Verification on the sender Google Account and create a Google App Password. Put that 16-character App Password in `EMAIL_PASS`; a normal Gmail login password will not work. Spaces copied with the App Password are removed automatically. Restart the agent after changing `.env`. For another provider, set `EMAIL_HOST`, `EMAIL_PORT`, and `EMAIL_SECURE` instead of `EMAIL_SERVICE`.
+For Gmail, enable 2-Step Verification on the sender Google Account and create a Google App Password. Put that 16-character App Password in `EMAIL_PASS`; a normal Gmail login password will not work. Spaces copied with the App Password are removed automatically. Restart the agent after changing the root `.env`. For another provider, set `EMAIL_HOST`, `EMAIL_PORT`, and `EMAIL_SECURE` instead of `EMAIL_SERVICE`.
 
 The `/health` response and the agent startup summary report whether authentication email is configured. They never expose the credentials. A recovery request still returns a generic response for both known and unknown accounts, so delivery failures must be checked in agent logs.
 

@@ -6,7 +6,7 @@ Google and Facebook account login use NextAuth's OAuth providers and a server-to
 
 ## Local setup
 
-1. Copy each app's `.env.example` to `.env` and replace the placeholder secrets.
+1. Copy the root `.env.example` to `.env` and replace the placeholder secrets (`npm run setup:env` does both).
 2. Use the same 32-or-more-character `OAUTH_INTERNAL_SECRET` in the agent and dashboard.
 3. Start MongoDB and Redis, then run `npm run dev:agent`, `npm run dev:dashboard`, and `npm run dev:storefront` in separate terminals.
 4. Open `http://localhost:3001/signup`, create an account, and follow the onboarding wizard.

@@ -1,10 +1,21 @@
 # Environment setup
 
-Create these local, Git-ignored files from the corresponding tracked examples:
+Create one local, Git-ignored `.env` at the repository root from the tracked `.env.example`. `npm run setup:env` does this for you.
 
-- `apps/agent/.env`
-- `apps/dashboard/.env`
-- `apps/storefront/.env`
+Every app reads that single file through `scripts/load-env.cjs`. Sections marked `# @app <names>` reach only the apps named; lines above the first marker reach every app, and the same name may appear in more than one section with a different value:
+
+```dotenv
+OAUTH_INTERNAL_SECRET=shared-by-agent-and-dashboard
+
+# @app agent
+MONGODB_URI=...
+GOOGLE_CLIENT_ID=<the agent's Calendar client>
+
+# @app dashboard
+GOOGLE_CLIENT_ID=<the dashboard's sign-in client>
+```
+
+Anything set in the real environment (Render, Vercel, CI) always wins over the file, so deployments keep using their own dashboards. An `apps/<app>/.env` file still overrides the root one if you need a local exception.
 
 Never commit populated environment files. Variables containing credentials, tokens, passwords, signing material, or encryption material are secrets. Values whose names start with `NEXT_PUBLIC_` are bundled for browser use and must never contain secrets.
 

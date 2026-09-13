@@ -1,7 +1,7 @@
 import { BaseMessage, SystemMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import { END, START, StateGraph } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
-import * as dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 // Tools import removed
 import { SYSTEM_PROMPT } from './prompts';
 import { retrieveContext, formatContextPack, enforceContextBudget } from '../services/rag.service';
@@ -18,7 +18,7 @@ import { computeSalesSignals, buildSalesContextSnippet } from '../services/sales
 import { normalizeAssistantResponse } from '../services/assistant-response.service';
 
 
-dotenv.config();
+loadEnv();
 
 const aiConfig = getAIConfiguration();
 const llm = new ChatOpenAI({

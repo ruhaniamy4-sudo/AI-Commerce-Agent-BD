@@ -33,9 +33,18 @@ describe('business file classification', () => {
         expect(result.products?.[0].variants[0]).toMatchObject({ name: 'Large / Black', sku: 'MOUSE-1' });
     });
     it('extracts PDF and DOCX knowledge documents', async () => {
-        const root = path.resolve(__dirname, '../../../../..');
-        const pdf = fs.readFileSync(path.join(root, 'node_modules/pdf-parse/test/data/01-valid.pdf'));
-        const docx = fs.readFileSync(path.join(root, 'node_modules/mammoth/test/test-data/single-paragraph.docx'));
+        // These sample documents ship inside pdf-parse and mammoth. Committing real
+        // PDFs here is not an option (the smallest valid one either library's parser
+        // accepts is ~80 KB of someone else's document), so the packages are located
+        // rather than assumed to sit at a fixed depth. pdf-parse is pinned to 1.1.1
+        // partly because 1.1.4 publishes without this folder.
+        const sample = (pkg: string, relative: string) => {
+            const file = path.join(path.dirname(require.resolve(`${pkg}/package.json`)), relative);
+            if (!fs.existsSync(file)) throw new Error(`${pkg} no longer ships ${relative}; pin it or commit a fixture`);
+            return fs.readFileSync(file);
+        };
+        const pdf = sample('pdf-parse', 'test/data/01-valid.pdf');
+        const docx = sample('mammoth', 'test/test-data/single-paragraph.docx');
         expect((await extractFile('policy.pdf', pdf)).knowledge?.length).toBeGreaterThan(0);
         expect((await extractFile('policy.docx', docx)).knowledge?.length).toBeGreaterThan(0);
     }, 15_000);

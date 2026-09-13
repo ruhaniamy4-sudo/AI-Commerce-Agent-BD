@@ -1,4 +1,6 @@
-import 'dotenv/config';
+import { loadEnv } from '../config/env';
+
+loadEnv();
 import mongoose from 'mongoose';
 import assert from 'node:assert/strict';
 import express from 'express';

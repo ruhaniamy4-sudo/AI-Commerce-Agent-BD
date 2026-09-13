@@ -1,9 +1,9 @@
 import { setupWorker } from './services/queue.service';
 import { connectMongo } from './db/mongodb'; // Ensure DB connection works
-import dotenv from 'dotenv';
+import { loadEnv } from './config/env';
 import { requireRedisConfig } from './config/runtime';
 
-dotenv.config();
+loadEnv();
 
 const startWorker = async () => {
     try {

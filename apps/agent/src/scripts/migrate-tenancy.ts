@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import mongoose from 'mongoose';
 import { connectMongo } from '../db/mongodb';
 import { hashPassword } from '../auth/password';
@@ -21,7 +21,7 @@ import { PASSWORD_MIN_LENGTH } from '@edutechs/shared';
 import { AuthSession } from '../models/AuthSession';
 import { AuthActionToken } from '../models/AuthActionToken';
 
-dotenv.config();
+loadEnv();
 
 const tenantModels = [AIUsage, Category, Conversation, Customer, Knowledge, Message, Order, Product, WebhookEvent];
 

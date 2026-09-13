@@ -4,53 +4,66 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readEnv } from './env-utils.mjs';
 
+/**
+ * Prepare the one environment file the whole workspace reads.
+ *
+ * There used to be three of these, which meant OAUTH_INTERNAL_SECRET had to be
+ * kept identical in two places by hand. With a single sectioned file that class
+ * of bug is gone, so this script only fills in the local development secrets
+ * that are safe to generate — never overwriting a value that is already real.
+ */
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const targets = ['apps/agent/.env', 'apps/dashboard/.env', 'apps/storefront/.env'];
+const file = path.join(root, '.env');
+const example = path.join(root, '.env.example');
 const generated = () => crypto.randomBytes(32).toString('base64url');
 const placeholders = /^(?:$|replace_|your_|changeme|<)/i;
-const agentExisting = readEnv(path.join(root, 'apps/agent/.env'));
-const dashboardExisting = readEnv(path.join(root, 'apps/dashboard/.env'));
-const usable = (value) => value && !placeholders.test(value) ? value : undefined;
-const agentOAuthSecret = usable(agentExisting.OAUTH_INTERNAL_SECRET);
-const dashboardOAuthSecret = usable(dashboardExisting.OAUTH_INTERNAL_SECRET);
-const sharedOAuthSecret = agentOAuthSecret || dashboardOAuthSecret || generated();
-const secrets = {
-  'apps/agent/.env': {
-    AUTH_JWT_SECRET: generated(),
-    OAUTH_INTERNAL_SECRET: sharedOAuthSecret,
-    COURIER_CREDENTIALS_ENCRYPTION_KEY: generated(),
-    BOOTSTRAP_OWNER_PASSWORD: generated(),
-  },
-  'apps/dashboard/.env': { NEXTAUTH_SECRET: generated(), OAUTH_INTERNAL_SECRET: sharedOAuthSecret },
-};
+
+// Each secret is appended under the section of the app that actually reads it.
+const secrets = [
+    { key: 'AUTH_JWT_SECRET', apps: 'agent' },
+    { key: 'COURIER_CREDENTIALS_ENCRYPTION_KEY', apps: 'agent' },
+    { key: 'BOOTSTRAP_OWNER_PASSWORD', apps: 'agent' },
+    { key: 'NEXTAUTH_SECRET', apps: 'dashboard' },
+    { key: 'OAUTH_INTERNAL_SECRET', apps: 'agent, dashboard' },
+];
+
+if (!fs.existsSync(file)) {
+    if (!fs.existsSync(example)) throw new Error('Missing template: .env.example');
+    fs.copyFileSync(example, file, fs.constants.COPYFILE_EXCL);
+    console.log('Created .env');
+} else {
+    console.log('Preserved existing .env');
+}
+
+const current = readEnv(file);
+const missing = secrets.filter(({ key }) => !(key in current) || placeholders.test(current[key]));
 let ownerPassword;
 
-if (agentOAuthSecret && dashboardOAuthSecret && agentOAuthSecret !== dashboardOAuthSecret) {
-  console.warn('Warning: existing agent and dashboard OAUTH_INTERNAL_SECRET values differ; preserved both. Make them match before testing OAuth.');
-}
-
-for (const relative of targets) {
-  const file = path.join(root, relative);
-  const example = `${file}.example`;
-  if (!fs.existsSync(file)) {
-    if (!fs.existsSync(example)) throw new Error(`Missing template: ${path.relative(root, example)}`);
-    fs.copyFileSync(example, file, fs.constants.COPYFILE_EXCL);
-    console.log(`Created ${relative}`);
-  } else {
-    console.log(`Preserved existing ${relative}`);
-  }
-
-  const current = readEnv(file);
-  const additions = [];
-  for (const [key, value] of Object.entries(secrets[relative] || {})) {
-    if (!(key in current) || placeholders.test(current[key])) {
-      additions.push(`${key}=${value}`);
-      if (key === 'BOOTSTRAP_OWNER_PASSWORD') ownerPassword = value;
+if (missing.length) {
+    const byApps = new Map();
+    for (const { key, apps } of missing) {
+        const value = generated();
+        if (key === 'BOOTSTRAP_OWNER_PASSWORD') ownerPassword = value;
+        byApps.set(apps, [...(byApps.get(apps) || []), `${key}=${value}`]);
     }
-  }
-  if (additions.length) fs.appendFileSync(file, `\n# Generated local development secrets\n${additions.join('\n')}\n`);
+    // A later section wins, so appending is enough — no need to rewrite the file.
+    const blocks = [...byApps].map(([apps, lines]) =>
+        [`# @app ${apps}`, '# Generated local development secrets', ...lines].join('\n'));
+    fs.appendFileSync(file, `\n${blocks.join('\n\n')}\n`);
+    console.log(`Generated ${missing.length} local secret${missing.length === 1 ? '' : 's'}.`);
 }
 
-console.log('\nEnvironment files are ready. Add your MongoDB Atlas URI and Groq API key to apps/agent/.env.');
+// A leftover per-app file silently wins over the root one, which is exactly the
+// confusion this consolidation removed.
+const leftovers = ['agent', 'dashboard', 'storefront']
+    .map((app) => path.join(root, 'apps', app, '.env'))
+    .filter((candidate) => fs.existsSync(candidate));
+if (leftovers.length) {
+    console.warn('\nWarning: these per-app files still override the root .env:');
+    for (const leftover of leftovers) console.warn(`  ${path.relative(root, leftover)}`);
+    console.warn('Move anything you still need into the root .env and delete them.');
+}
+
+console.log('\nEnvironment is ready. Add your MongoDB Atlas URI and Groq API key to .env.');
 if (ownerPassword) console.log(`One-time generated bootstrap owner password: ${ownerPassword}`);
-console.log('This command never generates external provider keys and never overwrites non-placeholder values.');
+console.log('This command never generates external provider keys and never overwrites real values.');

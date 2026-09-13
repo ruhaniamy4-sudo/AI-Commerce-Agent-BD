@@ -1,11 +1,11 @@
 import axios from 'axios';
-import {IntelligenceIntegration} from '../models/IntelligenceIntegration';
+import {IntelligenceIntegration,IntelligenceProvider} from '../models/IntelligenceIntegration';
 import {Order} from '../models/Order';
 import {decryptMetaAccessToken} from '../services/meta-credentials.service';
 import {requireTenantContext} from '../tenancy/context';
 import {recordCustomerEvent} from './event-store';
 import {stripeEvidence,sslEvidence,assertPaymentMatches} from './payment-validation';
-export async function verifyCustomerPayment(provider:string,reference:string){
+export async function verifyCustomerPayment(provider:IntelligenceProvider,reference:string){
  if(!reference||reference.length>150||!/^[a-zA-Z0-9_.-]+$/.test(reference))throw new Error('Invalid payment reference');
  const integration=await IntelligenceIntegration.findOne({businessId:requireTenantContext().businessId,provider,enabled:true}).select('+credentials');
  if(!integration)throw new Error('Payment provider is not configured');

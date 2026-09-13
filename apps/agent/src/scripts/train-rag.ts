@@ -1,10 +1,10 @@
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import { connectMongo } from '../db/mongodb';
 import { Knowledge } from '../models/Knowledge';
 import { generateEmbedding } from '../services/embedding.service';
 import { initializeScriptTenantContext } from '../tenancy/script-context';
 
-dotenv.config();
+loadEnv();
 
 const trainingData = [
     {

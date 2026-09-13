@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import mongoose from 'mongoose';
 import { connectMongo } from '../db/mongodb';
 import { Knowledge } from '../models/Knowledge';
@@ -10,7 +10,7 @@ import { TrainingSource } from '../models/TrainingSource';
 import { Business } from '../models/Business';
 import { normalizeBusinessType } from '../services/adaptive-training.service';
 
-dotenv.config();
+loadEnv();
 
 async function main() {
     await connectMongo();

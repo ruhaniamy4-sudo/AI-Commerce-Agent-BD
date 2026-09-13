@@ -1,8 +1,8 @@
-import dotenv from 'dotenv';
+import { loadEnv } from './config/env';
 import mongoose from 'mongoose';
 import { SystemPrompt } from './models/SystemPrompt';
 
-dotenv.config();
+loadEnv();
 
 async function test() {
     try {

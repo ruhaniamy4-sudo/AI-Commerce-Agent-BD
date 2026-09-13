@@ -7,11 +7,11 @@
  *
  * Run: npm run migrate:product-codes
  */
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import { connectMongo } from '../db/mongodb';
 import { deriveProductCode, Product } from '../models/Product';
 
-dotenv.config();
+loadEnv();
 
 async function main() {
     await connectMongo();

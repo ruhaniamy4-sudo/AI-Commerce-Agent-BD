@@ -19,7 +19,7 @@ npm install
 npm run setup:env
 ```
 
-6. Edit `apps/agent/.env`:
+6. Edit `.env` at the repository root (one file for every app):
 
 ```dotenv
 MONGODB_URI=mongodb+srv://...
@@ -77,7 +77,7 @@ If running Node on the host, use `localhost` in local service URLs. The Compose 
 
 The simpler setup does not remove BullMQ, worker separation, queue retries, transaction boundaries, tenant isolation, RAG/memory, AI safeguards, idempotency, courier architecture, or platform-admin separation. OAuth, Facebook, Cloudinary, Steadfast, email, and other external providers are optional at core startup and fail only when their feature is used. Email delivery is required before opening email/password registration or password recovery.
 
-Local `.env` and `.env.*` files are ignored by Git; safe `.env.example` templates remain tracked. Never expose provider keys in browser-prefixed variables. Health output reports only configuration presence, never values.
+The root `.env` is ignored by Git; the safe `.env.example` template remains tracked. Sections in that file marked `# @app <names>` reach only the apps named, so the public storefront never holds the agent's secrets. Never expose provider keys in browser-prefixed variables. Health output reports only configuration presence, never values.
 
 See [docs/local-development.md](docs/local-development.md) for full environment details and practical troubleshooting.
 

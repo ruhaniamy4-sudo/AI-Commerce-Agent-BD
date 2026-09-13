@@ -1,8 +1,8 @@
 import { ChatOpenAI } from "@langchain/openai";
-import * as dotenv from "dotenv";
+import { loadEnv } from '../config/env';
 import { getAIConfiguration } from '../config/runtime';
 
-dotenv.config();
+loadEnv();
 
 const aiConfig = getAIConfiguration();
 export const llm = new ChatOpenAI({

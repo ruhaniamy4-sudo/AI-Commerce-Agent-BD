@@ -1,10 +1,10 @@
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import mongoose from 'mongoose';
 import { Product } from '../models/Product';
 import { getImageEmbedding } from '../services/embedding.service';
 import { initializeScriptTenantContext } from '../tenancy/script-context';
 
-dotenv.config();
+loadEnv();
 
 /**
  * Script to generate embeddings for all existing products that don't have them

@@ -10,20 +10,16 @@ The recommended, cost-conscious setup runs frontends and Node services locally w
 4. Create a Groq API key.
 5. Optionally create managed Redis for worker/background integrations.
 6. Run `npm install` and `npm run setup:env`.
-7. Set `MONGODB_URI` and `GROQ_API_KEY` in `apps/agent/.env`.
+7. Set `MONGODB_URI` and `GROQ_API_KEY` in the root `.env` (under `# @app agent`).
 8. Run `npm run migrate`.
 9. Run `npm run dev`.
 10. Open `http://localhost:3000`, sign up/sign in, complete onboarding, and use Test AI.
 
 ## Environment files
 
-The actual runtimes load these files:
+All three runtimes load one file: `.env` at the repository root, read through `scripts/load-env.cjs`. Sections marked `# @app <names>` reach only the apps named, so each process gets what it needs and nothing more. See [environment-setup.md](environment-setup.md) for the format.
 
-- `apps/agent/.env`
-- `apps/dashboard/.env`
-- `apps/storefront/.env`
-
-`npm run setup:env` creates missing files from their safe `.env.example` templates, preserves existing files and configured values, and generates cryptographically random development values for `AUTH_JWT_SECRET`, `NEXTAUTH_SECRET`, the shared `OAUTH_INTERNAL_SECRET`, `COURIER_CREDENTIALS_ENCRYPTION_KEY`, and `BOOTSTRAP_OWNER_PASSWORD`. It shows a newly generated bootstrap password once. It does not create MongoDB, Groq, OpenAI, OAuth, Facebook, courier, or other external credentials.
+`npm run setup:env` creates that file from the safe `.env.example` template, preserves an existing file and its configured values, and generates cryptographically random development values for `AUTH_JWT_SECRET`, `NEXTAUTH_SECRET`, the shared `OAUTH_INTERNAL_SECRET`, `COURIER_CREDENTIALS_ENCRYPTION_KEY`, and `BOOTSTRAP_OWNER_PASSWORD`. It shows a newly generated bootstrap password once. It does not create MongoDB, Groq, OpenAI, OAuth, Facebook, courier, or other external credentials.
 
 Minimum agent configuration:
 
@@ -129,15 +125,15 @@ Nothing is accepting Redis connections at the configured host/port. Core mode do
 
 ### `MongooseServerSelectionError`
 
-MongoDB could not be selected. Check the URI, Atlas database username/password, escaped URI characters, IP access list, DNS/network access, and cluster availability. Confirm the URI is in `apps/agent/.env`.
+MongoDB could not be selected. Check the URI, Atlas database username/password, escaped URI characters, IP access list, DNS/network access, and cluster availability. Confirm the URI is in the root `.env`.
 
 ### `BOOTSTRAP_OWNER_EMAIL and BOOTSTRAP_OWNER_PASSWORD are required`
 
-The migration has no safe owner credentials. Set both values in `apps/agent/.env`; the password must be at least 10 characters. `npm run setup:env` generates a unique development password and shows it once.
+The migration has no safe owner credentials. Set both values in the root `.env`; the password must be at least 10 characters. `npm run setup:env` generates a unique development password and shows it once.
 
 ### Missing Groq key
 
-Set `AI_PROVIDER=groq` and `GROQ_API_KEY` in `apps/agent/.env`, then restart the agent. The server may run without the key, but Test AI cannot call the provider.
+Set `AI_PROVIDER=groq` and `GROQ_API_KEY` in the root `.env`, then restart the agent. The server may run without the key, but Test AI cannot call the provider.
 
 ### `MongoServerError: language override unsupported: bn`
 

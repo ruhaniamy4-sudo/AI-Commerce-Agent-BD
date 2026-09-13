@@ -1,7 +1,7 @@
 import app from "./app";
-import dotenv from "dotenv";
+import { loadEnv } from './config/env';
 
-dotenv.config();
+loadEnv();
 
 const PORT = Number(process.env.PORT || 4000);
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {

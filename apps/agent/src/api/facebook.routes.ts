@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import express, { Router } from 'express';
 import crypto from 'crypto';
 import { WebhookEvent } from '../models/WebhookEvent';
@@ -9,7 +9,7 @@ import { withTenantContext } from '../tenancy/context';
 import { registerInboundEvent } from '../services/inbound-idempotency.service';
 import { getMetaConfig } from '../services/meta-config.service';
 
-dotenv.config();
+loadEnv();
 
 const router = Router();
 type RawBodyRequest = express.Request & { rawBody?: Buffer };

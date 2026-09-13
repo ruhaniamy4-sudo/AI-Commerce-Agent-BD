@@ -11,14 +11,14 @@
  */
 
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import { Customer } from '../models/Customer';
 import { Conversation } from '../models/Conversation';
 import { Message } from '../models/Message';
 import { Meeting } from '../models/Meeting';
 import { initializeScriptTenantContext } from '../tenancy/script-context';
 
-dotenv.config();
+loadEnv();
 
 const MONGO_URI = process.env.MONGODB_URI;
 

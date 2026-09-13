@@ -6,9 +6,9 @@ import { readEnv } from './env-utils.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const full = process.argv.includes('--full');
-const agentEnv = readEnv(path.join(root, 'apps/agent/.env'));
-if (full && !agentEnv.REDIS_URL && !agentEnv.REDIS_HOST && !agentEnv.REDIS_PORT) {
-  console.error('Full mode requires Redis. Set REDIS_URL in apps/agent/.env, then run npm run dev:full again.');
+const env = readEnv(path.join(root, '.env'));
+if (full && !env.REDIS_URL && !env.REDIS_HOST && !env.REDIS_PORT) {
+  console.error('Full mode requires Redis. Set REDIS_URL in the root .env, then run npm run dev:full again.');
   process.exit(1);
 }
 

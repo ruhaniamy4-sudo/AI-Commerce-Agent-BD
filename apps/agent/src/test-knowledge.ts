@@ -1,10 +1,10 @@
 import { HumanMessage } from '@langchain/core/messages';
-import * as dotenv from 'dotenv';
+import { loadEnv } from './config/env';
 import { agentGraph } from './agent/graph';
 import { connectMongo } from './db/mongodb';
 import { initializeScriptTenantContext } from './tenancy/script-context';
 import { randomUUID } from 'node:crypto';
-dotenv.config();
+loadEnv();
 
 async function testAgent(businessId: string, message: string) {
     console.log(`\n--- Testing with message: "${message}" ---`);

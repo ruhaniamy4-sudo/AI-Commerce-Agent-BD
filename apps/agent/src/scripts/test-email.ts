@@ -1,7 +1,7 @@
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import { getEmailConfiguration, sendEmail } from '../services/notification.service';
 
-dotenv.config();
+loadEnv();
 
 async function main() {
     const config = getEmailConfiguration();

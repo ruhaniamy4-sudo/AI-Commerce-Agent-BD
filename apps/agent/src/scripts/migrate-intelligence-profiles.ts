@@ -1,11 +1,11 @@
-import dotenv from 'dotenv';
+import { loadEnv } from '../config/env';
 import mongoose from 'mongoose';
 import { connectMongo } from '../db/mongodb';
 import { Knowledge } from '../models/Knowledge';
 import { Product } from '../models/Product';
 import { buildKnowledgeSearchProfile, buildProductSearchProfile } from '../services/knowledge-intelligence.service';
 
-dotenv.config();
+loadEnv();
 
 async function backfill(model: typeof Product | typeof Knowledge, build: (record: Record<string, any>) => Record<string, any>) {
     let scanned = 0;
