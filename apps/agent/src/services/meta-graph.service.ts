@@ -46,6 +46,20 @@ export class MetaGraphClient {
         return this.request<{ access_token: string; token_type?: string; expires_in?: number }>('get', '/oauth/access_token', undefined, undefined, { client_id: appId, client_secret: appSecret, redirect_uri: redirectUri, code });
     }
 
+    /**
+     * Embedded Signup returns its code to the browser, not to a redirect URI, so
+     * the exchange must be made without one. Sending an empty `redirect_uri`
+     * instead is rejected by Meta.
+     */
+    exchangeEmbeddedSignupCode(code: string, appId: string, appSecret: string) {
+        return this.request<{ access_token: string; token_type?: string; expires_in?: number }>('get', '/oauth/access_token', undefined, undefined, { client_id: appId, client_secret: appSecret, code });
+    }
+
+    /** Granular scopes name the exact WhatsApp accounts a token was granted for. */
+    debugToken(inputToken: string, appId: string, appSecret: string) {
+        return this.request<{ data: { scopes?: string[]; granular_scopes?: Array<{ scope: string; target_ids?: string[] }> } }>('get', '/debug_token', undefined, undefined, { input_token: inputToken, access_token: `${appId}|${appSecret}` });
+    }
+
     exchangeLongLivedUserToken(token: string, appId: string, appSecret: string) {
         return this.request<{ access_token: string; token_type?: string; expires_in?: number }>('get', '/oauth/access_token', undefined, undefined, { grant_type: 'fb_exchange_token', client_id: appId, client_secret: appSecret, fb_exchange_token: token });
     }
@@ -61,6 +75,27 @@ export class MetaGraphClient {
     unsubscribe(pageId: string, token: string) { return this.request<{ success: boolean }>('delete', `/${pageId}/subscribed_apps`, token); }
     subscriptions(pageId: string, token: string) { return this.request<{ data: Array<{ subscribed_fields?: string[] }> }>('get', `/${pageId}/subscribed_apps`, token); }
     send(pageId: string, token: string, payload: unknown) { return this.request<{ recipient_id?: string; message_id?: string }>('post', `/${pageId}/messages`, token, payload); }
+
+    // ── WhatsApp Business Account ────────────────────────────────────────────
+    // A WhatsApp connection is owned by the account, not the number: the webhook
+    // subscription and the token both live on the WABA and cover every number on it.
+    whatsappAccount(wabaId: string, token: string) { return this.request<{ id: string; name?: string; currency?: string; timezone_id?: string; account_review_status?: string }>('get', `/${wabaId}`, token, undefined, { fields: 'id,name,currency,timezone_id,account_review_status' }); }
+    whatsappNumbers(wabaId: string, token: string) { return this.request<{ data: WhatsAppNumber[] }>('get', `/${wabaId}/phone_numbers`, token, undefined, { fields: 'id,display_phone_number,verified_name,quality_rating,code_verification_status,platform_type', limit: 100 }); }
+    whatsappNumber(phoneNumberId: string, token: string) { return this.request<WhatsAppNumber>('get', `/${phoneNumberId}`, token, undefined, { fields: 'id,display_phone_number,verified_name,quality_rating,code_verification_status,platform_type' }); }
+    subscribeWhatsApp(wabaId: string, token: string) { return this.request<{ success: boolean }>('post', `/${wabaId}/subscribed_apps`, token); }
+    whatsappSubscriptions(wabaId: string, token: string) { return this.request<{ data: Array<{ whatsapp_business_api_data?: { id?: string; name?: string } }> }>('get', `/${wabaId}/subscribed_apps`, token); }
+    unsubscribeWhatsApp(wabaId: string, token: string) { return this.request<{ success: boolean }>('delete', `/${wabaId}/subscribed_apps`, token); }
+    /** Cloud API will not send from a number until it is registered against this app. */
+    registerWhatsAppNumber(phoneNumberId: string, token: string, pin: string) { return this.request<{ success: boolean }>('post', `/${phoneNumberId}/register`, token, { messaging_product: 'whatsapp', pin }); }
+}
+
+export interface WhatsAppNumber {
+    id: string;
+    display_phone_number?: string;
+    verified_name?: string;
+    quality_rating?: string;
+    code_verification_status?: string;
+    platform_type?: string;
 }
 
 export const metaGraph = new MetaGraphClient();

@@ -1,4 +1,4 @@
-# Meta Messenger setup and App Review runbook
+# Meta Messenger and WhatsApp setup and App Review runbook
 
 This runbook describes operator work that cannot be completed by source code. It deliberately does not claim production approval. The repository default is `v26.0` as of 31 August 2026. Confirm that version in the Meta dashboard before each release, set `FB_GRAPH_API_VERSION` explicitly, and rerun the sandbox tests.
 
@@ -36,6 +36,28 @@ For each requested permission, provide a concise use-case narrative and a fresh 
 For `pages_show_list`, show the Page chooser and why Page selection cannot work without it. For `pages_manage_metadata`, show automatic Page webhook subscription, health verification, and disconnect/unsubscribe. For `pages_messaging`, show a customer-initiated text, image, product card, opt-out, closed-window block, and human takeover. If submitting `pages_read_engagement`, show that it is optional, reads only the selected Page, stages facts for merchant review, deduplicates against website knowledge, and never promotes customer messages to business facts.
 
 Also complete business verification and any required Tech Provider/solution-provider verification, data-use checkup, data-handling questionnaire, privacy-policy review, data-deletion test, test-user credentials/instructions, and requested Advanced Access. Respond to reviewer questions without adding unreviewed behavior. Switch the app to Live only after Meta shows the necessary permissions/access approved and production webhook/domain settings have been revalidated.
+
+## WhatsApp guided setup (Embedded Signup)
+
+This is operator work as well: the code path exists, but Meta decides whether it may run for anyone outside the app's own testers.
+
+1. Add the WhatsApp product to the same Meta app and complete Tech Provider onboarding for the business portfolio. Embedded Signup is only available to an approved Solution Partner or Tech Provider, and the app must also pass business verification.
+2. Request Advanced Access to `whatsapp_business_management` and `whatsapp_business_messaging`. The guided flow needs both: management to read the account and subscribe it to webhooks, messaging to answer customers.
+3. Create an Embedded Signup configuration and put its id in `WHATSAPP_CONFIG_ID`. The dashboard reads it through `GET /api/integrations/whatsapp/setup` and only shows the one-click button when the agent reports it, so a half-configured deployment never offers a button that leads nowhere.
+4. Build the configuration against the current Embedded Signup version. Version 2 is being retired, so confirm the version in the Meta dashboard before each release rather than assuming the one used at build time still exists.
+5. In WhatsApp configuration, set the callback URL to `https://<agent-host>/whatsapp` and the verify token to `WHATSAPP_VERIFY_TOKEN`, or leave that variable empty to reuse `FB_VERIFY_TOKEN`. Subscribe the app to the `messages` field. SellPilot subscribes each merchant account itself through `/{waba-id}/subscribed_apps`; the app-level setting is what lets it.
+6. Add the dashboard origin to the app's allowed domains. Embedded Signup runs in a popup opened from that origin and reports the new account back to it over `postMessage`.
+7. Keep the advanced token path available for testing while approval is pending, but do not present it as the normal route in merchant-facing material.
+
+For App Review, record a screencast that shows: merchant clicks Connect WhatsApp; Meta's own dialog opens; merchant selects or creates a WhatsApp Business Account and verifies the number there; the dialog closes and SellPilot reports the number connected without anything being typed; a test customer sends a message; SellPilot replies inside the customer-initiated window; merchant pauses AI, takes over from the inbox, and disconnects the number. Show the coexistence variant separately if it is submitted: the merchant keeps the number in the WhatsApp Business app, approves the connection on the phone, and can still reply there.
+
+Validate before switching on:
+
+- Connect two merchant businesses to two different WhatsApp Business Accounts and prove tenant isolation in both directions.
+- Connect an account holding several numbers and confirm the merchant is asked exactly once which to use, and that the parked authorization expires on its own.
+- Force a failed number registration and confirm the connection is stored as Needs attention with AI off, never as Connected.
+- Disconnect the last number of an account and confirm the account is unsubscribed; disconnect one of two and confirm it is not.
+- Inspect logs for signup codes, business tokens, and registration PINs; none should be emitted.
 
 ## Production validation checklist
 

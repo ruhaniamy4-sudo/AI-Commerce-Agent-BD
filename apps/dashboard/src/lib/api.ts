@@ -350,9 +350,17 @@ export interface FacebookPageChoice {
 export interface WhatsAppConnection {
   id: string;
   phoneNumberId: string;
+  wabaId?: string;
   name: string;
+  displayPhoneNumber?: string;
+  qualityRating?: string;
+  platformType?: string;
+  /** "guided" came through Meta's signup dialog; "manual" was a pasted token. */
+  setupMode?: "guided" | "manual";
   connectionStatus: string;
   aiEnabled: boolean;
+  subscription?: { subscribed: boolean; fields: string[]; verifiedAt?: string };
+  connectedAt?: string;
   lastEventAt?: string;
   lastInboundAt?: string;
   lastOutboundAt?: string;
@@ -360,6 +368,27 @@ export interface WhatsAppConnection {
   lastErrorCode?: string;
   reauthorizationRequired: boolean;
 }
+
+/** What this deployment can offer on the Integrations page, decided server-side. */
+export interface WhatsAppSetupOptions {
+  guidedAvailable: boolean;
+  appId: string | null;
+  configId: string | null;
+  graphVersion: string;
+  webhookUrl: string | null;
+}
+
+export interface WhatsAppNumberChoice {
+  choiceId: string;
+  displayPhoneNumber?: string;
+  verifiedName?: string;
+  qualityRating?: string;
+}
+
+/** Either the number was connected outright, or the account holds several. */
+export type WhatsAppSignupResult =
+  | { connection: WhatsAppConnection }
+  | { sessionId: string; wabaName?: string; subscribed: boolean; numbers: WhatsAppNumberChoice[] };
 
 /** One line of the connection-health checklist. */
 export interface HealthCheck {
@@ -385,6 +414,8 @@ export interface IntegrationHealth {
   platform: {
     messengerReady: boolean;
     whatsappReady: boolean;
+    /** Whether one-click WhatsApp setup can be offered at all. */
+    whatsappGuidedReady?: boolean;
     queueReady: boolean;
     webhooks: { messenger: string; whatsapp: string } | null;
   };
@@ -398,13 +429,32 @@ export const integrationHealthApi = {
 export const whatsappIntegrationsApi = {
   list: () =>
     apiClient.get<{ channels: WhatsAppConnection[] }>("/api/integrations/whatsapp"),
-  connect: (phoneNumberId: string, accessToken: string) =>
+  setup: () =>
+    apiClient.get<WhatsAppSetupOptions>("/api/integrations/whatsapp/setup"),
+  /** Finishes Meta's own signup dialog: the browser only ever forwards the code. */
+  connectGuided: (input: {
+    code: string;
+    wabaId?: string;
+    phoneNumberId?: string;
+    coexistence?: boolean;
+  }) =>
+    apiClient.post<WhatsAppSignupResult>("/api/integrations/whatsapp/connect", input),
+  confirmNumber: (sessionId: string, choiceId: string) =>
+    apiClient.post<{ connection: WhatsAppConnection }>(
+      "/api/integrations/whatsapp/connect/confirm",
+      { sessionId, choiceId },
+    ),
+  resubscribe: (id: string) =>
+    apiClient.post<WhatsAppConnection>(
+      `/api/integrations/whatsapp/${id}/resubscribe`,
+    ),
+  connectManually: (phoneNumberId: string, accessToken: string) =>
     apiClient.post<{ connected: boolean }>("/api/integrations/whatsapp", {
       phoneNumberId,
       accessToken,
     }),
   verify: (id: string) =>
-    apiClient.post<{ verified: boolean; name: string; displayPhoneNumber?: string }>(
+    apiClient.post<{ verified: boolean; subscribed?: boolean; name: string; displayPhoneNumber?: string }>(
       `/api/integrations/whatsapp/${id}/verify`,
     ),
   setAI: (id: string, enabled: boolean) =>

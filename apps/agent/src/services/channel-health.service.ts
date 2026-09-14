@@ -96,11 +96,16 @@ function messengerHealth(channel: any): ChannelHealth {
 }
 
 function whatsappHealth(channel: any): ChannelHealth {
-    // Meta exposes the webhook subscription on the WhatsApp Business Account, which
-    // a phone-number token cannot read. Arriving messages are the honest proof.
-    const webhook: HealthCheck = channel.lastInboundAt
-        ? { key: 'webhook', label: 'Webhook delivery', state: 'pass', detail: 'Messages are arriving, so the webhook is configured correctly.' }
-        : { key: 'webhook', label: 'Webhook delivery', state: 'unknown', detail: 'Cannot be read from here. Set the callback URL below in Meta, then send a test message.', action: 'configure_webhook' };
+    // Meta exposes the webhook subscription on the WhatsApp Business Account. A
+    // guided connection holds that account's token and can be asked directly; a
+    // pasted phone-number token cannot, so arriving messages are the only proof.
+    const webhook: HealthCheck = channel.wabaId
+        ? channel.subscription?.subscribed
+            ? { key: 'webhook', label: 'Webhook delivery', state: 'pass', detail: 'Meta confirms this app is subscribed to the account, so messages reach SellPilot.' }
+            : { key: 'webhook', label: 'Webhook delivery', state: 'fail', detail: 'Meta is not sending this account to SellPilot. Restoring the subscription fixes it.', action: 'resubscribe' }
+        : channel.lastInboundAt
+            ? { key: 'webhook', label: 'Webhook delivery', state: 'pass', detail: 'Messages are arriving, so the webhook is configured correctly.' }
+            : { key: 'webhook', label: 'Webhook delivery', state: 'unknown', detail: 'Cannot be read from here. Set the callback URL below in Meta, then send a test message.', action: 'configure_webhook' };
 
     const checks = [tokenCheck(channel), webhook, trafficCheck(channel), aiCheck(channel)];
     return {
@@ -127,7 +132,21 @@ export function platformReadiness(env: NodeJS.ProcessEnv = process.env) {
     const publicUrl = (env.PUBLIC_AGENT_URL || '').replace(/\/+$/, '');
     return {
         messengerReady: Boolean(meta.appId && meta.appSecret && meta.verifyToken && publicUrl && meta.dashboardUrl),
-        whatsappReady: Boolean(env.WHATSAPP_VERIFY_TOKEN && env.WHATSAPP_APP_SECRET && env.META_GRAPH_API_VERSION && env.FACEBOOK_CREDENTIALS_ENCRYPTION_KEY),
+        // WhatsApp runs on the same Meta app as Messenger, so a deployment that set
+        // only the Facebook values is configured, not broken.
+        whatsappReady: Boolean(
+            (env.WHATSAPP_VERIFY_TOKEN || env.FB_VERIFY_TOKEN)
+            && (env.WHATSAPP_APP_SECRET || env.FB_APP_SECRET)
+            && (env.META_GRAPH_API_VERSION || env.FB_GRAPH_API_VERSION)
+            && env.FACEBOOK_CREDENTIALS_ENCRYPTION_KEY,
+        ),
+        /** Guided setup additionally needs the Embedded Signup configuration id. */
+        whatsappGuidedReady: Boolean(
+            (env.WHATSAPP_APP_ID || env.FB_APP_ID)
+            && (env.WHATSAPP_APP_SECRET || env.FB_APP_SECRET)
+            && env.WHATSAPP_CONFIG_ID
+            && env.FACEBOOK_CREDENTIALS_ENCRYPTION_KEY,
+        ),
         // Inbound events are processed through the queue; without Redis they never run.
         queueReady: Boolean(getRedisConfig(env)),
         webhooks: publicUrl

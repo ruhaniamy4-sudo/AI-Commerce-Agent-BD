@@ -21,6 +21,15 @@ export interface IBusinessChannel extends Document {
     subscription?: { subscribed: boolean; fields: string[]; verifiedAt?: Date; lastErrorCode?: string };
     authorizedByMetaUserId?: string;
     lastErrorCode?: string;
+    /** WhatsApp only: the account that owns this number and holds the subscription. */
+    wabaId?: string;
+    displayPhoneNumber?: string;
+    qualityRating?: string;
+    platformType?: string;
+    /** How the merchant connected, so support can tell a guided setup from a pasted token. */
+    setupMode?: 'guided' | 'manual';
+    /** The two-step PIN this platform registered the number with, never shown again. */
+    encryptedTwoStepPin?: string;
 }
 
 const BusinessChannelSchema = new Schema<IBusinessChannel>({
@@ -44,6 +53,12 @@ const BusinessChannelSchema = new Schema<IBusinessChannel>({
     subscription: { subscribed: { type: Boolean, default: false }, fields: [{ type: String }], verifiedAt: Date, lastErrorCode: String },
     authorizedByMetaUserId: { type: String, select: false },
     lastErrorCode: String,
+    wabaId: { type: String, index: true, sparse: true },
+    displayPhoneNumber: String,
+    qualityRating: String,
+    platformType: String,
+    setupMode: { type: String, enum: ['guided', 'manual'] },
+    encryptedTwoStepPin: { type: String, select: false },
 }, { timestamps: true });
 
 BusinessChannelSchema.index({ platform: 1, externalId: 1 }, { unique: true });
