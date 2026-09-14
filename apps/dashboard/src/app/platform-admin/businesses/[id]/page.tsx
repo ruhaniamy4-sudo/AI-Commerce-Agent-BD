@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { platformApi } from "@/lib/platform-api";
@@ -6,10 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import {
+  BillingAdjustmentDialog,
+  SubscriptionDialog,
+  type BillingValues,
+  type SubscriptionValues,
+} from "./action-dialogs";
 export default function BusinessDetail() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const [subscriptionOpen, setSubscriptionOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ["platform-business", id],
     queryFn: () => platformApi.business(id),
@@ -61,19 +70,11 @@ export default function BusinessDetail() {
     onSuccess: refresh,
   });
   const subscription = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (values: SubscriptionValues) => {
       const current = requireData();
-      const reason = prompt("Reason for subscription change")?.trim();
-      if (!reason) throw new Error("Reason required");
-      const status = prompt(
-        "Status: TRIAL, ACTIVE, PAST_DUE, EXPIRED, CANCELLED, SUSPENDED",
-        current.subscription?.status || "TRIAL",
-      )
-        ?.trim()
-        .toUpperCase();
-      if (!status) throw new Error("Status required");
+      // Cancelling ends their plan, so it is the one change that asks twice.
       if (
-        status === "CANCELLED" &&
+        values.status === "CANCELLED" &&
         !(await confirm({
           title: `Cancel ${current.business.name}'s subscription?`,
           description: "Their plan moves to cancelled and the change is recorded against this business.",
@@ -82,52 +83,41 @@ export default function BusinessDetail() {
       )
         throw new Error("Cancelled");
       return platformApi.setSubscription(id, {
-        reason,
-        status,
-        plan: current.subscription?.plan || "Starter",
-        billingPeriod: current.subscription?.billingPeriod || "monthly",
-        price: current.subscription?.price || 0,
+        ...values,
         currency: current.subscription?.currency || "BDT",
         eventType: current.subscription ? "STATUS_CHANGE" : "START",
         startedAt: current.subscription?.startedAt || new Date().toISOString(),
       });
     },
-    onSuccess: refresh,
+    onSuccess: () => {
+      setSubscriptionOpen(false);
+      refresh();
+    },
   });
   const billing = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (values: BillingValues) => {
       const current = requireData();
+      // Booking money by hand against a real account is worth one last look.
       if (
+        !values.isTest &&
         !(await confirm({
-          title: `Record a manual billing adjustment for ${current.business.name}?`,
-          description: "You will be asked for the amount, the type and a reason next.",
-          confirmLabel: "Continue",
+          title: `Book a real ${values.type === "REFUND" ? "refund" : "adjustment"} of ${values.amount} BDT?`,
+          description: `This is recorded against ${current.business.name} as a paid transaction and counts towards revenue.`,
+          confirmLabel: "Book it",
           tone: "warning",
         }))
       )
         throw new Error("Cancelled");
-      const amount = Number(prompt("Amount in BDT"));
-      const type = prompt("Type: ADJUSTMENT or REFUND", "ADJUSTMENT")
-        ?.trim()
-        .toUpperCase();
-      const reason = prompt("Reason (required)")?.trim();
-      if (
-        !Number.isFinite(amount) ||
-        amount < 0 ||
-        !reason ||
-        !["ADJUSTMENT", "REFUND"].includes(type || "")
-      )
-        throw new Error("Valid amount, type, and reason required");
       return platformApi.adjustBilling({
         businessId: id,
-        amount,
-        type,
-        reason,
+        ...values,
         currency: "BDT",
-        isTest: true,
       });
     },
-    onSuccess: refresh,
+    onSuccess: () => {
+      setBillingOpen(false);
+      refresh();
+    },
   });
   if (isLoading || !data) return <p>Loading business…</p>;
   const b = data.business;
@@ -150,14 +140,30 @@ export default function BusinessDetail() {
               ? "Resume AI"
               : "Suspend AI"}
           </Button>
-          <Button variant="outline" onClick={() => subscription.mutate()}>
+          <Button variant="outline" onClick={() => setSubscriptionOpen(true)}>
             Change subscription
           </Button>
-          <Button variant="outline" onClick={() => billing.mutate()}>
+          <Button variant="outline" onClick={() => setBillingOpen(true)}>
             Manual billing adjustment
           </Button>
         </div>
       </div>
+      <SubscriptionDialog
+        open={subscriptionOpen}
+        onOpenChange={setSubscriptionOpen}
+        businessName={b.name}
+        current={data.subscription}
+        pending={subscription.isPending}
+        onSubmit={(values) => subscription.mutate(values)}
+      />
+      <BillingAdjustmentDialog
+        open={billingOpen}
+        onOpenChange={setBillingOpen}
+        businessName={b.name}
+        currency={data.subscription?.currency || "BDT"}
+        pending={billing.isPending}
+        onSubmit={(values) => billing.mutate(values)}
+      />
       <div className="grid gap-4 md:grid-cols-4">
         <Metric label="Business status" value={b.status} />
         <Metric label="AI status" value={b.aiAccess?.status || "ENABLED"} />

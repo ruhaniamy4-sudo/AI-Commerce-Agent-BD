@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { phoneticallyMatches, termAlternatives } from './bangla-terms';
 import { deriveProductCode, Product } from '../models/Product';
 import { parseSearchTerms } from './turn-routing.service';
 
@@ -76,7 +77,8 @@ export function cardLines(cards: CompactProductCard[], language: string) {
 }
 
 export function termPredicate(term: string) {
-    const pattern = escaped(term);
+    // A Bangla word has to find a Latin catalog entry: "মগ" must reach "Mug".
+    const pattern = termAlternatives(term).map(escaped).join('|');
     return { $or: [
         { name: { $regex: pattern, $options: 'i' } }, { brand: { $regex: pattern, $options: 'i' } },
         { slug: { $regex: pattern, $options: 'i' } }, { aliases: { $regex: pattern, $options: 'i' } },
@@ -91,7 +93,15 @@ export function termPredicate(term: string) {
 export function termMatchScore(product: any, terms: string[]) {
     const name = String(product.name || '').toLowerCase();
     const rest = [product.brand, product.slug, product.description, ...(product.aliases || []), ...(product.compatibilityTags || []), ...((product.variants || []).map((variant: any) => `${variant.name} ${variant.sku}`))].join(' ').toLowerCase();
-    return terms.reduce((score, term) => score + (name.includes(term) ? 3 : rest.includes(term) ? 1 : 0), 0);
+    return terms.reduce((score, term) => {
+        const spellings = termAlternatives(term).map((value) => value.toLowerCase());
+        if (spellings.some((value) => name.includes(value))) return score + 3;
+        if (spellings.some((value) => rest.includes(value))) return score + 1;
+        // Last resort for a Bangla word with no entry in the vocabulary.
+        if (phoneticallyMatches(name, term)) return score + 2;
+        if (phoneticallyMatches(rest, term)) return score + 1;
+        return score;
+    }, 0);
 }
 
 export function sellable(product: any) {

@@ -91,25 +91,27 @@ const MAX_QUANTITY = 20;
 // ones, and they arrive with prefixes ("vai eta amar 2 ta lagbe"), so nothing here
 // is anchored.
 // An unmistakable instruction to buy: checkout starts on these alone.
-const ORDER_INTENT = /\b(?:nibo|nebo|nib|nite chai|nite chachchi|kinbo|kinte chai|kinte chachchi|nilam|rekhe den|book korbo|book kore rakhen|pathai den|pathiye den|pathaye den|dia den|diye den|de den|packet koren|parcel koren|order korbo|order korte chai|order korlam|order dibo|order debo|place (?:an )?order|buy (?:it|this|now)|checkout)\b|নিব|নেব|কিনব|কিনতে চাই|পাঠিয়ে\s*(?:দিন|দেন)|অর্ডার\s*(?:করব|করতে|দিব|দেব|করলাম)/i;
+const ORDER_INTENT = /\b(?:nibo|nebo|nib|nite chai|nite chachchi|kinbo|kinte chai|kinte chachchi|nilam|rekhe den|book korbo|book kore rakhen|pathai den|pathiye den|pathaye den|dia den|diye den|de den|packet koren|parcel koren|order korbo|order korte chai|order korlam|order dibo|order debo|place (?:an )?order|buy (?:it|this|now)|checkout)\b|নিব|নেব|কিনব|কিনতে চাই|পাঠিয়ে\s*(?:দিন|দেন)|অর্ডার\s*(?:করব|করতে|দিব|দেব|করলাম)|\bi\s*(?:'ll|\s+will|\s+wanna|\s+want\s+to|\s+would\s+like\s+to|\s+would\s+like)\s+(?:to\s+)?(?:take|buy|order|purchase|get|have)\s+(?:it|this|that|these|those|one|them|the\s+\w+)\b|\bi\s*(?:'ll|\s+will)\s+take\s+(?:it|this|that|one|them)\b|\bi\s+want\s+to\s+(?:buy|order|purchase)\b|\btake\s+(?:this|that)\s+one\b|\border\s+(?:it|this|that|now|please)\b|\bplace\s+(?:my|the|an?)\s+order\b|\badd\s+(?:it|this|that)\s+to\s+(?:my\s+)?(?:cart|order)\b|\b(?:give|send|book|reserve|keep)\s+(?:me\s+)?(?:\d{1,2}|one|two|three|a|an|it|this|that)\b(?!\s*(?:list|catalog|catalogue|menu|price|photo|picture|image|details?|link))|\b(?:proceed|checkout)\b/i;
 // "lagbe", "dorkar", "chai" mean "I want one" — but also "amar budget 3000 er
 // moddhe kichu lagbe", which is browsing. They start checkout only when the
 // customer also names the product or says how many.
-const SOFT_ORDER_INTENT = /\b(?:lagbe|lagbo|lagto|dorkar|chai|chachchi|rakhen)\b|লাগবে|দরকার|চাই/i;
+const SOFT_ORDER_INTENT = /\b(?:lagbe|lagbo|lagto|dorkar|chai|chachchi|rakhen)\b|লাগবে|দরকার|চাই|\b(?:need|want|take)\b/i;
 // A question asks about buying; it does not instruct us to buy.
-const ASKS_RATHER_THAN_ORDERS = /\?\s*$|\b(?:pabo|hobe|jabe|parbo|ache|dibe|dibn|kobe|koto|kotodin)\s*(?:to|ki|kina|na)?\s*\??$|\b(?:pabo|hobe|jabe|parbo)\s+(?:to|ki|kina)\b/i;
+const ASKS_RATHER_THAN_ORDERS = /^\s*(?:when|how|where|what|why|which|who|can|could|do|does|did|is|are|will|would|should)\b[^?]*\?\s*$|\?\s*$|\b(?:pabo|hobe|jabe|parbo|ache|dibe|dibn|kobe|koto|kotodin)\s*(?:to|ki|kina|na)?\s*\??$|\b(?:pabo|hobe|jabe|parbo)\s+(?:to|ki|kina)\b/i;
 // A bare affirmative answering the summary. Kept anchored: "ha" inside a sentence
 // is not a confirmation.
-const CONFIRM_WORDS = /^(?:confirm(?:ed)?|ha|haa|hae|hyan|hn|hmm+|ji|jee|jii|yes|yep|ok(?:ay)?|acha|accha|thik\s*ache|thik|done|hoye\s*jak|হ্যাঁ|হ্যা|জি|আচ্ছা|ঠিক\s*আছে|ওকে)[\s!.।,]*$/i;
+const CONFIRM_WORDS = /^(?:confirm(?:ed)?|ha|haa|hae|hyan|hn|hmm+|ji|jee|jii|yes|yeah|yep|yup|sure|ok(?:ay)?|acha|accha|thik\s*ache|thik|done|alright|go\s*ahead|hoye\s*jak|হ্যাঁ|হ্যা|জি|আচ্ছা|ঠিক\s*আছে|ওকে)[\s!.।,]*$/i;
 // "ji vai, order ta confirm kore den" — the confirmation verb anywhere in the
 // sentence, in every spelling Bangladeshi customers type.
-const CONFIRM_ORDER_PHRASE = /\b(?:confirm|konfirm|cnfrm|conform)\b|কনফার্ম|\border\s*(?:ta|ti)?\s*(?:kore\s*)?(?:den|din|dao|deo|dio|koro|korun|felun|nin|nen)\b|\b(?:kore|kre)\s*(?:den|din|dao|deo|dio|felun)\b|অর্ডার\s*(?:টা)?\s*(?:করে\s*)?(?:দিন|দেন|দাও|করুন|ফেলুন)/i;
+const CONFIRM_ORDER_PHRASE = /\b(?:confirm|konfirm|cnfrm|conform)\b|\b(?:go\s*ahead|place\s+it|yes\s+please)\b|কনফার্ম|\border\s*(?:ta|ti)?\s*(?:kore\s*)?(?:den|din|dao|deo|dio|koro|korun|felun|nin|nen)\b|\b(?:kore|kre)\s*(?:den|din|dao|deo|dio|felun)\b|অর্ডার\s*(?:টা)?\s*(?:করে\s*)?(?:দিন|দেন|দাও|করুন|ফেলুন)/i;
 // An explicit cancel verb counts wherever it appears; bare negatives only when
 // the whole message is the negative.
 const CANCEL_EXPLICIT = /\b(?:cancel|cancle|batil)\b|বাতিল|\blagbe\s*na\b|\bdorkar\s*nei\b|লাগবে\s*না/i;
-const CANCEL_WORDS = /^(?:cancel|na|no|nah|nai|thak|thak\s*lagbe\s*na|বাতিল|না|থাক|লাগবে\s*না)[\s!.।]*$/i;
+const CANCEL_WORDS = /^(?:cancel|na|no|nah|nope|nai|not\s*now|no\s*thanks?|thak|thak\s*lagbe\s*na|বাতিল|না|থাক|লাগবে\s*না)[\s!.।]*$/i;
 const ADDRESS_CHANGE = /\b(?:address|thikana)\b.{0,24}\b(?:change|bodla|bodlate|onno|another|different|update|vul|bhul|wrong)\b|\b(?:onno|another|new)\s+(?:address|thikana)\b|ঠিকানা.{0,20}(?:বদল|পরিবর্তন|ভুল|অন্য)/i;
-const NAME_CHANGE = /\b(?:nam|naam|name)\b.{0,20}\b(?:vul|bhul|wrong|change|bodla|bodlate|thik\s*na)\b|নাম.{0,16}(?:ভুল|বদল|পরিবর্তন)/i;
+// The correction can come either way round: "name ta vul" and "wrong name" are
+// the same request.
+const NAME_CHANGE = /\b(?:nam|naam|name)\b.{0,20}\b(?:vul|bhul|wrong|change|bodla|bodlate|thik\s*na)\b|\b(?:vul|bhul|wrong|change|different|another|correct)\b.{0,12}\b(?:nam|naam|name)\b|নাম.{0,16}(?:ভুল|বদল|পরিবর্তন)|(?:ভুল|বদলে|অন্য).{0,10}নাম/i;
 /** "amar ager address e pathan" — reuse what the customer already gave us once. */
 const REUSE_ADDRESS = /\b(?:age|ager|ageri|agery|previous|last|same|purono)\s*(?:er)?\s*(?:order(?:ed)?)?\s*(?:address|thikana|jaygay)|আগের\s*(?:ঠিকানা|অর্ডারের)/i;
 /** "koto holo total", "shob miliye koto" — a recap, not a new product search. */
@@ -167,6 +169,20 @@ const WORD_NUMBERS: Record<string, number> = {
 };
 
 /** "aro ekta", "arekta" — one more than whatever is already in the basket. */
+/**
+ * "actually make it 3", "change quantity to 2", "oita 3 ta koren" — an explicit
+ * new count, as opposed to "aro ekta" which adds to what is already there.
+ */
+export function quantitySetFrom(text: string) {
+    const match = text.match(/\b(?:make|change|update|set)\s*(?:it|the\s*(?:qty|quantity|order|count))?\s*(?:to\s*)?(\d{1,2})\b/i)
+        || text.match(/\b(?:quantity|qty|porimaan|poriman)\s*(?:ta|ti)?\s*(?:hobe|to|=|:)?\s*(\d{1,2})\b/i)
+        || text.match(/\b(\d{1,2})\s*(?:ta|টা|টি)?\s*(?:koren|korun|kore\s*den|kore\s*din)\b/i)
+        || text.match(/(\d{1,2})\s*(?:টা|টি)?\s*কর(?:েন|ুন|ে\s*দিন)/);
+    const value = Number(match?.[1]);
+    if (!Number.isInteger(value) || value < 1) return undefined;
+    return Math.min(value, MAX_QUANTITY);
+}
+
 export function quantityIncrementFrom(text: string) {
     if (!/\b(?:aro|are|arek|ar)\s*(?:ek|ekta|ekti|akta)?\b|আরেকটা|আরও\s*একটা/i.test(text)) return undefined;
     const counted = text.match(/\b(?:aro|are)\s*(\d{1,2})\s*(?:ta|টা|pcs?)\b/i);
@@ -178,7 +194,7 @@ export function quantityIncrementFrom(text: string) {
 export function quantityFrom(text: string) {
     // The digits must stand alone: a product code such as "CER-CAF6 ta nibo" ends
     // in a digit and was being read as a quantity of six.
-    const counted = text.match(/(?<![\w-])(\d{1,2})\s*(?:ta|টা|টি|pc|pcs|piece|pieces|copy|set|jon)\b/i);
+    const counted = text.match(/(?<![\w-])(\d{1,2})\s*(?:(?:ta|pc|pcs|piece|pieces|copy|set|jon)\b|টা|টি|খানা)/i);
     const bare = counted ? undefined : text.trim().match(/^(\d{1,2})$/);
     // "duita nibo", "tinta den" — spelled-out counts are just as common as digits.
     const spelled = counted || bare ? undefined : text.toLowerCase().match(/\b(ekta|ekti|duita|duto|dui|tinta|tin|charta|char|panchta|panch|pach|choy|sat|dosh)\b|(একটা|একটি|দুইটা|দুটো|দুই|তিনটা|তিন|চারটা|চার|পাঁচটা|পাঁচ)/);
@@ -204,7 +220,7 @@ export function phoneFrom(text: string) {
  * it decides the delivery fee, so it cannot be left unrecognised.
  */
 const SUB_AREAS: Array<[RegExp, string]> = [
-    [/\b(?:mirpur|mohammadpur|dhanmondi|gulshan|banani|uttara|badda|rampura|mugda|khilgaon|bashundhara|banasree|motijheel|paltan|farmgate|mohakhali|tejgaon|shyamoli|kalabagan|malibagh|jatrabari|demra|keraniganj|savar|ashulia|tongi|azimpur|lalbagh|old dhaka|puran dhaka|shantinagar|bailey road|niketan|nikunja|khilkhet|kuril|baridhara|wari|gendaria|sutrapur|kamrangirchar|hazaribagh|adabor|shewrapara|kazipara|pallabi|rupnagar|agargaon|shyamoli)\b|মিরপুর|মোহাম্মদপুর|ধানমন্ডি|গুলশান|বনানী|উত্তরা|বাড্ডা|রামপুরা|যাত্রাবাড়ী|খিলগাঁও|বসুন্ধরা|মতিঝিল|ফার্মগেট|মহাখালী|তেজগাঁও|শ্যামলী|পুরান\s*ঢাকা/i, 'Dhaka'],
+    [/\b(?:mirpur|mohammadpur|dhanmondi|gulshan|banani|uttara|badda|rampura|mugda|khilgaon|bashundhara|banasree|motijheel|paltan|farmgate|mohakhali|tejgaon|shyamoli|kalabagan|malibagh|jatrabari|demra|keraniganj|savar|ashulia|tongi|azimpur|lalbagh|old dhaka|puran dhaka|shantinagar|bailey road|niketan|nikunja|khilkhet|kuril|baridhara|wari|gendaria|sutrapur|kamrangirchar|hazaribagh|adabor|shewrapara|kazipara|pallabi|rupnagar|agargaon|shyamoli)\b|মিরপুর|মোহাম্মদপুর|ধানমন্ডি|গুলশান|বনানী|উত্তরা|বাড্ডা|রামপুরা|যাত্রাবাড়ী|খিলগাঁও|বসুন্ধরা|মতিঝিল|ফার্মগেট|মহাখালী|তেজগাঁও|শ্যামলী|পুরান\s*ঢাকা|আগারগাঁও|বনশ্রী|মুগদা|পল্টন|কলাবাগান|মালিবাগ|ডেমরা|সাভার|আশুলিয়া|টঙ্গী|আজিমপুর|লালবাগ|শান্তিনগর|নিকেতন|নিকুঞ্জ|খিলক্ষেত|কুড়িল|বারিধারা|ওয়ারী|গেন্ডারিয়া|আদাবর|শেওড়াপাড়া|কাজীপাড়া|পল্লবী|রূপনগর|হাজারীবাগ/i, 'Dhaka'],
     [/\b(?:agrabad|halishahar|pahartali|nasirabad|khulshi|chawkbazar ctg|patenga|bayezid)\b|আগ্রাবাদ|হালিশহর|পতেঙ্গা/i, 'Chattogram'],
 ];
 
@@ -232,23 +248,66 @@ export function areaFrom(text: string) {
  */
 export function extractLabelledDetails(text: string) {
     const stopAtNextLabel = (value: string) => value
-        .split(/\s*(?:,|;|\n|\bar\b|\band\b)?\s*(?:name|naam|nam|phone|mobile|number|contact|address|thikana|নাম|ফোন|মোবাইল|নম্বর|ঠিকানা)\s*[:\-=]/i)[0]
+        .split(/\s*(?:,|;|\n|\bar\b|\band\b)?\s*\b(?:name|naam|nam|phone|mobile|number|contact|address|thikana|নাম|ফোন|মোবাইল|নম্বর|ঠিকানা)\b\s*[:\-=]?\s/i)[0]
         .replace(/^[\s,;:.\-]+|[\s,;:.\-]+$/g, '')
         .trim();
 
-    const rawName = text.match(/\b(?:name|naam|nam|নাম)\s*[:\-=]\s*([^,;\n]{2,60})/i)?.[1];
-    const rawAddress = text.match(/\b(?:address|thikana|ঠিকানা|location)\s*[:\-=]\s*([^\n]{3,200})/i)?.[1];
-    const labelledPhone = text.match(/\b(?:phone|mobile|number|contact|ফোন|মোবাইল|নম্বর)\s*[:\-=]\s*([^,;\n]{5,25})/i)?.[1];
+    // The separator is optional: plenty of people write "name Rafiul phone 01..."
+    // with nothing but spaces between the label and the value.
+    // The separator is optional — plenty of people write "name Rafiul phone 01..."
+    // — but then the value must not begin with a Bangla particle, or "ager
+    // address e pathan" reads as an address of "e pathan".
+    const value = (raw?: string) => raw && !/^(?:e|te|ta|ti|er|ay|y|theke|thekei|ei|oi|তে|এ|ের)\b/i.test(raw.trim()) ? raw : undefined;
+    const rawName = value(text.match(/\b(?:full\s*name|name|naam|nam|নাম)\s*[:\-=]?\s+([^,;\n]{2,60})/i)?.[1]);
+    const rawAddress = value(text.match(/\b(?:address|thikana|ঠিকানা|location)\s*[:\-=]?\s+([^\n]{3,200})/i)?.[1]);
+    const labelledPhone = value(text.match(/\b(?:phone|mobile|number|contact|ফোন|মোবাইল|নম্বর)\s*[:\-=]?\s+([^,;\n]{5,25})/i)?.[1]);
 
-    const address = rawAddress ? stopAtNextLabel(rawAddress) : undefined;
+    // "Rafiul Islam Sifat, 01632149759, Agargaon" — everything at once and not a
+    // label in sight, which is how most people actually answer.
+    const unlabelled = rawName || rawAddress || labelledPhone || REUSE_ADDRESS.test(text)
+        ? undefined
+        : splitUnlabelledDetails(text);
+
+    const address = rawAddress ? stopAtNextLabel(rawAddress) : unlabelled?.address;
     return {
-        fullName: rawName ? plausibleName(stopAtNextLabel(rawName)) : undefined,
+        fullName: rawName ? plausibleName(stopAtNextLabel(rawName)) : unlabelled?.fullName,
         // An invalid number is left unset on purpose: the flow then asks for a real one.
-        phone: phoneFrom(labelledPhone || '') || undefined,
+        phone: phoneFrom(labelledPhone || '') || unlabelled?.phone,
         addressLine1: address && address.length >= 3 ? address.slice(0, 200) : undefined,
         /** A number was offered but is not a usable Bangladeshi mobile. */
         phoneRejected: Boolean(labelledPhone) && !phoneFrom(labelledPhone || ''),
     };
+}
+
+/**
+ * Split a line the customer separated themselves — by comma, slash, dash or
+ * newline — into the three things checkout needs. Only attempted when the line
+ * carries a real phone number, so an ordinary sentence is never carved up.
+ */
+function splitUnlabelledDetails(text: string) {
+    const phone = phoneFrom(text);
+    if (!phone) return undefined;
+    const parts = text.split(/\s*[,/\n|]\s*|\s+-\s+/).map((part) => part.trim()).filter(Boolean);
+    if (parts.length < 2) return undefined;
+
+    const withoutPhone = parts.filter((part) => !phoneFrom(part) || part.replace(/\D/g, '').length < 6);
+    // A name comes first and carries no digits; whatever is left is the address.
+    const name = withoutPhone.length ? plausibleName(withoutPhone[0]) : undefined;
+    const addressParts = name ? withoutPhone.slice(1) : withoutPhone;
+    const address = addressParts.join(', ').trim();
+    return {
+        fullName: name,
+        phone,
+        address: address.length >= 3 ? address.slice(0, 200) : undefined,
+    };
+}
+
+/** The replacement offered in the same breath: "wrong name, it is Sifat". */
+function correctedName(text: string) {
+    return plausibleName(
+        text.match(/\b(?:it\s*is|it'?s|name\s*(?:is|hobe)|use|make\s*it|hocche|hobe|hobey)\s+([^,;.\n]{2,60})$/i)?.[1]
+        || text.split(/[,;:]/).slice(1).join(' ').replace(/\b(?:it\s*is|it'?s|use|please)\b/gi, '').trim(),
+    );
 }
 
 function plausibleName(value?: string) {
@@ -573,10 +632,27 @@ async function addItem(context: OrderTurnContext, existing: OrderDraft | undefin
     return { ...reply, message_text: `${trimmedNotice}${phoneNotice}${reply.message_text}`, suggested_products: [card(product, text)], memory: { ...context.lightweightMemory, activeProductId: String(product._id) } };
 }
 
+/** "this", "it", "eta" — the customer is pointing at what is already on screen. */
+const BACK_REFERENCE = /\b(?:this|that|it|the\s+same|same\s+one|above)\b|\b(?:eta|eita|oita|oi\s*ta|ei\s*ta|etai)\b|এটা|এটি|ওটা|ওটি|এইটা|সেটা/i;
+
 async function startOrAddItem(context: OrderTurnContext, existing?: OrderDraft): Promise<OrderFlowResponse | null> {
-    const products = (await context.resolveProducts(context.text)).filter((item: any) => item.aiSellingStatus !== 'disabled');
+    const remembered = String(context.entity?.activeProductId || '');
+    const rememberedName = String(context.entity?.activeProductName || '');
+    // "yes please, I would like to get 1 piece of this" names no product at all.
+    // Searching those words found three unrelated items and asked which one, in
+    // front of a customer who had just been shown exactly one.
+    // "mug nibo" names a product, so two matching mugs still deserve a choice.
+    // "yes please, 1 piece of this" names none, and the choice was already made.
+    const pointsAtRemembered = Boolean(remembered) && !requestedSku(context.text)
+        && (BACK_REFERENCE.test(context.text) || parseSearchTerms(context.text).length === 0);
+    const searchText = pointsAtRemembered && rememberedName ? rememberedName : context.text;
+    const products = (await context.resolveProducts(searchText)).filter((item: any) => item.aiSellingStatus !== 'disabled');
     if (!products.length) return null;
     if (products.length > 1) {
+        // Among several matches, the one already under discussion wins — but only
+        // when the customer pointed at it rather than naming something.
+        const active = pointsAtRemembered && products.find((item: any) => String(item._id) === remembered);
+        if (active) return addItem(context, existing, active, context.text);
         const cards = products.slice(0, 5).map((item: any) => card(item, context.text));
         return {
             message_text: say(context.language, {
@@ -840,6 +916,38 @@ async function continueDraft(context: OrderTurnContext, draft: OrderDraft): Prom
         return advanced;
     }
 
+    // "actually make it 3" while we are asking for a name is a change to the
+    // basket, not somebody called "actually make it 3".
+    if (draft.items.length && !isQuestion) {
+        const increment = quantityIncrementFrom(text);
+        const replacement = increment === undefined ? quantitySetFrom(text) : undefined;
+        if (increment !== undefined || replacement !== undefined) {
+            const target = targetItem(draft, text);
+            if (target) {
+                const wanted = increment !== undefined ? target.quantity + increment : replacement!;
+                const capped = await cappedQuantity(context, target, wanted);
+                target.quantity = capped.quantity;
+                const advanced = await advance(context, draft);
+                return capped.notice ? { ...advanced, message_text: capped.notice + advanced.message_text } : advanced;
+            }
+        }
+    }
+
+    // "sorry wrong name, it is Sifat" while we are asking for a phone number is a
+    // correction, not a badly typed number. It has to be heard before the stage
+    // handler below reads the line as an answer to its own question.
+    if (draft.fullName && NAME_CHANGE.test(text)) {
+        const replacement = correctedName(text);
+        if (replacement) {
+            draft.fullName = replacement;
+            return advance(context, draft);
+        }
+        draft.fullName = undefined;
+        draft.stage = 'AWAITING_NAME';
+        await saveDraft(context.businessId, context.conversationId!, draft);
+        return reply(askFor('AWAITING_NAME', context.language));
+    }
+
     if (draft.stage === 'AWAITING_VARIANT') {
         const products = await context.resolveProducts(draft.items[0].name);
         const product = products.find((item: any) => String(item._id) === draft.items[0].productId) || products[0];
@@ -934,6 +1042,11 @@ async function continueDraft(context: OrderTurnContext, draft: OrderDraft): Prom
     }
 
     if (NAME_CHANGE.test(text)) {
+        const replacement = correctedName(text);
+        if (replacement) {
+            draft.fullName = replacement;
+            return advance(context, draft);
+        }
         draft.fullName = undefined;
         draft.stage = 'AWAITING_NAME';
         await saveDraft(context.businessId, context.conversationId!, draft);
@@ -957,7 +1070,7 @@ async function continueDraft(context: OrderTurnContext, draft: OrderDraft): Prom
     }
 
     const increment = quantityIncrementFrom(text);
-    const quantity = increment !== undefined ? undefined : quantityFrom(text);
+    const quantity = increment !== undefined ? undefined : (quantitySetFrom(text) ?? quantityFrom(text));
     if ((increment !== undefined || quantity !== undefined) && !isQuestion) {
         const target = targetItem(draft, text);
         if (target) {

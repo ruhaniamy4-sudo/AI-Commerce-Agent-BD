@@ -27,7 +27,9 @@
     "validate:product-actions": "ts-node src/scripts/validate-merchant-product-actions.ts",
     "measure:coverage": "ts-node src/scripts/measure-turn-coverage.ts",
     "validate:inbox": "ts-node src/scripts/validate-inbox.ts",
-    "validate:channel-health": "ts-node src/scripts/validate-channel-health.ts"
+    "validate:channel-health": "ts-node src/scripts/validate-channel-health.ts",
+    "measure:languages": "ts-node src/scripts/measure-language-coverage.ts",
+    "measure:edge-cases": "ts-node src/scripts/measure-order-edge-cases.ts"
   },
   "dependencies": {
     "@edutechs/shared": "*",

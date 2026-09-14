@@ -9,7 +9,7 @@ import { Product } from '../models/Product';
 import { assertTenantBusinessId } from '../tenancy/context';
 import { ConversationLanguage, resolveConversationLanguage } from './conversation-intelligence.service';
 import { retrieveRelevantAwareness } from './business-awareness.service';
-import { classifyLightweightIntent, detectExplicitLanguagePreference, extractBudget, extractLightweightMemory, LightweightIntent, parseSearchTerms } from './turn-routing.service';
+import { classifyLightweightIntent, detectExplicitLanguagePreference, extractBudget, extractLightweightMemory, LightweightIntent, normalizeDigits, parseSearchTerms } from './turn-routing.service';
 import { setupQuestionStorageKey } from './business-setup.service';
 import { businessTypeLabel } from './adaptive-training.service';
 import { handleOrderTurn, pendingOrderPrompt, phoneFrom, setOrderDraftLanguage } from './order-flow.service';
@@ -117,7 +117,7 @@ function productText(intent: LightweightIntent, cards: CompactProductCard[], lan
             bn: `${one.name} (${one.code}) এখন preorder করা যাচ্ছে। চাইলে আপনার জন্য রেখে দিতে পারি।`,
             banglish: `${one.name} (${one.code}) ekhon preorder kora jacche. Chaile apnar jonno rekhe dite pari.`,
         });
-        if (one.availability === 'in_stock' && typeof one.stock === 'number') return say(language, {
+        if (typeof one.stock === 'number' && one.stock > 0) return say(language, {
             en: `Yes, ${one.name} (${one.code}) is in stock - ${one.stock} available at ${price}. Shall I place the order?`,
             bn: `জি, ${one.name} (${one.code}) stock-এ আছে—${one.stock}টি available, দাম ${price}। নিতে চাইলে বলবেন।`,
             banglish: `Ji, ${one.name} (${one.code}) stock e ache - ${one.stock} ta available, price ${price}. Nite chaile bolben.`,
@@ -315,7 +315,7 @@ const EMOJI_ONLY = /^[\p{Extended_Pictographic}\p{Emoji_Component}\s‍]+$/u;
 /** "pore dekhbo", "ekhon na", "bye" — a polite close, not a dead end. */
 const SIGN_OFF = /^(?:pore\s*(?:dekhbo|kotha\s*hobe|janabo)|ekhon\s*na|ekhon\s*lagbe\s*na|kichu\s*na|bye|byee|allah\s*hafez|khoda\s*hafez|tata|later|আপাতত\s*না|পরে\s*দেখব|এখন\s*না|বিদায়|আল্লাহ\s*হাফেজ)[\s!.।]*$/i;
 
-const IDENTITY_QUESTION = /\b(?:are|r)\s*(?:you|u)\s*(?:an?\s*)?(?:ai|a\.i\.?|bot|robot|human|machine|real\s*person)\b|\b(?:apni|apnara|tumi|tomra)\s*(?:ki|kii)\s*(?:ekta\s*)?(?:ai|a\.i\.?|bot|robot|manush|human)\b|\b(?:ai|bot|robot|manush)\s*(?:naki|na\s*ki)\b|\bkotha\s*bolche\s*(?:ke|kew)\b|(?:আপনি|আপনারা|তুমি|তোমরা)\s*কি\s*(?:একটা\s*)?(?:এআই|এ\s*আই|বট|রোবট|মানুষ)|(?:এআই|বট|রোবট|মানুষ)\s*নাকি/i;
+const IDENTITY_QUESTION = /\b(?:are|r)\s*(?:you|u)\s*(?:an?\s*)?(?:ai|a\.i\.?|bot|robot|human|machine|real\s*person|chatbot|computer)\b|\b(?:am\s+i\s+(?:talking|speaking|chatting)\s+(?:to|with)\s+(?:an?\s*)?(?:ai|bot|robot|human|person|machine))\b|\bwho\s+am\s+i\s+(?:talking|speaking|chatting)\s+(?:to|with)\b|\b(?:apni|apnara|tumi|tomra)\s*(?:ki|kii)\s*(?:ekta\s*)?(?:ai|a\.i\.?|bot|robot|manush|human)\b|\b(?:ai|bot|robot|manush)\s*(?:naki|na\s*ki)\b|\bkotha\s*bolche\s*(?:ke|kew)\b|(?:আপনি|আপনারা|তুমি|তোমরা)\s*(?:কি|কী)\s*(?:একটা\s*)?(?:এআই|এ\s*আই|ai|বট|bot|রোবট|robot|মানুষ|human|মেশিন)|(?:এআই|বট|রোবট|মানুষ)\s*নাকি|(?:আপনি|তুমি)\s*(?:কি|কী)\s*(?:সত্যি|আসল)?\s*মানুষ/i;
 
 /** An order number wherever it appears: quoted alone, after "order", or with a hash. */
 export function orderNumberFrom(text: string) {
@@ -474,8 +474,18 @@ async function stableBusinessFact(businessId: string, text: string, language: st
     const commerce = business?.commerce || {};
 
     if (/\b(?:support|contact|phone|mobile|whatsapp)\s*(?:number|no\b)|\bnumber\s*(?:ta|ti)?\s*(?:den|din|deo|dao|chai)\b|ফোন\s*নাম্বার|নাম্বার/i.test(text) && business?.phone) return language === 'en' ? `You can contact us at ${business.phone}.` : `যোগাযোগের number: ${business.phone}।`;
+    // What the customer is actually asking about delivery, decided once.
+    const asksDeliveryCharge = /\b(?:delivery|shipping)\b.{0,20}\b(?:charge|cost|fee|koto|kotodin|koydin|somoy|time)\b|\b(?:charge|cost|fee)\b.{0,20}\b(?:delivery|shipping)\b|ডেলিভারি.{0,12}(?:চার্জ|খরচ|কত|কতদিন|সময়)/i.test(text);
+    // "do you deliver to Dhaka?", "ঢাকায় ডেলিভারি হয়?" — a coverage question.
+    const asksDeliveryArea = /\bdeliver\b|\b(?:ship|shipping)\s+to\b|ডেলিভারি\s*(?:হয়|করেন|দেন|যায়|আছে|দেবেন|করবেন|থাকেন)|delivery\s*(?:hoy|hobe|koren|den|jay)\b/i.test(text);
+    // "when will I get it?", "can I get it tomorrow?", "কবে পাবো?" — how long.
+    const asksDeliveryTime = /\bwhen\s+(?:will|do|can|would)\s+(?:i|we|it|my)\b|\bhow\s+(?:long|many\s+days)\b|\bdelivery\s+time\b|\bkobe\s*(?:pabo|paba|dibe|ashbe|hobe)\b|কবে\s*(?:পাবো|পাব|পাওয়া|আসবে|দিবেন|দেবেন|হবে)|কতদিন/i.test(text)
+        || /\b(?:can|could|will)\s+i\s+(?:get|have|receive)\s+(?:it|this|that|them)\b[^?.!]{0,24}\b(?:today|tomorrow|tonight|by|within|before)\b/i.test(text)
+        || /\b(?:aj|ajke|kalke|kal)\s*(?:ke)?\s*(?:pabo|paoya|dibe|deben)\b|(?:আজ|আজকে|কালকে|কাল)\s*(?:পাবো|পাব|পাওয়া|দিবেন|দেবেন)/i.test(text);
+    const asksDelivery = asksDeliveryCharge || asksDeliveryArea || asksDeliveryTime;
+
     const selectors: Array<[RegExp, string[], string[]]> = [
-        [/(?:delivery|shipping).*(?:charge|cost|fee|time)|(?:charge|cost|fee).*(?:delivery|shipping)|dhaka.*delivery|delivery.*dhaka|ডেলিভারি/i, ['DELIVERY'], ['delivery_charge','delivery_time','delivery']],
+        [/(?:delivery|shipping).*(?:charge|cost|fee|time)|(?:charge|cost|fee).*(?:delivery|shipping)|dhaka.*delivery|delivery.*dhaka|\bdeliver\b|ডেলিভারি|\bkobe\s*(?:pabo|paba|dibe|ashbe)\b|কবে\s*(?:পাবো|পাব|আসবে|দেবেন|দিবেন)|\bhow\s+long\b|\bwhen\s+will\s+(?:i|we|it)\b/i, ['DELIVERY'], ['delivery_charge','delivery_time','delivery']],
         [/\bcod\b|cash on delivery/i, ['PAYMENT'], ['cod']], [/payment|pay(?:ment)? options?|bkash|bikash|nagad|rocket|upay|ক্যাশ|বিকাশ|নগদ/i, ['PAYMENT'], ['payment']],
         [/return|exchange|refund|cancel|রিটার্ন|রিফান্ড/i, ['RETURN','REFUND','POLICY'], ['return','refund','cancellation']],
         [/address|location|office|ঠিকানা/i, ['LOCATION','CONTACT'], ['office','location','store_location']],
@@ -483,7 +493,11 @@ async function stableBusinessFact(businessId: string, text: string, language: st
         [/fee|ফি|consultation charge|service charge/i, ['FEE','PRICING'], ['fee','consultancy_fee','pricing','fees','packages']],
         [/support|contact/i, ['SUPPORT','CONTACT'], ['support','contact']],
     ];
-    const selected = selectors.find(([pattern]) => pattern.test(text)); if (!selected) return undefined;
+    // A delivery question always looks at the delivery knowledge first, whichever
+    // words it was asked in.
+    const deliverySelector = selectors.find(([, domains]) => domains.includes('DELIVERY'));
+    const selected = (asksDelivery && deliverySelector) || selectors.find(([pattern]) => pattern.test(text));
+    if (!selected) return undefined;
     const type = String(business?.businessType || '');
     if (type) {
         const setupKeys = selected[2].flatMap((key) => [setupQuestionStorageKey(type as any, key), key]);
@@ -501,9 +515,24 @@ async function stableBusinessFact(businessId: string, text: string, language: st
 
     // Nothing confirmed by the merchant: answer from the same commerce settings the
     // checkout charges from, so the quote and the answer can never disagree.
-    if (/\b(?:delivery|shipping)\b.{0,20}\b(?:charge|cost|fee|koto|kotodin|koydin|somoy|time)\b|\b(?:charge|cost|fee)\b.{0,20}\b(?:delivery|shipping)\b|ডেলিভারি.{0,12}(?:চার্জ|খরচ|কত|কতদিন|সময়)/i.test(text)) {
+    if (asksDelivery) {
         const inside = Number(commerce?.deliveryFees?.insideDhaka ?? 80);
         const outside = Number(commerce?.deliveryFees?.outsideDhaka ?? 130);
+        // Only asked how long: the fee is not what they wanted to know.
+        if (asksDeliveryTime && !asksDeliveryCharge && !asksDeliveryArea) {
+            return say(language, {
+                en: 'Inside Dhaka it usually arrives in 1-2 days, and 2-4 days anywhere else in the country. I will share the tracking as soon as the courier picks it up.',
+                bn: 'ঢাকার ভেতরে সাধারণত ১-২ দিন, দেশের বাকি জায়গায় ২-৪ দিন লাগে। কুরিয়ার পার্সেলটি নেওয়ার সাথে সাথেই আপনাকে জানিয়ে দেব।',
+                banglish: 'Dhaka-r vitore sadharonoto 1-2 din, desher onno jaygay 2-4 din lage. Courier parcel ta newar sathe sathei apnake janiye debo.',
+            });
+        }
+        if (asksDeliveryArea && !asksDeliveryCharge) {
+            return say(language, {
+                en: `Yes, we deliver all over Bangladesh - ${money(inside, 'BDT')} inside Dhaka and ${money(outside, 'BDT')} outside, usually 1-2 days in Dhaka and 2-4 days elsewhere. Tell me your area and I will confirm it exactly.`,
+                bn: `জি, আমরা সারা বাংলাদেশে ডেলিভারি দিই—ঢাকার ভেতরে ${money(inside, 'BDT')}, ঢাকার বাইরে ${money(outside, 'BDT')}। ঢাকায় সাধারণত ১-২ দিন, বাইরে ২-৪ দিন। আপনার এলাকা বললে নিশ্চিত করে বলে দিচ্ছি।`,
+                banglish: `Ji, amra sara Bangladesh e delivery dii - Dhaka-r vitore ${money(inside, 'BDT')}, baire ${money(outside, 'BDT')}. Dhaka-y sadharonoto 1-2 din, baire 2-4 din. Apnar elaka bolle nishchit kore bole dicchi.`,
+            });
+        }
         return say(language, {
             en: `Delivery is ${money(inside, 'BDT')} inside Dhaka and ${money(outside, 'BDT')} outside Dhaka, usually 1-2 days in Dhaka and 2-4 days elsewhere. Tell me your area and I will confirm it exactly.`,
             bn: `ডেলিভারি চার্জ ঢাকার ভেতরে ${money(inside, 'BDT')}, ঢাকার বাইরে ${money(outside, 'BDT')}—ঢাকায় সাধারণত ১-২ দিন, বাইরে ২-৪ দিন। আপনার এলাকা বললে নিশ্চিত করে বলে দিচ্ছি।`,
@@ -963,8 +992,11 @@ export interface DeterministicCustomerReference {
     sandbox?: boolean;
 }
 
-export async function getDeterministicResponse(businessId: string, text: string, customerReference?: DeterministicCustomerReference): Promise<string|DeterministicTurnResponse|null> {
+export async function getDeterministicResponse(businessId: string, rawText: string, customerReference?: DeterministicCustomerReference): Promise<string|DeterministicTurnResponse|null> {
     assertTenantBusinessId(businessId, 'deterministic-response');
+    // "০১৭১২৩৪৫৬৭৮" is a phone number and "মিরপুর ১০" is an address. Converting the
+    // numerals once here means every pattern below only has to know ASCII digits.
+    const text = normalizeDigits(rawText);
     const conversation = customerReference?.conversationId
         ? await Conversation.findOne({ businessId, conversationId: customerReference.conversationId }).select('metadata customerId psid platform').lean()
         : null;
