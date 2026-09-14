@@ -49,6 +49,39 @@ export function productCode(product: any, variant?: any) {
     return String(variant?.sku || product?.publicCode || product?.barcode || deriveProductCode(product?.name, product?._id)).toUpperCase();
 }
 
+/**
+ * The product a customer means when they quote a code back at us.
+ *
+ * Every listing invites them to: "name বা code-টি বললে আমি order-টা করে দিচ্ছি".
+ * But `productCode` falls back to a code *derived* from the name and the id when
+ * the merchant never stored one, and a bulk-imported catalog stores one for
+ * almost nothing — so the code on screen matched no column, the lookup missed,
+ * and quoting it dropped the customer back into "which one did you mean?".
+ *
+ * The derivation ends in the last five characters of the id, which is what makes
+ * it recoverable. `npm run migrate:product-codes` persists these so the indexed
+ * lookup above answers first; this exists so a catalog imported tomorrow is not
+ * broken until someone remembers to run it.
+ */
+export async function findByQuotedCode(businessId: string, code: string) {
+    const wanted = String(code || '').trim().toUpperCase();
+    if (!wanted) return null;
+    const stored = await Product.findOne({
+        businessId, isActive: true, merchantConfirmed: { $ne: false },
+        $or: [{ slug: wanted.toLowerCase() }, { 'variants.sku': code }, { publicCode: wanted }, { barcode: code }],
+    }).select(PRODUCT_CARD_FIELDS).lean();
+    if (stored) return stored;
+
+    const suffix = wanted.match(/-([A-Z0-9]{5})$/)?.[1];
+    if (!suffix || !catalogQueryable()) return null;
+    const candidates = await Product.find({
+        businessId, isActive: true, merchantConfirmed: { $ne: false },
+        $expr: { $regexMatch: { input: { $toString: '$_id' }, regex: `${escaped(suffix)}$`, options: 'i' } },
+    }).select(PRODUCT_CARD_FIELDS).limit(5).lean().catch(() => []);
+    // The id suffix narrows it to one or two rows; the full derived code confirms.
+    return (candidates as any[]).find((item) => productCode(item) === wanted) || null;
+}
+
 /** Reply in the customer's own script: Bangla, Banglish, or English. */
 export function say(language: string, texts: { en: string; bn: string; banglish: string }) {
     return language === 'en' ? texts.en : language === 'bn' ? texts.bn : texts.banglish;

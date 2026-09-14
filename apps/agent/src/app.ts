@@ -1,4 +1,5 @@
 import cors from 'cors';
+import { corsDelegate } from './api/cors';
 import { loadEnv } from './config/env';
 import express from 'express';
 
@@ -65,24 +66,7 @@ app.use((req, res, next) => {
 
 morgan.token('safe-path', (req) => new URL(req.url || '/', 'http://local').pathname);
 app.use(morgan(':method :safe-path :status :res[content-length] - :response-time ms'));
-const configuredOrigins = [
-    ...(process.env.CORS_ORIGINS || '').split(','),
-    process.env.DASHBOARD_URL || '',
-]
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-const allowedOrigins = configuredOrigins.length > 0
-    ? configuredOrigins
-    : process.env.NODE_ENV === 'production'
-      ? []
-      : ['http://localhost:3000', 'http://localhost:3001'];
-
-app.use(cors({
-    origin(origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-        return callback(new Error('Origin is not allowed by CORS'));
-    },
-}));
+app.use(cors(corsDelegate()));
 app.use(express.json({
     limit: '256kb',
     verify(req, _res, buffer) {

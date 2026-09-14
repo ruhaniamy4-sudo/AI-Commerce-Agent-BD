@@ -247,3 +247,123 @@ describe('turns that used to cost a model call now cost none', () => {
         expect(reply.message_text).toContain('ORD-REMEMBERED');
     });
 });
+
+describe('an English checkout reaches checkout', () => {
+    // Reproduces the sandbox transcript that prompted this: the assistant quoted
+    // the power bank, asked for name/phone/address, and then answered the reply
+    // carrying all three with "which product and how many should I put down?" -
+    // because nothing in the message looked like an order intent, so no draft was
+    // ever opened and the whole turn fell through to the model.
+    it('opens the draft when the customer hands over name, phone and address', async () => {
+        await say('do you have a power bank?');
+        expect(metadata.entityState.activeProductId).toBe(productId);
+
+        const reply = await say('Name: Rafiul Islam, Phone: 01632149759, Address: Agargaon, Dhaka');
+        expect(reply).toBeTruthy();
+        expect(reply.intent).toBe('ORDER_FLOW');
+        expect(metadata.orderDraft?.items?.[0]?.productId).toBe(productId);
+        expect(metadata.orderDraft?.fullName).toBe('Rafiul Islam');
+        expect(metadata.orderDraft?.phone).toBe('01632149759');
+        expect(reply.message_text).toMatch(/confirm/i);
+        expect(reply.message_text).not.toMatch(/which product|kon product|কোন প্রোডাক্ট/i);
+    });
+
+    it('reads a bare "1 please" as the quantity for the product on screen', async () => {
+        await say('do you have a power bank?');
+        const reply = await say('1 please');
+        expect(reply).toBeTruthy();
+        expect(reply.intent).toBe('ORDER_FLOW');
+        expect(metadata.orderDraft?.items?.[0]).toMatchObject({ productId, quantity: 1 });
+        // The old fallback: a catalog search for the word "please".
+        expect(reply.message_text).not.toMatch(/which product or service|kon product ba service/i);
+    });
+
+    it('does not start an order from a bare number with nothing on screen', async () => {
+        const reply = await say('2 please');
+        expect(metadata.orderDraft).toBeUndefined();
+        expect(reply?.intent).not.toBe('ORDER_FLOW');
+    });
+});
+
+describe('a question is not a checkout instruction', () => {
+    it('answers "delivery address ta ki lagbe?" instead of opening an order', async () => {
+        await say('do you have a power bank?');
+        const reply = await say('delivery address ta ki lagbe?');
+        expect(metadata.orderDraft).toBeUndefined();
+        expect(reply?.intent).not.toBe('ORDER_FLOW');
+    });
+});
+
+describe('a greeting and a question in one message get both answers', () => {
+    // The sandbox transcript this came from: a shop with two power banks in stock
+    // answered "দুঃখিত, আসসালামু আলাইকুম পাওয়ারব্যাংক এই মুহূর্তে আমাদের কাছে নেই"
+    // and offered kettles instead. The salaam had survived into the catalog
+    // search, which requires every term to match.
+    it('returns the salaam and still finds the Bangla product name', async () => {
+        const reply = await say('আসসালামু আলাইকুম। পাওয়ারব্যাংক আছে?');
+        expect(reply.message_text).toMatch(/ওয়ালাইকুম আসসালাম/);
+        expect(reply.message_text).toContain('Power Bank 20000mAh');
+        expect(reply.message_text).toContain('৳2600');
+        expect(reply.message_text).not.toMatch(/আসসালামু আলাইকুম পাওয়ারব্যাংক/);
+        expect(reply.message_text).not.toMatch(/নেই|do not have|not in our catalog/i);
+    });
+
+    it.each([
+        ['assalamu alaikum, power bank ache?', /walaikum assalam/i],
+        ['নমস্কার ভাই, পাওয়ার ব্যাংক আছে?', /হ্যালো/],
+        ['good morning, power bank ache?', /hello/i],
+    ])('answers "%s" as a greeting plus a product question', async (message, greeting) => {
+        const reply = await say(message);
+        expect(reply.message_text).toMatch(greeting);
+        expect(reply.message_text).toContain('Power Bank 20000mAh');
+    });
+
+    it('does not prepend a greeting to a message that never had one', async () => {
+        const reply = await say('power bank ache?');
+        expect(reply.message_text).not.toMatch(/walaikum|হ্যালো|hello/i);
+        expect(reply.message_text).toContain('Power Bank 20000mAh');
+    });
+
+    it('still answers a message that is only a greeting as a greeting', async () => {
+        const reply = await say('আসসালামু আলাইকুম');
+        expect(reply.message_text).toMatch(/ওয়ালাইকুম আসসালাম/);
+        expect(reply.message_text).not.toContain('Power Bank 20000mAh');
+    });
+});
+
+describe('a count next to a product name is a count', () => {
+    it('finds the product when the quantity is glued to the Bangla numeral', async () => {
+        // "২টা" tokenises as one word that is neither short enough to drop nor a
+        // listed stop word, so it was ANDed into the search and found nothing.
+        const reply = await say('২টা পাওয়ারব্যাংক লাগবে');
+        expect(reply.message_text).toContain('Power Bank 20000mAh');
+        expect(reply.message_text).not.toMatch(/নেই|not in our catalog/i);
+    });
+
+    it('carries the count into the order when the customer names both', async () => {
+        const reply = await say('২টা পাওয়ারব্যাংক নিব');
+        expect(reply.intent).toBe('ORDER_FLOW');
+        expect(metadata.orderDraft?.items?.[0]).toMatchObject({ productId, quantity: 2 });
+    });
+});
+
+describe('quoting the code we printed starts the order', () => {
+    it('goes to checkout instead of asking which one again', async () => {
+        // The listing invites "name বা code-টি বললে আমি order-টা করে দিচ্ছি", the
+        // customer quoted POW-2769B, and the reply was "কোনটি অর্ডারে যোগ করব?"
+        // with the same two products listed again.
+        await say('আমার একটা পাওয়ার ব্যাংক লাগবে');
+        const reply = await say('POW-2769B এইটা লাগবে ১ টা');
+        expect(reply.intent).toBe('ORDER_FLOW');
+        expect(metadata.orderDraft?.items?.[0]).toMatchObject({ productId, quantity: 1 });
+        expect(reply.message_text).not.toMatch(/কোনটি অর্ডারে যোগ করব|which one should I add/i);
+    });
+
+    it('reads the code as a code and the trailing number as a count', async () => {
+        // "POW-2769B" ends in digits and "১ টা" is the quantity; neither may be
+        // read as the other.
+        await say('আমার একটা পাওয়ার ব্যাংক লাগবে');
+        await say('POW-2769B এইটা লাগবে ২ টা');
+        expect(metadata.orderDraft?.items?.[0]).toMatchObject({ productId, quantity: 2 });
+    });
+});

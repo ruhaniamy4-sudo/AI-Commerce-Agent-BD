@@ -8,9 +8,12 @@ import { getAIRecentMessageLimit } from './ai-config';
 export async function loadConversationHistory(businessId: string, conversationId: string): Promise<BaseMessage[]> {
     assertTenantBusinessId(businessId, 'memory.loadHistory');
     const limit = getAIRecentMessageLimit();
+    // Both reads name the business explicitly. The tenancy plugin already scopes
+    // every query, but a compound {businessId, conversationId} filter is also the
+    // shape the indexes are built for.
     const [conversation, messagesDescending] = await Promise.all([
-        Conversation.findOne({ conversationId }).select('summary').lean(),
-        Message.find({ conversationId })
+        Conversation.findOne({ businessId, conversationId }).select('summary').lean(),
+        Message.find({ businessId, conversationId })
         .sort({ createdAt: -1 })
         .limit(limit)
         .lean(),

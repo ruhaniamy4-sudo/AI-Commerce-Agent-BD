@@ -4,8 +4,14 @@
  *
  * Run: npm run measure:context
  */
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { SYSTEM_PROMPT } from '../agent/prompts';
 import { enforceContextBudget, formatContextPack } from '../services/rag.service';
+import { buildConversationInstructions } from '../services/conversation-intelligence.service';
+import { buildSalesContextSnippet, computeSalesSignals } from '../services/sales-intelligence.service';
+import { memoryPromptLine } from '../services/conversation-memory.service';
+import { classifyLightweightIntent } from '../services/turn-routing.service';
+import { getAIHistoryCharBudget, getAIHistoryMessageCharCap, getAIRecentMessageLimit } from '../services/ai-config';
 
 const estimate = (text: string) => Math.ceil(text.length / 4);
 
@@ -31,12 +37,55 @@ const context: any = {
 
 const pack = formatContextPack(context);
 const budgeted = enforceContextBudget(pack, 550);
-const rows = [
+
+// Everything else the turn actually sends. The static prompt and the context
+// pack were the only two things measured here, which hid the fact that the
+// profile, the sales line, the memory line and the replayed history together
+// cost about as much again.
+const customerText = 'ei mug ta 2 ta nibo';
+const intent = classifyLightweightIntent(customerText);
+const intelligence = buildConversationInstructions({
+    business: { name: 'Merchant Workspace', businessType: 'ECOMMERCE', brandVoice: { tone: 'friendly', replyLength: 'balanced', emoji: 'light', language: 'auto' } },
+    customerText, history: [], channel: 'facebook',
+});
+const salesSnippet = buildSalesContextSnippet(computeSalesSignals(customerText, intent, 'INTERESTED', true));
+const memoryLine = memoryPromptLine({
+    customerName: 'Rafiul Islam', customerPhone: '01712345678', city: 'Dhaka', quantity: 2,
+    activeProductName: 'Ceramic Coffee Mug', activeProductCode: 'CER-9F2A', activeProductPrice: 999,
+});
+
+// A realistic window: short customer turns against assistant replies long enough
+// to be trimmed by the per-message cap.
+const transcript = [
+    new HumanMessage('ki ki mug ache?'),
+    new AIMessage(`Amader kache egulo ache:\n${'1. Ceramic Coffee Mug, CER-9F2A, ৳999\n2. Travel Mug Steel, TRA-1B3D, ৳999\n'.repeat(3)}Kon ta niye jante chan bolun.`),
+    new HumanMessage('CER-9F2A tar dam koto?'),
+    new AIMessage('Ceramic Coffee Mug, CER-9F2A, ৳999. Stock e 14 ta ache. Nite chaile bolben, ami order ta kore dicchi.'),
+    new HumanMessage(customerText),
+];
+const cap = getAIHistoryMessageCharCap();
+const windowed = transcript.slice(-getAIRecentMessageLimit());
+let historyCharacters = 0;
+let historyMessages = 0;
+for (const message of [...windowed].reverse()) {
+    const size = Math.min(String(message.content).length, cap);
+    if (historyMessages && historyCharacters + size > getAIHistoryCharBudget()) break;
+    historyCharacters += size;
+    historyMessages += 1;
+}
+
+const rows: Array<readonly [string, number]> = [
     ['static system prompt', estimate(SYSTEM_PROMPT)],
+    ['runtime profile', estimate(intelligence.prompt)],
+    ['sales signals line', estimate(salesSnippet)],
+    ['carried memory line', estimate(memoryLine)],
     ['context pack (raw)', estimate(pack)],
     ['context pack (after budget cap)', estimate(budgeted)],
-] as const;
+    [`replayed history (${historyMessages} msgs, cap ${cap})`, Math.ceil(historyCharacters / 4)],
+];
 
 if (process.env.DUMP) console.log(JSON.stringify(JSON.parse(pack), null, 1));
 for (const [label, tokens] of rows) console.log(`${label.padEnd(34)} ~${tokens} tokens`);
-console.log(`${'per-turn prompt floor'.padEnd(34)} ~${estimate(SYSTEM_PROMPT) + estimate(budgeted)} tokens (prompt + context, before history)`);
+const inputTotal = estimate(SYSTEM_PROMPT) + estimate(intelligence.prompt) + estimate(salesSnippet) + estimate(memoryLine) + estimate(budgeted) + Math.ceil(historyCharacters / 4);
+console.log(`${'per-turn input total'.padEnd(34)} ~${inputTotal} tokens (a retrieval turn; a plain turn drops the context pack)`);
+console.log(`${'per-turn input, no retrieval'.padEnd(34)} ~${inputTotal - estimate(budgeted)} tokens`);

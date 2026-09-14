@@ -9,6 +9,18 @@ export interface NormalizedAssistantResponse {
 
 export const SAFE_ASSISTANT_RESPONSE_FALLBACK = 'দুঃখিত, উত্তরটা ঠিকভাবে তৈরি হয়নি। আরেকবার চেষ্টা করবেন?';
 export const SAFE_ASSISTANT_RESPONSE_FALLBACK_EN = "I'm sorry, I couldn't format that response properly. Could you please try again?";
+export const SAFE_ASSISTANT_RESPONSE_FALLBACK_BANGLISH = 'Dukkhito, uttor ta thik moto toiri hoyni. Arekbar cheshta korben?';
+
+/**
+ * The apology a customer should read when the model's JSON could not be
+ * recovered. It used to be Bangla for everyone, so an English-speaking customer
+ * hit a Bangla sentence at the one moment the assistant had nothing else to say.
+ */
+export function safeFallbackFor(language?: string) {
+    if (language === 'en') return SAFE_ASSISTANT_RESPONSE_FALLBACK_EN;
+    if (language === 'banglish') return SAFE_ASSISTANT_RESPONSE_FALLBACK_BANGLISH;
+    return SAFE_ASSISTANT_RESPONSE_FALLBACK;
+}
 
 function contentText(content: unknown): string {
     if (typeof content === 'string') return content;
@@ -153,14 +165,17 @@ function safeMessageText(value: unknown): string {
     return clean || SAFE_ASSISTANT_RESPONSE_FALLBACK;
 }
 
-export function normalizeAssistantResponse(content: unknown): NormalizedAssistantResponse {
+export function normalizeAssistantResponse(content: unknown, conversationLanguage?: string): NormalizedAssistantResponse {
     const raw = contentText(content);
     const parsed = parseCandidate(raw);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const record = parsed as Record<string, unknown>;
+        const recovered = safeMessageText(record.message_text ?? record.content ?? record.text);
         return {
-            language: typeof record.language === 'string' ? record.language : 'bn',
-            message_text: safeMessageText(record.message_text ?? record.content ?? record.text),
+            language: typeof record.language === 'string' ? record.language : conversationLanguage || 'bn',
+            message_text: recovered === SAFE_ASSISTANT_RESPONSE_FALLBACK
+                ? safeFallbackFor(typeof record.language === 'string' ? record.language : conversationLanguage)
+                : recovered,
             action: typeof record.action === 'string' ? record.action : 'none',
             action_payload: record.action_payload && typeof record.action_payload === 'object' && !Array.isArray(record.action_payload) ? record.action_payload as Record<string, unknown> : {},
             quick_replies: Array.isArray(record.quick_replies) ? record.quick_replies.map(String).slice(0, 10) : [],
@@ -180,10 +195,10 @@ export function normalizeAssistantResponse(content: unknown): NormalizedAssistan
         if (Array.isArray(parsedProducts)) suggestedProducts = parsedProducts.slice(0, 10);
     }
 
-    const lang = extractedLang || 'bn';
+    const lang = extractedLang || conversationLanguage || 'bn';
     let text = safeMessageText(extractedText !== undefined ? extractedText : raw);
-    if (lang === 'en' && text === SAFE_ASSISTANT_RESPONSE_FALLBACK) {
-        text = SAFE_ASSISTANT_RESPONSE_FALLBACK_EN;
+    if (text === SAFE_ASSISTANT_RESPONSE_FALLBACK) {
+        text = safeFallbackFor(lang);
     }
 
     return {

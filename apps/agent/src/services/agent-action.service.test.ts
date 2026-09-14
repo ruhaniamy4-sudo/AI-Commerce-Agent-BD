@@ -44,11 +44,25 @@ describe('agent action confirmation safety', () => {
                 psid: 'customer-1',
                 eventIdentifier: 'event-1',
                 response,
+                language: 'en',
             })
         );
         expect(response).toMatchObject({ action_result: { confirmed: false } });
         expect(response.message_text).not.toContain('created successfully');
         expect(response.message_text).toContain('could not confirm');
+        expect(response.message_text).toContain('Insufficient stock');
+    });
+
+    it('reports an order failure in the language the customer is using', async () => {
+        // The reason a customer most needs to understand is the one they get when
+        // the order did not go through.
+        createOrder.mockResolvedValue({ success: false, error: 'Insufficient stock' });
+        const bangla: any = { message_text: 'ok', action: 'create_order', action_payload: { items: [{ sku: 'MUG-01', quantity: 1 }] } };
+        await withTenantContext({ businessId, userId: 'u', membershipId: 'm', role: 'Staff' }, () =>
+            executeAgentAction({ businessId, conversationId: 'conversation-1', psid: 'customer-1', eventIdentifier: 'event-1b', response: bangla, language: 'bn' })
+        );
+        expect(bangla.message_text).toMatch(/[ঀ-৿]/);
+        expect(bangla.action_result).toMatchObject({ confirmed: false });
     });
 
     it('asks which product instead of showing a raw validation error when no item was identified', async () => {

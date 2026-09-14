@@ -1,4 +1,7 @@
+import { HumanMessage } from '@langchain/core/messages';
 import { describe, expect, it } from 'vitest';
+import { buildConversationInstructions } from './conversation-intelligence.service';
+import { memoryPromptLine } from './conversation-memory.service';
 import { SYSTEM_PROMPT } from '../agent/prompts';
 import { enforceContextBudget, formatContextPack } from './rag.service';
 import { classifyLightweightIntent, extractBudget, extractLightweightMemory, parseSearchTerms } from './turn-routing.service';
@@ -59,11 +62,35 @@ describe('token optimized routing', () => {
         // The prompt is paid on every LLM turn. The objection rules earned their
         // ~45 tokens by keeping the model from inventing discounts and delivery
         // promises, but the ceiling stays tight.
-        expect(Math.ceil(SYSTEM_PROMPT.length / 4)).toBeLessThan(430);
+        expect(Math.ceil(SYSTEM_PROMPT.length / 4)).toBeLessThan(380);
+        // The model has to be told to answer in the customer's own script, or a
+        // Bangla and an English thread both drift into Banglish.
+        expect(SYSTEM_PROMPT).toMatch(/Mirror the customer's script/);
         expect(SYSTEM_PROMPT).toMatch(/OBJECTIONS/);
         expect(SYSTEM_PROMPT).toMatch(/Name, CODE, price/);      // messenger-ready plain text
         expect(SYSTEM_PROMPT).toMatch(/courteous/i);              // professional salesperson voice
         expect(SYSTEM_PROMPT).not.toContain('EXAMPLE BEHAVIORS');
         expect(SYSTEM_PROMPT).not.toContain('ORDER SUMMARY TEMPLATE');
+    });
+});
+
+describe('the per-turn prompt does not pay for the same fact twice', () => {
+    const business = { name: 'Shop', businessType: 'ECOMMERCE', brandVoice: { language: 'auto' as const } };
+
+    it('leaves the remembered customer facts to the single memory line', () => {
+        // The profile used to inline "Known preferences: {...}" while the caller
+        // appended memoryPromptLine() with a superset of the same facts. Two
+        // copies of one sentence on every turn, free to disagree with each other.
+        const history = [new HumanMessage('Budget 2000, size L'), new HumanMessage('black চাই')];
+        const instructions = buildConversationInstructions({ business, customerText: 'black ta ache?', history });
+        expect(instructions.prompt).not.toMatch(/Known preferences/);
+        // The facts are still extracted — they travel on the memory line instead.
+        expect(instructions.memory).toMatchObject({ budget: '2000', size: 'L', color: 'black' });
+        expect(memoryPromptLine({ budget: 2000, size: 'L', color: 'black' })).toContain('budget 2000');
+    });
+
+    it('keeps the runtime profile inside its own budget', () => {
+        const instructions = buildConversationInstructions({ business, customerText: 'black ta ache?', history: [], channel: 'facebook' });
+        expect(Math.ceil(instructions.prompt.length / 4)).toBeLessThan(130);
     });
 });

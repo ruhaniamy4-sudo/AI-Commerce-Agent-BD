@@ -1,6 +1,6 @@
 import { BaseMessage } from '@langchain/core/messages';
 import { businessTypeLabel, getConversationGuidance } from './adaptive-training.service';
-import { detectExplicitLanguagePreference } from './turn-routing.service';
+import { detectExplicitLanguagePreference, scriptLanguage } from './turn-routing.service';
 
 export type ConversationLanguage = 'bn' | 'en' | 'banglish' | 'mixed';
 export type ConversationStage = 'DISCOVERY' | 'INTEREST' | 'QUALIFICATION' | 'COMPARISON' | 'OBJECTION' | 'PURCHASE_INTENT' | 'ORDER' | 'SUPPORT' | 'COMPLAINT' | 'HUMAN_HANDOFF';
@@ -19,11 +19,11 @@ const bangla = /[\u0980-\u09ff]/;
 const banglish = /\b(ache|ase|koto|lagbe|lagbo|dorkar|chai|chaan|ta|eta|eita|oita|ki|kivabe|keno|nibo|nebo|kinbo|khujchi|dekh(?:an|ao|abo)|den|dio|bhai|vai|apu|dam|pabo|korbo|kora|kore|korle|hobe|hoy|hoise|jabe|jay|jante|nile|dile|dibo|diben|pari|pare|parbo|thik|accha|acha|amar|ami|apnar|apnader|ekta|shob|sob|bolun|bolen|kon|konta)\b/i;
 
 export function detectConversationLanguage(text: string): ConversationLanguage {
-    const hasBangla = bangla.test(text); const hasLatin = /[a-z]/i.test(text);
-    if (hasBangla && hasLatin) return 'mixed';
-    if (hasBangla) return 'bn';
-    if (banglish.test(text)) return 'banglish';
-    return 'en';
+    // One detector for the whole pipeline: the zero-LLM replies and the model
+    // path used to disagree about what "mixed" meant and answered the same
+    // customer in two different registers.
+    const script = scriptLanguage(text);
+    return script === 'en' && banglish.test(text) ? 'banglish' : script;
 }
 
 export function resolveConversationLanguage(text: string, preferred?: ConversationLanguage): ConversationLanguage {
@@ -31,7 +31,9 @@ export function resolveConversationLanguage(text: string, preferred?: Conversati
     if (explicit) return explicit;
     const detected = detectConversationLanguage(text);
     if (!preferred) return detected;
-    if (bangla.test(text)) return detected;
+    // A customer already answering in Bangla keeps Bangla when this turn merely
+    // quotes a Latin product name.
+    if (bangla.test(text)) return detected === 'mixed' && preferred === 'bn' ? 'bn' : detected;
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
     if (preferred === 'en' && detected === 'banglish' && wordCount >= 3) return 'banglish';
     if (['bn','banglish','mixed'].includes(preferred) && detected === 'en' && wordCount >= 4) return 'en';
@@ -97,9 +99,15 @@ export function buildConversationInstructions(params: {
     const automaticLanguage = resolveConversationLanguage(params.customerText, params.preferredLanguage);
     const language = configuredLanguage === 'auto' ? automaticLanguage : configuredLanguage;
     const approvedStyleExamples = learned.sampleCount >= 3 ? (voice.examples || []).slice(-5).map((example) => String(example).replace(/[\r\n]+/g, ' ').slice(0, 300)) : [];
+    // Every line here is paid for on every LLM turn, so each one has to earn its
+    // place. The discovery question only matters while we are still discovering,
+    // and the customer's remembered facts are carried by the single memory line
+    // the caller appends — repeating them here was paying twice for the same
+    // sentence and inviting the two copies to disagree.
+    const openingHint = stage === 'DISCOVERY' || stage === 'INTEREST' ? `Discovery: ${guidance.discoveryQuestion}\n` : '';
     return {
         stage, language, memory, serviceBusiness, leadFields: guidance.leadFields,
-        prompt: `\nRUNTIME PROFILE\nBusiness: ${params.business.name || 'Merchant'}; type: ${businessTypeLabel(params.business.businessType)}; mode: ${guidance.mode}.\nReply: ${language}, ${voice.tone || 'friendly'}, ${voice.replyLength || 'balanced'}, ${voice.emoji || 'light'} emoji; channel: ${params.channel || 'web'}; stage: ${stage}.\nDiscovery: ${guidance.discoveryQuestion}\nSafety: ${guidance.safety}\n${serviceBusiness ? 'Use service qualification; do not ask cart or stock questions.\n' : ''}Known preferences: ${Object.keys(memory).length ? JSON.stringify(memory) : 'none'}. Do not ask for them again.\nLead fields when relevant: ${guidance.leadFields.join(', ')}; collect gradually.\n${approvedStyleExamples.length ? `Style-only examples: ${JSON.stringify(approvedStyleExamples.slice(-2))}\n` : ''}${shouldOfferNextStep(params.customerText, stage) ? 'At most one useful next step.' : 'No sales CTA or appended question.'}`,
+        prompt: `\nPROFILE\nBusiness: ${params.business.name || 'Merchant'}; ${businessTypeLabel(params.business.businessType)}; ${guidance.mode}; channel: ${params.channel || 'web'}; stage: ${stage}.\nReply: ${language}, ${voice.tone || 'friendly'}, ${voice.replyLength || 'balanced'}, ${voice.emoji || 'light'} emoji.\n${openingHint}Safety: ${guidance.safety}\n${serviceBusiness ? 'Service qualification only; do not ask cart or stock questions.\n' : ''}Lead fields: ${guidance.leadFields.join(', ')}; collect gradually.\n${approvedStyleExamples.length ? `Style-only examples: ${JSON.stringify(approvedStyleExamples.slice(-2))}\n` : ''}${shouldOfferNextStep(params.customerText, stage) ? 'At most one useful next step.' : 'No sales CTA or appended question.'}`,
     };
 }
 

@@ -1,3 +1,5 @@
+import { stripCourtesy } from './courtesy';
+
 /**
  * A customer typing Bangla writes Bangla numerals: "০১৭১২৩৪৫৬৭৮" is a phone
  * number and "২ টা" is a quantity. Every pattern downstream matches ASCII, so
@@ -43,17 +45,75 @@ const stopWords = new Set((
     // Bangla asks its questions with these; none of them names a product.
     + ' দাম মূল্য কত কি কী আছে নেই স্টক স্টকে ছবি কেমন কোন কোনটা কোনটি ভালো হয় হবে না এটা ওটা এই ঐ সেটা ওটার এটার'
     + ' জানতে চাই বলুন বলেন দেখান দেখাও দিন দেন করে কর কিভাবে কীভাবে কবে কোথায় ধন্যবাদ জি হ্যাঁ আচ্ছা'
-    + ' সব সকল সমস্ত লিস্ট তালিকা প্রোডাক্ট পণ্য আইটেম').split(' '));
+    + ' সব সকল সমস্ত লিস্ট তালিকা প্রোডাক্ট পণ্য আইটেম'
+    // Bangla hangs its grammar on the noun: "স্মার্ট ওয়াচ এর দাম" searched for a
+    // product called "এর" alongside the real one, and the search ANDs its terms.
+    + ' এর ের টার টির তে এতে ওর আর তো নাকি কিন্তু যে যদি কিছু মতো জন্য দিয়ে নিয়ে সাথে সহ থেকে ছাড়া'
+    + ' আমাদের আপনাদের তোমাদের এখন এখনো আবার একটাও নেয়া নেওয়া দেওয়া দেয়া').split(' '));
 const bangla = /[\u0980-\u09ff]/; const banglish = /\b(ache|ase|koto|lagbe|lagbo|dorkar|chai|ta|eta|ki|kivabe|dekhaw|dekhao|dekhan|deo|den|dam|pabo|hobe|amar|ami|apnar|apnader|ekta|shob|sob|kon|konta|nibo|kinbo)\b/i;
 
-export function detectLightweightLanguage(text: string) { const hasBangla = bangla.test(text); const hasLatin = /[a-z]/i.test(text); return hasBangla && hasLatin ? 'mixed' : hasBangla ? 'bn' : banglish.test(text) ? 'banglish' : 'en'; }
+/**
+ * The script the customer is actually writing in.
+ *
+ * A single Latin word used to demote a whole Bangla sentence to "mixed", and
+ * mixed is answered in Banglish: "Power Bank এর দাম কত?" is a Bangla question
+ * that happens to quote a Latin catalog name, so a Bangla customer was replied
+ * to in Banglish from that turn on. Whichever script owns more of the words owns
+ * the reply; only a genuinely half-and-half sentence stays mixed.
+ */
+export function scriptLanguage(text: string): 'bn'|'en'|'banglish'|'mixed' {
+    const value = String(text ?? '');
+    if (!bangla.test(value)) return banglish.test(value) ? 'banglish' : 'en';
+    if (!/[a-z]/i.test(value)) return 'bn';
+    const words = value.split(/[^A-Za-zঀ-৿]+/).filter(Boolean);
+    const banglaWords = words.filter((word) => bangla.test(word)).length;
+    return banglaWords > words.length - banglaWords ? 'bn' : 'mixed';
+}
+
+export function detectLightweightLanguage(text: string) { return scriptLanguage(text); }
+
+// A language request has to name the language *and* tell us to use it. Without
+// the instruction half, the bare word "english" inside "do you have an English
+// book?" was read as "reply in English", and the customer's actual question was
+// replaced by "Sure - I'll reply in English."
+const SAYS_IN_ENGLISH = /\b(?:in|to)\s+english\b|\benglish\s*(?:e|te|a)\b/i;
+const LANGUAGE_INSTRUCTION = /\b(?:reply|replay|respond|answer|speak|talk|write|say|explain|tell|chat|message|switch|use|bolo|bolen|bolun|bol|likho|likhun|likhen|kotha)\b/i;
+const SAYS_PLEASE = /\b(?:please|plz|pls)\b/i;
 export function detectExplicitLanguagePreference(text: string): 'bn'|'en'|'banglish'|undefined {
-    if (/banglish(?:\s+(?:e|a|te))?\s+(?:bolo|bolen|reply|speak)|বাংলিশ/i.test(text)) return 'banglish';
-    if (/bangla(?:\s+(?:e|a|te))?\s+(?:bolo|bolen|reply|speak)|বাংলা(?:য়|তে)?\s*(?:বল|লিখ|উত্তর)/i.test(text)) return 'bn';
-    if (/english(?:\s+(?:e|a|te|please))?\s*(?:bolo|bolen|reply|speak)?|ইংরেজি(?:তে)?\s*(?:বল|লিখ|উত্তর)/i.test(text)) return 'en';
+    if (/\bbanglish\b(?:\s+(?:e|a|te))?\s*(?:bolo|bolen|bolun|likho|likhun|likhen|reply|respond|answer|speak|write|please|plz)|বাংলিশ/i.test(text)) return 'banglish';
+    if (/\bbangla\b(?:\s+(?:e|a|te))?\s*(?:bolo|bolen|bolun|likho|likhun|likhen|reply|respond|answer|speak|write|please|plz)|বাংলা(?:য়|তে)?\s*(?:বল|লিখ|উত্তর|কথা)/i.test(text)) return 'bn';
+    if (/ইংরেজি(?:তে)?\s*(?:বল|লিখ|উত্তর|কথা)/.test(text)) return 'en';
+    if (/\benglish\s+(?:please|plz|pls|only)\b/i.test(text)) return 'en';
+    if (SAYS_IN_ENGLISH.test(text) && (LANGUAGE_INSTRUCTION.test(text) || SAYS_PLEASE.test(text))) return 'en';
     return undefined;
 }
-export function parseSearchTerms(text: string) { return text.toLowerCase().replace(/[^a-z0-9\u0980-\u09ff]+/g, ' ').split(/\s+/).filter((word) => word.length > 1 && !stopWords.has(word)).slice(0, 8); }
+/**
+ * A count, not a product.
+ *
+ * Bangla glues the counter onto the digit \u2014 "\u09e8\u099f\u09be \u09aa\u09be\u0993\u09af\u09bc\u09be\u09b0\u09ac\u09cd\u09af\u09be\u0982\u0995" tokenises as
+ * "2\u099f\u09be", which is neither short enough to be dropped for length nor a listed
+ * stop word, so it was ANDed into the catalog query and the search for a real
+ * product found nothing. Latin "2 ta" escaped only because "2" is one character
+ * and "ta" is a stop word.
+ */
+// The digit class covers both scripts: most callers normalise first, but a
+// stray "\u09e8\u099f\u09be" must not survive as a product name just because this one did not.
+const QUANTITY_TOKEN = /^(?:[\d\u09e6-\u09ef]{1,3}\s*(?:\u099f\u09be|\u099f\u09bf|\u0996\u09be\u09a8\u09be|\u099f\u09c1\u0995\u09c1|ta|ti|pcs?|piece|pieces|copy|set|jon)|\u099f\u09be|\u099f\u09bf|\u099f\u09c1\u0995\u09c1|\u0996\u09be\u09a8\u09be|\u09aa\u09bf\u09b8|duita|duto|tinta|charta|panchta|\u09a6\u09c1\u0987\u099f\u09be|\u09a6\u09c1\u099f\u09cb|\u09a4\u09bf\u09a8\u099f\u09be|\u099a\u09be\u09b0\u099f\u09be|\u09aa\u09be\u0981\u099a\u099f\u09be)$/i;
+
+/**
+ * What the customer is actually shopping for: their words with the politeness
+ * and the counting removed. Everything downstream ANDs these terms together, so
+ * one stray word here is the difference between a product and "sorry, we do not
+ * have that".
+ */
+export function parseSearchTerms(text: string) {
+    return stripCourtesy(text)
+        .toLowerCase()
+        .replace(/[^a-z0-9\u0980-\u09ff]+/g, ' ')
+        .split(/\s+/)
+        .filter((word) => word.length > 1 && !stopWords.has(word) && !QUANTITY_TOKEN.test(word))
+        .slice(0, 8);
+}
 export function extractBudget(text: string) { const match = text.toLowerCase().match(/(?:under|within|moddhe|মধ্যে|ভিতরে|budget)?\s*(?:৳|tk|bdt)?\s*(\d+(?:\.\d+)?)\s*(k|হাজার)?/i); if (!match || !/(under|within|moddhe|মধ্যে|ভিতরে|budget|৳|tk|bdt|হাজার|\bk\b)/i.test(text)) return undefined; return Math.round(Number(match[1]) * (match[2] ? 1000 : 1)); }
 
 // A customer asking "what do you have?" is browsing the whole catalog, not

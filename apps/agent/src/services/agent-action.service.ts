@@ -2,6 +2,7 @@ import { Conversation } from '../models/Conversation';
 import { assertTenantBusinessId } from '../tenancy/context';
 import { createOrder } from './checkout.service';
 import { normalizeAssistantResponse } from './assistant-response.service';
+import { say } from './product-card';
 
 export interface AgentResponse {
     message_text: string;
@@ -61,7 +62,11 @@ export async function executeAgentAction(params: {
             return response;
         }
         if (!params.psid) {
-            response.message_text = 'I could not confirm the order because the customer identity is unavailable. A human can help complete it safely.';
+            response.message_text = say(params.language || '', {
+                en: 'I could not confirm the order because the customer identity is unavailable. A colleague will help complete it safely.',
+                bn: 'গ্রাহকের পরিচয় নিশ্চিত করা যায়নি, তাই অর্ডারটি confirm করতে পারলাম না। আমাদের একজন প্রতিনিধি এটি সম্পন্ন করে দেবেন।',
+                banglish: 'Customer identity confirm kora jayni, tai order ta confirm korte parlam na. Amader ekjon representative eta complete kore deben.',
+            });
             response.action_result = {
                 requested: 'create_order',
                 confirmed: false,
@@ -82,8 +87,16 @@ export async function executeAgentAction(params: {
             : { requested: 'create_order', confirmed: false, error: orderResult.error };
         // The customer-facing reference is the order number, never the internal id.
         response.message_text = orderResult.success
-            ? `Your order is confirmed. Order ID: ${orderResult.orderNumber}. Total: ${orderResult.total}. Keep this Order ID for any update.`
-            : `I could not confirm the order. ${orderResult.error}. A human can help complete it safely.`;
+            ? say(params.language || '', {
+                en: `Your order is confirmed. Order ID: ${orderResult.orderNumber}. Total: ${orderResult.total}. Please keep this Order ID for any update.`,
+                bn: `আপনার অর্ডারটি confirm হয়েছে। Order ID: ${orderResult.orderNumber}। মোট: ${orderResult.total}। যেকোনো আপডেটের জন্য Order ID-টি রেখে দিন।`,
+                banglish: `Apnar order ta confirm hoyeche. Order ID: ${orderResult.orderNumber}. Total: ${orderResult.total}. Jekono update er jonno Order ID ta rekhe din.`,
+            })
+            : say(params.language || '', {
+                en: `I could not confirm the order. ${orderResult.error}. A colleague will help complete it safely.`,
+                bn: `অর্ডারটি confirm করতে পারলাম না। ${orderResult.error}। আমাদের একজন প্রতিনিধি এটি সম্পন্ন করে দেবেন।`,
+                banglish: `Order ta confirm korte parlam na. ${orderResult.error}. Amader ekjon representative eta complete kore deben.`,
+            });
     }
 
     if (response.action === 'handoff') {
@@ -101,8 +114,16 @@ export async function executeAgentAction(params: {
             ? { requested: 'handoff', confirmed: true }
             : { requested: 'handoff', confirmed: false, error: 'Conversation was not found' };
         response.message_text = confirmed
-            ? 'A human agent will continue this conversation.'
-            : 'I could not confirm the handoff. Please contact support directly.';
+            ? say(params.language || '', {
+                en: 'A human agent will continue this conversation.',
+                bn: 'একজন মানব প্রতিনিধি এই কথোপকথনটি চালিয়ে যাবেন।',
+                banglish: 'Ekjon human agent ei conversation ta continue korben.',
+            })
+            : say(params.language || '', {
+                en: 'I could not confirm the handoff. Please contact support directly.',
+                bn: 'হ্যান্ডঅফটি নিশ্চিত করতে পারলাম না। অনুগ্রহ করে সরাসরি support-এ যোগাযোগ করুন।',
+                banglish: 'Handoff ta confirm korte parlam na. Onugroho kore soroshori support e jogajog korun.',
+            });
     }
 
     return response;

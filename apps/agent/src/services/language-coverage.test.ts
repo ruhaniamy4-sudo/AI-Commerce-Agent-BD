@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyLightweightIntent, detectLightweightLanguage, isSpecRefinement, normalizeDigits, parseSearchTerms } from './turn-routing.service';
+import { classifyLightweightIntent, detectExplicitLanguagePreference, detectLightweightLanguage, isSpecRefinement, normalizeDigits, parseSearchTerms } from './turn-routing.service';
 import { detectConversationLanguage, resolveConversationLanguage } from './conversation-intelligence.service';
 import { phoneticallyMatches, termAlternatives, transliterateBangla } from './bangla-terms';
 import { termMatchScore } from './product-card';
@@ -119,5 +119,47 @@ describe('the reply stays in the language the customer used', () => {
     it('still recognises a genuinely Banglish sentence', () => {
         expect(detectConversationLanguage('bikash e payment kora jabe?')).toBe('banglish');
         expect(detectLightweightLanguage('amar ekta power bank lagbe')).toBe('banglish');
+    });
+});
+
+describe('naming a language is not the same as asking for it', () => {
+    it('does not hear a product question as "reply in English"', () => {
+        // The whole instruction half of the pattern was optional, so the bare word
+        // "english" anywhere in a sentence returned 'en' and the customer's actual
+        // question was replaced by "Sure - I'll reply in English."
+        expect(detectExplicitLanguagePreference('do you have an english keyboard?')).toBeUndefined();
+        expect(detectExplicitLanguagePreference('english book ache?')).toBeUndefined();
+        expect(detectExplicitLanguagePreference('English medium er boi lagbe')).toBeUndefined();
+    });
+
+    it('still hears a real request to switch language', () => {
+        expect(detectExplicitLanguagePreference('Please explain this in English now')).toBe('en');
+        expect(detectExplicitLanguagePreference('english e bolen please')).toBe('en');
+        expect(detectExplicitLanguagePreference('english please')).toBe('en');
+        expect(detectExplicitLanguagePreference('bangla te bolen')).toBe('bn');
+        expect(detectExplicitLanguagePreference('বাংলায় বলুন')).toBe('bn');
+        expect(detectExplicitLanguagePreference('banglish e reply koren')).toBe('banglish');
+    });
+
+    it('does not read "Bangladesh" as a request for Bangla', () => {
+        expect(detectExplicitLanguagePreference('Bangladesh er baire pathan please')).toBeUndefined();
+    });
+});
+
+describe('a Bangla sentence that quotes a Latin product name is still Bangla', () => {
+    it('answers in Bangla rather than dropping to Banglish', () => {
+        // 'mixed' is answered in Banglish. Detecting it from the mere presence of a
+        // Latin word meant every Bangla customer asking about a Latin catalog entry
+        // - which is most of the catalog - got Banglish from that turn onward.
+        expect(detectConversationLanguage('Power Bank এর দাম কত?')).toBe('bn');
+        expect(detectConversationLanguage('পাওয়ার ব্যাংক টা stock এ আছে কি?')).toBe('bn');
+        // A genuinely half-and-half sentence is still mixed.
+        expect(detectConversationLanguage('কালো color available?')).toBe('mixed');
+    });
+
+    it('keeps a Bangla thread in Bangla when one turn leans Latin', () => {
+        expect(resolveConversationLanguage('কালো color available?', 'bn')).toBe('bn');
+        // An English thread is not dragged into Bangla by the same sentence.
+        expect(resolveConversationLanguage('কালো color available?', 'en')).toBe('mixed');
     });
 });

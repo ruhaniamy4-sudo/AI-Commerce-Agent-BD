@@ -14,7 +14,8 @@ import { setupQuestionStorageKey } from './business-setup.service';
 import { businessTypeLabel } from './adaptive-training.service';
 import { handleOrderTurn, pendingOrderPrompt, phoneFrom, setOrderDraftLanguage } from './order-flow.service';
 import { extractTurnMemory } from './conversation-memory.service';
-import { availableVariant, card, cardLines, catalogQueryable, CompactProductCard, COLOR_WORDS, escaped, money, PRODUCT_CARD_FIELDS, requestedSku, say, sellable, termMatchScore, termPredicate } from './product-card';
+import { classifyCourtesy, openingCourtesy } from './courtesy';
+import { availableVariant, card, cardLines, catalogQueryable, CompactProductCard, COLOR_WORDS, escaped, findByQuotedCode, money, PRODUCT_CARD_FIELDS, requestedSku, say, sellable, termMatchScore, termPredicate } from './product-card';
 
 export type { CompactProductCard } from './product-card';
 export interface DeterministicTurnResponse { message_text: string; suggested_products?: CompactProductCard[]; intent: LightweightIntent; memory?: Record<string, unknown>; orderCreated?: { orderId: string; orderNumber: string; total: number }; }
@@ -271,46 +272,6 @@ async function objectionResponse(businessId: string, text: string, language: str
  * combination, the message is tokenised: if every word is courtesy, it is a
  * courtesy turn, and the strongest signal present decides the reply.
  */
-const COURTESY_PHRASES: Array<[RegExp, string]> = [
-    [/\bwalaikum\s*(?:as)?salam\b|ওয়ালাইকুম\s*আসসালাম/gi, ' salaam '],
-    [/\bassalamu?\s*(?:o\s*)?alaikum\b|assalamualaykum|আসসালামু\s*আলাইকুম/gi, ' salaam '],
-    [/\bthank\s*(?:you|u)\b|\bmany\s*thanks\b/gi, ' thanks '],
-    [/\bthik\s*(?:ache|ase)\b|ঠিক\s*আছে/gi, ' ack '],
-    [/\bkemon\s*(?:achen|acho|ase)\b|কেমন\s*আছেন/gi, ' greeting '],
-    [/\bki\s*khobor\b|কি\s*খবর/gi, ' greeting '],
-    [/\bgood\s*(?:morning|afternoon|evening|night)\b/gi, ' greeting '],
-];
-const COURTESY_WORDS: Record<string, 'salaam' | 'thanks' | 'greeting' | 'ack' | 'honorific' | 'filler'> = {
-    salaam: 'salaam', salam: 'salaam', সালাম: 'salaam',
-    thanks: 'thanks', thank: 'thanks', thnx: 'thanks', thx: 'thanks', tnx: 'thanks', shukriya: 'thanks',
-    dhonnobad: 'thanks', dhonyobad: 'thanks', ধন্যবাদ: 'thanks',
-    hi: 'greeting', hello: 'greeting', hey: 'greeting', greeting: 'greeting', হ্যালো: 'greeting', হাই: 'greeting',
-    ok: 'ack', okay: 'ack', okk: 'ack', okey: 'ack', k: 'ack', hmm: 'ack', hm: 'ack', hmmm: 'ack',
-    acha: 'ack', accha: 'ack', achcha: 'ack', ack: 'ack', ji: 'ack', jee: 'ack', hae: 'ack', ha: 'ack', haa: 'ack',
-    yes: 'ack', yeah: 'ack', right: 'ack', done: 'ack', fine: 'ack', bujhlam: 'ack', bujhechi: 'ack',
-    nice: 'ack', great: 'ack', good: 'ack', shundor: 'ack', sundor: 'ack',
-    আচ্ছা: 'ack', হুম: 'ack', জি: 'ack', হ্যাঁ: 'ack', ভালো: 'ack', সুন্দর: 'ack',
-    vai: 'honorific', vaia: 'honorific', vaiya: 'honorific', bhai: 'honorific', bhaiya: 'honorific', bhaiyya: 'honorific',
-    apu: 'honorific', apa: 'honorific', apuni: 'honorific', bro: 'honorific', brother: 'honorific',
-    sir: 'honorific', madam: 'honorific', dada: 'honorific', ভাই: 'honorific', ভাইয়া: 'honorific', আপু: 'honorific', স্যার: 'honorific',
-    you: 'filler', u: 'filler', a: 'filler', lot: 'filler', so: 'filler', much: 'filler', very: 'filler',
-    amar: 'filler', apnake: 'filler', onek: 'filler', আপনাকে: 'filler', অনেক: 'filler',
-};
-
-/** The kind of courtesy this message is, or nothing if it says something else too. */
-export function classifyCourtesy(text: string): 'salaam' | 'thanks' | 'greeting' | 'ack' | undefined {
-    let normalized = ` ${text.toLowerCase()} `;
-    for (const [pattern, token] of COURTESY_PHRASES) normalized = normalized.replace(pattern, token);
-    const words = normalized.split(/[^a-zঀ-৿]+/i).filter(Boolean);
-    if (!words.length) return undefined;
-    const kinds = words.map((word) => COURTESY_WORDS[word]);
-    if (kinds.some((kind) => !kind)) return undefined;   // something real was said too
-    if (kinds.includes('salaam')) return 'salaam';
-    if (kinds.includes('thanks')) return 'thanks';
-    if (kinds.includes('greeting')) return 'greeting';
-    return kinds.includes('ack') ? 'ack' : undefined;
-}
-
 const EMOJI_ONLY = /^[\p{Extended_Pictographic}\p{Emoji_Component}\s‍]+$/u;
 /** "pore dekhbo", "ekhon na", "bye" — a polite close, not a dead end. */
 const SIGN_OFF = /^(?:pore\s*(?:dekhbo|kotha\s*hobe|janabo)|ekhon\s*na|ekhon\s*lagbe\s*na|kichu\s*na|bye|byee|allah\s*hafez|khoda\s*hafez|tata|later|আপাতত\s*না|পরে\s*দেখব|এখন\s*না|বিদায়|আল্লাহ\s*হাফেজ)[\s!.।]*$/i;
@@ -439,7 +400,7 @@ async function findProducts(businessId: string, text: string, activeProductId?: 
     const intent = classifyLightweightIntent(text);
     const sku = requestedSku(text);
     if (sku) {
-        const exactSkuProduct = await Product.findOne({ businessId, isActive: true, merchantConfirmed: { $ne: false }, $or: [{ slug: sku.toLowerCase() }, { 'variants.sku': sku }, { publicCode: sku.toUpperCase() }, { barcode: sku }] }).select(PRODUCT_CARD_FIELDS).lean();
+        const exactSkuProduct = await findByQuotedCode(businessId, sku);
         if (exactSkuProduct) return [exactSkuProduct];
     }
     // "eta koto?" three turns later still means the product we last quoted.
@@ -449,24 +410,36 @@ async function findProducts(businessId: string, text: string, activeProductId?: 
     }
     if (intent === 'PRODUCT_COMPARE' && recentProductIds.length) return Product.find({ businessId, _id: { $in: recentProductIds.slice(0, 4) }, isActive: true }).select(PRODUCT_CARD_FIELDS).limit(4).lean();
     const terms = parseSearchTerms(text); if (!terms.length) return [];
+    // A catalog imported twice lists the same item twice. Offering the customer
+    // "1. Electric Kettle, ৳1350  2. Electric Kettle, ৳1350" and asking which one
+    // they meant is not a choice, it is a defect they can see.
+    const distinct = <T extends { name?: string; basePrice?: number; salePrice?: number; publicCode?: string }>(items: T[]) => {
+        const seen = new Set<string>();
+        return items.filter((item) => {
+            const key = `${String(item.name || '').trim().toLowerCase()}|${item.salePrice ?? item.basePrice ?? ''}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    };
     const max = extractBudget(text);
     const searchFilter = { $and: terms.slice(0, 5).map(termPredicate) };
     const priceFilter = { $or: [{ salePrice: { $lte: max } }, { salePrice: null, basePrice: { $lte: max } }] };
     const base = { businessId, isActive: true, merchantConfirmed: { $ne: false } };
     const strict = await Product.find({ ...base, ...(max !== undefined ? { $and: [searchFilter, priceFilter] } : searchFilter) }).select(PRODUCT_CARD_FIELDS).limit(PRODUCT_SEARCH_LIMIT).lean();
-    if (strict.length) return strict;
+    if (strict.length) return distinct(strict);
     // Every term matching at once is the precise answer, but a customer types a
     // product noun inside a sentence ("ekta coffee mug lagbe, ceramic"). Requiring
     // all terms then finds nothing and the catalog looks empty, so fall back to
     // any-term matches ranked by how well each product actually matches.
     const looseFilter = { $or: terms.slice(0, 5).map(termPredicate) };
     const loose = await Product.find({ ...base, ...(max !== undefined ? { $and: [looseFilter, priceFilter] } : looseFilter) }).select(PRODUCT_CARD_FIELDS).limit(PRODUCT_SEARCH_LIMIT * 3).lean();
-    return loose
+    return distinct(loose
         .map((item: any) => ({ item, score: termMatchScore(item, terms) }))
         .filter((entry) => entry.score > 0)
         .sort((left, right) => (right.score - left.score) || (Number(sellable(right.item)) - Number(sellable(left.item))))
-        .slice(0, PRODUCT_SEARCH_LIMIT)
-        .map((entry) => entry.item);
+        .map((entry) => entry.item))
+        .slice(0, PRODUCT_SEARCH_LIMIT);
 }
 
 async function stableBusinessFact(businessId: string, text: string, language: string, existingBusiness?: any) {
@@ -983,6 +956,13 @@ async function resolveDeterministicResponse(context: DeterministicTurnContext): 
     return null;
 }
 
+/** The opener a greeting earns when the same message also asks a real question. */
+function greetingPrefix(opening: 'salaam' | 'greeting' | undefined, language: string) {
+    if (opening === 'salaam') return say(language, { en: 'Walaikum assalam! ', bn: 'ওয়ালাইকুম আসসালাম! ', banglish: 'Walaikum assalam! ' });
+    if (opening === 'greeting') return say(language, { en: 'Hello! ', bn: 'হ্যালো! ', banglish: 'Hello! ' });
+    return '';
+}
+
 export interface DeterministicCustomerReference {
     psid?: string;
     conversationId?: string;
@@ -1036,14 +1016,26 @@ export async function getDeterministicResponse(businessId: string, rawText: stri
             return Product.find({ businessId, _id: { $in: remembered }, isActive: true, merchantConfirmed: { $ne: false } }).select(PRODUCT_CARD_FIELDS).limit(4).lean();
         },
     });
-    if (orderTurn) return orderTurn;
+    // A message that opens with a greeting and then asks something real gets both
+    // halves answered: the greeting returned, the question answered. Only the
+    // greeting used to survive, or — worse — it was carried into the catalog
+    // search as if it were part of the product name.
+    const greeting = classifyCourtesy(text) ? undefined : greetingPrefix(openingCourtesy(text), language);
+    function withGreeting<T extends string | DeterministicTurnResponse | null>(answer: T): T {
+        if (!greeting || !answer) return answer;
+        if (typeof answer === 'string') return `${greeting}${answer}` as T;
+        const response = answer as DeterministicTurnResponse;
+        return { ...response, message_text: `${greeting}${response.message_text}` } as T;
+    }
+
+    if (orderTurn) return withGreeting(orderTurn);
 
     const response = await resolveDeterministicResponse({ businessId, text, language, intent, entity, lightweightMemory, explicitLanguage, customerReference });
     // The customer detoured to another question mid-checkout — answer it, then
     // re-ask for exactly what the order still needs instead of dropping the flow.
     const pending = pendingOrderPrompt(conversation?.metadata, language);
     if (pending && response && typeof response !== 'string') {
-        return { ...response, message_text: `${response.message_text}\n${pending}` };
+        return withGreeting({ ...response, message_text: `${response.message_text}\n${pending}` });
     }
-    return response;
+    return withGreeting(response);
 }

@@ -13,6 +13,12 @@ export const getRagTopK = () => boundedInteger('RAG_TOP_K', 2, 1, 3);
 // covers three or four real turns; the running summary and entity memory carry
 // anything older, so a larger window buys repetition rather than recall.
 export const getAIHistoryCharBudget = () => boundedInteger('AI_HISTORY_CHAR_BUDGET', 1800, 600, 6000);
+// Per-message ceiling inside that budget. A single catalog listing runs to about
+// nine hundred characters and used to consume the entire window by itself,
+// leaving the model one exchange of context. Capping each turn at ~100 tokens
+// fits six to eight real turns into the same budget, which is the difference the
+// customer feels when they say "1 please" three messages after seeing a product.
+export const getAIHistoryMessageCharCap = () => boundedInteger('AI_HISTORY_MESSAGE_CHAR_CAP', 400, 120, 2000);
 export const getAIMaxOutputTokens = () => boundedInteger('AI_MAX_OUTPUT_TOKENS', 500, 100, 2000);
 export type ResponseComplexity = 'simple' | 'normal' | 'recommendation' | 'complex';
 export function getTurnOutputTokenLimit(complexity: ResponseComplexity) {

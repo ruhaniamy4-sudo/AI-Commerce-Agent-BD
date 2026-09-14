@@ -77,4 +77,14 @@ describe('normalizeAssistantResponse', () => {
         expect(result.message_text).toContain("I'm sorry");
         expect(result.message_text).not.toContain('I could not format that response safely');
     });
+
+    it('apologises in the language the conversation is already using', () => {
+        // The apology was always Bangla, so an English-speaking customer met a
+        // Bangla sentence at the one moment the assistant had nothing else to say.
+        expect(normalizeAssistantResponse('', 'en').message_text).toContain("I'm sorry");
+        expect(normalizeAssistantResponse('', 'banglish').message_text).toMatch(/Dukkhito/i);
+        expect(normalizeAssistantResponse('', 'bn').message_text).toMatch(/[ঀ-৿]/);
+        // A language the model itself declared still wins over the hint.
+        expect(normalizeAssistantResponse('{"language": "en", "message_text": ', 'bn').message_text).toContain("I'm sorry");
+    });
 });

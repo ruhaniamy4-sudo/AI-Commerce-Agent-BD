@@ -191,11 +191,24 @@ export function quantityIncrementFrom(text: string) {
     return (word && WORD_NUMBERS[word]) || 1;
 }
 
+// "1 please", "just 2", "2 only", "3 ta please" — the customer answering "how
+// many?" with nothing but the number and a courtesy. A bare "^\d{1,2}$" missed
+// every one of them, so the answer fell through to a catalog search for the word
+// "please" and came back as "which product would you like to know about?".
+const COUNT_COURTESY = /^(?:just|only|make\s+it|i(?:'ll| will)?\s+take|please|plz|pls|thanks?|ok(?:ay)?|ji|jee|ha|haa|hae|hmm+|yes|yeah|sure|and|ekta|ektu|vai|bhai|apu|sir|madam|dao|den|din|deo|nibo|nebo|lagbe|ta|ti|pc|pcs|piece|pieces|copy|set|jon|no|number|qty|quantity)$/i;
+export function isBareQuantityAnswer(text: string) {
+    const words = String(text || '').trim().replace(/[.!?,।]+/g, ' ').split(/\s+/).filter(Boolean);
+    if (!words.length || words.length > 4) return false;
+    const digits = words.filter((word) => /^\d{1,2}$/.test(word));
+    if (digits.length !== 1) return false;
+    return words.every((word) => /^\d{1,2}$/.test(word) || COUNT_COURTESY.test(word) || /^(?:টা|টি|খানা|প্লিজ|দিন|দেন|শুধু)$/.test(word));
+}
+
 export function quantityFrom(text: string) {
     // The digits must stand alone: a product code such as "CER-CAF6 ta nibo" ends
     // in a digit and was being read as a quantity of six.
     const counted = text.match(/(?<![\w-])(\d{1,2})\s*(?:(?:ta|pc|pcs|piece|pieces|copy|set|jon)\b|টা|টি|খানা)/i);
-    const bare = counted ? undefined : text.trim().match(/^(\d{1,2})$/);
+    const bare = counted ? undefined : isBareQuantityAnswer(text) ? text.trim().match(/(?<![\w-])(\d{1,2})(?![\w-])/) : undefined;
     // "duita nibo", "tinta den" — spelled-out counts are just as common as digits.
     const spelled = counted || bare ? undefined : text.toLowerCase().match(/\b(ekta|ekti|duita|duto|dui|tinta|tin|charta|char|panchta|panch|pach|choy|sat|dosh)\b|(একটা|একটি|দুইটা|দুটো|দুই|তিনটা|তিন|চারটা|চার|পাঁচটা|পাঁচ)/);
     if (spelled) return Math.min(WORD_NUMBERS[spelled[1] || spelled[2]] || 1, MAX_QUANTITY);
@@ -643,8 +656,12 @@ async function startOrAddItem(context: OrderTurnContext, existing?: OrderDraft):
     // front of a customer who had just been shown exactly one.
     // "mug nibo" names a product, so two matching mugs still deserve a choice.
     // "yes please, 1 piece of this" names none, and the choice was already made.
+    // Checkout details and bare counts name no product either: "Name: Rafiul,
+    // Phone: 017..., Address: Agargaon" would otherwise be searched as if
+    // "Agargaon" were a catalog term.
     const pointsAtRemembered = Boolean(remembered) && !requestedSku(context.text)
-        && (BACK_REFERENCE.test(context.text) || parseSearchTerms(context.text).length === 0);
+        && (BACK_REFERENCE.test(context.text) || parseSearchTerms(context.text).length === 0
+            || hasLabelledDetails(context.text) || isBareQuantityAnswer(context.text));
     const searchText = pointsAtRemembered && rememberedName ? rememberedName : context.text;
     const products = (await context.resolveProducts(searchText)).filter((item: any) => item.aiSellingStatus !== 'disabled');
     if (!products.length) return null;
@@ -1185,6 +1202,14 @@ function wantsToOrder(text: string, context: OrderTurnContext) {
     if (CONFIRM_ORDER_PHRASE.test(text)) return true;
     if (ASKS_RATHER_THAN_ORDERS.test(text) && !ORDER_INTENT.test(text)) return false;
     if (ORDER_INTENT.test(text)) return true;
+    // Handing over name, phone or address is an instruction to order, whatever
+    // words surround it. The model often asks for these itself before any draft
+    // exists, and the customer's reply then reached no checkout at all: the
+    // assistant answered "which product and how many?" about the product it had
+    // quoted one message earlier. Questions are already out, above.
+    if (hasLabelledDetails(text) && (context.entity?.activeProductId || requestedSku(text))) return true;
+    // "1 please" answering "how many?" — a bare count against what is on screen.
+    if (isBareQuantityAnswer(text) && context.entity?.activeProductId) return true;
     if (!SOFT_ORDER_INTENT.test(text)) return false;
     if (ASKS_RATHER_THAN_ORDERS.test(text)) return false;
     // "budget 600 er moddhe ekta mug lagbe" is a search: the customer has not seen

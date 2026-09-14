@@ -6,12 +6,12 @@ import { loadEnv } from '../config/env';
 import { SYSTEM_PROMPT } from './prompts';
 import { retrieveContext, formatContextPack, enforceContextBudget } from '../services/rag.service';
 import { assertTenantBusinessId } from '../tenancy/context';
-import { getAIHistoryCharBudget, getAIMaxOutputTokens, getAIModel, getTurnOutputTokenLimit, ResponseComplexity } from '../services/ai-config';
+import { getAIHistoryCharBudget, getAIHistoryMessageCharCap, getAIMaxOutputTokens, getAIModel, getAIRecentMessageLimit, getTurnOutputTokenLimit, ResponseComplexity } from '../services/ai-config';
 import { recordAIUsage } from '../services/ai-usage.service';
 import { getAIConfiguration } from '../config/runtime';
 import { Business } from '../models/Business';
 import { Conversation } from '../models/Conversation';
-import { buildConversationInstructions, guardResponseText } from '../services/conversation-intelligence.service';
+import { buildConversationInstructions, guardResponseText, resolveConversationLanguage, type ConversationLanguage } from '../services/conversation-intelligence.service';
 import { classifyLightweightIntent, extractLightweightMemory } from '../services/turn-routing.service';
 import { extractTurnMemory, memoryPromptLine, mergeMemory } from '../services/conversation-memory.service';
 import { computeSalesSignals, buildSalesContextSnippet } from '../services/sales-intelligence.service';
@@ -37,6 +37,22 @@ export { llm };
 // const modelWithTools = llm.bindTools(tools);
 
 import { AgentState } from './state';
+
+/**
+ * One earlier turn, shortened to what it contributes to the thread.
+ *
+ * A five-product catalog listing is roughly nine hundred characters, and re-sent
+ * in full it crowded out every other turn in the window. The opening of a reply
+ * carries what it was about; the codes and prices live in the live context pack
+ * and the entity memory, so nothing factual is lost by cutting the tail.
+ * Multimodal turns are left alone — an image part is not text to truncate.
+ */
+function truncateHistoryMessage(message: BaseMessage): BaseMessage {
+    const cap = getAIHistoryMessageCharCap();
+    if (typeof message.content !== 'string' || message.content.length <= cap) return message;
+    const shortened = `${message.content.slice(0, cap).trimEnd()}…`;
+    return message.getType() === 'ai' ? new AIMessage(shortened) : new HumanMessage(shortened);
+}
 
 async function callModel(state: AgentState) {
     const businessId = assertTenantBusinessId(state.businessId, 'agent-model');
@@ -67,9 +83,16 @@ async function callModel(state: AgentState) {
         Business.findById(businessId).select('name businessType businessSubType customBusinessType preferredLanguage brandVoice salesPlaybook').lean(),
         Conversation.findOne({ businessId, conversationId: state.conversationId }).select('platform metadata salesStage').lean(),
     ]);
-    const intelligence = buildConversationInstructions({ business: business || {}, customerText: userQuery, history: state.messages, channel: conversation?.platform });
-    const entityMemory = { ...extractLightweightMemory(userQuery), ...extractTurnMemory(userQuery) };
-    // One short line carries what the four-message window dropped.
+    // The language the conversation has settled into, not just the one this
+    // message happens to look like. Without it a one-word "ok" inside a Bangla
+    // thread re-detected as English and flipped every later reply — the zero-LLM
+    // path has always carried this, which is why Banglish felt stable and Bangla
+    // and English did not.
+    const rememberedLanguage = conversation?.metadata?.entityState?.preferredLanguage as ConversationLanguage | undefined;
+    const intelligence = buildConversationInstructions({ business: business || {}, customerText: userQuery, history: state.messages, channel: conversation?.platform, preferredLanguage: rememberedLanguage });
+    const turnLanguage = resolveConversationLanguage(userQuery, rememberedLanguage);
+    const entityMemory = { ...extractLightweightMemory(userQuery), ...extractTurnMemory(userQuery), preferredLanguage: turnLanguage };
+    // One short line carries what the recent-message window dropped.
     const carriedMemory = mergeMemory(conversation?.metadata?.entityState, entityMemory);
 
     // Compute sales signals — pure synchronous, zero LLM call, zero DB call
@@ -104,13 +127,22 @@ async function callModel(state: AgentState) {
     // 4. Call Model
     // We send the full history, but with the updated system prompt at the start
     // Note: LangGraph state messages usually don't include SystemPrompt, we prepend it here
-    const candidates = state.messages.filter((message) => message.getType() !== 'system').slice(-4);
+    //
+    // The window used to be four messages — two exchanges — no matter what
+    // AI_RECENT_MESSAGE_LIMIT said, and one long catalog listing could eat the
+    // whole character budget on its own. Capping each message instead lets the
+    // same budget carry several more turns, which is what the customer notices
+    // as the assistant remembering the conversation.
+    const candidates = state.messages.filter((message) => message.getType() !== 'system').slice(-getAIRecentMessageLimit());
     const recentMessages: BaseMessage[] = [];
     let recentCharacters = 0;
     for (const message of [...candidates].reverse()) {
-        const size = typeof message.content === 'string' ? message.content.length : JSON.stringify(message.content).length;
-        if (recentMessages.length && recentCharacters + size > getAIHistoryCharBudget()) continue;
-        recentMessages.unshift(message);
+        const trimmed = truncateHistoryMessage(message);
+        const size = typeof trimmed.content === 'string' ? trimmed.content.length : JSON.stringify(trimmed.content).length;
+        // Stop at the budget rather than skipping past it: keeping older messages
+        // while dropping a newer one leaves a hole in the middle of the thread.
+        if (recentMessages.length && recentCharacters + size > getAIHistoryCharBudget()) break;
+        recentMessages.unshift(trimmed);
         recentCharacters += size;
     }
     const summary = state.messages.find((message) => message.getType() === 'system');
@@ -130,7 +162,7 @@ async function callModel(state: AgentState) {
         // Usage accounting must not discard a successful provider response and trigger a costly retry.
         console.error('Failed to record AI usage:', error);
     }
-    const normalized = normalizeAssistantResponse(response.content);
+    const normalized = normalizeAssistantResponse(response.content, turnLanguage);
     normalized.message_text = guardResponseText(normalized.message_text, contextStr);
     const guardedResponse = new AIMessage({
         content: JSON.stringify(normalized),

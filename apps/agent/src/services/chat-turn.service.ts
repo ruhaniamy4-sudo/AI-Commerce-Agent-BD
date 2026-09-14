@@ -9,7 +9,7 @@ import { executeAgentAction, parseAgentResponse } from './agent-action.service';
 import { checkpointInboundEvent, claimInboundEvent, completeInboundEvent, registerInboundEvent, releaseInboundEvent } from './inbound-idempotency.service';
 import { invokeIfAIActive, isAIActive } from './conversation-control.service';
 import { getDeterministicResponse } from './deterministic-response.service';
-import { detectConversationLanguage, shouldHandoffToHuman } from './conversation-intelligence.service';
+import { resolveConversationLanguage, shouldHandoffToHuman } from './conversation-intelligence.service';
 import { evaluateBusinessAIAccess } from './business-ai-access.service';
 import { recordConversationTurn } from './turn-metrics.service';
 import { classifyLightweightIntent } from './turn-routing.service';
@@ -86,9 +86,13 @@ async function runProcessChatTurn(input: ChatTurnInput) {
         await completeInboundEvent(eventIdentifier, processingToken, body);
         return { status: 202, body };
     }
+    // The language the thread has settled into, so a short handoff or checkout
+    // line does not get re-detected on its own words and answered in the wrong
+    // script.
+    const conversationLanguage = resolveConversationLanguage(input.message || '', (conversation as any)?.metadata?.entityState?.preferredLanguage);
     const handoff = input.message ? shouldHandoffToHuman(input.message) : { required: false };
     if (handoff.required) {
-        const language = detectConversationLanguage(input.message || '');
+        const language = conversationLanguage;
         const message_text = language === 'bn' ? 'একজন মানব প্রতিনিধি এই কথোপকথনটি চালিয়ে যাবেন।' : language === 'banglish' || language === 'mixed' ? 'একজন human agent এই conversationটা continue করবেন।' : 'A human agent will continue this conversation.';
         const response = { message_text, action: 'handoff' as const, action_payload: { reason: handoff.reason } };
         await executeAgentAction({ businessId: input.businessId, conversationId: convId, psid: conversation?.psid, response, eventIdentifier });
@@ -171,7 +175,7 @@ async function runProcessChatTurn(input: ChatTurnInput) {
         agentResponse = parseAgentResponse(state.messages[state.messages.length - 1]?.content);
         await checkpointInboundEvent(eventIdentifier, processingToken, { aiResponse: agentResponse });
     }
-    await executeAgentAction({ businessId: input.businessId, conversationId: convId, psid: conversation?.psid, response: agentResponse, eventIdentifier, language: detectConversationLanguage(messageText) });
+    await executeAgentAction({ businessId: input.businessId, conversationId: convId, psid: conversation?.psid, response: agentResponse, eventIdentifier, language: conversationLanguage });
     const reply = agentResponse.message_text;
     if (reply) await saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source, products: agentResponse.suggested_products || [], intent: agentResponse.intent });
 
