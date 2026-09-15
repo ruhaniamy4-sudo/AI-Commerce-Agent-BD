@@ -206,36 +206,39 @@ export function TestAIDemoPage() {
   const [selectedSize, setSelectedSize] = useState<string>("L");
 
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(TRIAL_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as {
-          profile?: TrialBusinessProfile;
-          setupComplete?: boolean;
-          messagesRemaining?: number;
-          activeProductId?: string;
-          selectedSize?: string;
-          messages?: ChatMessage[];
-        };
-        if (parsed.profile)
-          setTrialProfile({ ...defaultTrialProfile, ...parsed.profile });
-        if (parsed.setupComplete) setSetupComplete(true);
-        if (Number.isInteger(parsed.messagesRemaining))
-          setMessagesRemaining(
-            Math.max(0, Math.min(10, Number(parsed.messagesRemaining))),
-          );
-        if (parsed.activeProductId) setActiveProductId(parsed.activeProductId);
-        if (parsed.selectedSize) setSelectedSize(parsed.selectedSize);
-        if (Array.isArray(parsed.messages) && parsed.messages.length) {
-          setMessages(parsed.messages.slice(-30));
-          messageCounterRef.current = parsed.messages.length + 1;
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const saved = window.localStorage.getItem(TRIAL_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved) as {
+            profile?: TrialBusinessProfile;
+            setupComplete?: boolean;
+            messagesRemaining?: number;
+            activeProductId?: string;
+            selectedSize?: string;
+            messages?: ChatMessage[];
+          };
+          if (parsed.profile)
+            setTrialProfile({ ...defaultTrialProfile, ...parsed.profile });
+          if (parsed.setupComplete) setSetupComplete(true);
+          if (Number.isInteger(parsed.messagesRemaining))
+            setMessagesRemaining(
+              Math.max(0, Math.min(10, Number(parsed.messagesRemaining))),
+            );
+          if (parsed.activeProductId) setActiveProductId(parsed.activeProductId);
+          if (parsed.selectedSize) setSelectedSize(parsed.selectedSize);
+          if (Array.isArray(parsed.messages) && parsed.messages.length) {
+            setMessages(parsed.messages.slice(-30));
+            messageCounterRef.current = parsed.messages.length + 1;
+          }
         }
+      } catch {
+        window.localStorage.removeItem(TRIAL_STORAGE_KEY);
+      } finally {
+        setTrialHydrated(true);
       }
-    } catch {
-      window.localStorage.removeItem(TRIAL_STORAGE_KEY);
-    } finally {
-      setTrialHydrated(true);
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
