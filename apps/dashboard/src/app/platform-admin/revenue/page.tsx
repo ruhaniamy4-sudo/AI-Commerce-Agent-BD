@@ -17,20 +17,20 @@ export default function Revenue() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Revenue</h1>
-        <p className="text-slate-400">
+        <p className="text-[color:var(--pa-muted)]">
           Recorded PAID ledger amounts only. Refund transactions reduce net
           revenue.
         </p>
       </div>
       <div className="flex gap-3">
         <Input
-          className="max-w-md border-slate-700 bg-slate-900"
+          className="max-w-md border-[color:var(--pa-line-strong)] bg-[color:var(--pa-panel)]"
           placeholder="Business or transaction reference"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <select
-          className="rounded-md border border-slate-700 bg-slate-900 px-3"
+          className="rounded-md border border-[color:var(--pa-line-strong)] bg-[color:var(--pa-panel)] px-3"
           value={period}
           onChange={(e) => setPeriod(e.target.value)}
         >
@@ -57,9 +57,9 @@ export default function Revenue() {
           ["Renewal revenue", s.renewalRevenue],
           ["Refunds", s.refunds],
         ].map(([l, v]) => (
-          <Card key={l} className="border-slate-800 bg-slate-900 text-white">
+          <Card key={l} className="border-[color:var(--pa-line)] bg-[color:var(--pa-panel)] text-[color:var(--pa-text)]">
             <CardHeader>
-              <CardTitle className="text-sm text-slate-400">{l}</CardTitle>
+              <CardTitle className="text-sm text-[color:var(--pa-muted)]">{l}</CardTitle>
             </CardHeader>
             <CardContent className="text-2xl font-bold">
               {Number(v || 0).toLocaleString()} BDT
@@ -67,9 +67,9 @@ export default function Revenue() {
           </Card>
         ))}
       </div>
-      <div className="overflow-x-auto rounded-xl border border-slate-800">
+      <div className="overflow-x-auto rounded-xl border border-[color:var(--pa-line)]">
         <table className="w-full min-w-[900px] text-sm">
-          <thead className="bg-slate-900 text-left text-slate-400">
+          <thead className="bg-[color:var(--pa-panel)] text-left text-[color:var(--pa-muted)]">
             <tr>
               {[
                 "Business",
@@ -89,7 +89,7 @@ export default function Revenue() {
           </thead>
           <tbody>
             {data?.data?.map((t) => (
-              <tr className="border-t border-slate-800" key={t._id}>
+              <tr className="border-t border-[color:var(--pa-line)]" key={t._id}>
                 <td className="p-4">{t.businessName || "Unknown"}</td>
                 <td className="p-4">{t.type}</td>
                 <td className="p-4">

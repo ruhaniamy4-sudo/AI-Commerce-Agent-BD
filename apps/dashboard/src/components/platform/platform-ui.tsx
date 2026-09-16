@@ -1,4 +1,5 @@
 'use client';
+import {useId} from 'react';
 import {ArrowDownRight,ArrowUpRight} from 'lucide-react';
 import {Area,AreaChart,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
 import {cn} from '@/lib/utils';
@@ -8,4 +9,9 @@ export function StatCard({label,value,change,detail,tone='violet'}:{label:string
 export function Panel({title,copy,action,children,className}:{title:string;copy?:string;action?:React.ReactNode;children:React.ReactNode;className?:string}){return <section className={cn('platform-panel',className)}><header><div><h2>{title}</h2>{copy&&<p>{copy}</p>}</div>{action}</header><div className="platform-panel-body">{children}</div></section>}
 export function Status({children,tone='neutral'}:{children:React.ReactNode;tone?:'success'|'warning'|'danger'|'info'|'neutral'}){return <span className={cn('platform-status',tone)}><i/>{children}</span>}
 export function Empty({children}:{children:React.ReactNode}){return <div className="platform-empty">{children}</div>}
-export function RevenueChart({rows,color='#9b70ff'}:{rows:Array<{_id:string;value:number}>;color?:string}){return <div className="platform-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={rows}><defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity={.34}/><stop offset="100%" stopColor={color} stopOpacity={0}/></linearGradient></defs><CartesianGrid vertical={false} stroke="#ffffff0b"/><XAxis dataKey="_id" tickFormatter={v=>String(v).slice(5)} axisLine={false} tickLine={false} tick={{fill:'#737b9b',fontSize:10}}/><YAxis axisLine={false} tickLine={false} tick={{fill:'#737b9b',fontSize:10}} width={42}/><Tooltip contentStyle={{background:'#171a31',border:'1px solid #ffffff16',borderRadius:12,fontSize:11}}/><Area type="monotone" dataKey="value" stroke={color} strokeWidth={2.5} fill="url(#chartFill)"/></AreaChart></ResponsiveContainer></div>}
+export function RevenueChart({rows,color='var(--pa-series)'}:{rows:Array<{_id:string;value:number}>;color?:string}){
+ // Each chart needs its own gradient id, or two charts on a page share the
+ // first one's colour — visible the moment the series colours differ.
+ const fillId=`chartFill-${useId().replace(/:/g,'')}`;
+ return <div className="platform-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={rows}><defs><linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity={.34}/><stop offset="100%" stopColor={color} stopOpacity={0}/></linearGradient></defs><CartesianGrid vertical={false} stroke="var(--pa-line-soft)"/><XAxis dataKey="_id" tickFormatter={v=>String(v).slice(5)} axisLine={false} tickLine={false} tick={{fill:'var(--pa-muted)',fontSize:10}}/><YAxis axisLine={false} tickLine={false} tick={{fill:'var(--pa-muted)',fontSize:10}} width={42}/><Tooltip contentStyle={{background:'var(--pa-panel)',border:'1px solid var(--pa-line-strong)',color:'var(--pa-text)',borderRadius:12,fontSize:11}} labelStyle={{color:'var(--pa-muted)'}} itemStyle={{color:'var(--pa-text)'}}/><Area type="monotone" dataKey="value" stroke={color} strokeWidth={2.5} fill={`url(#${fillId})`}/></AreaChart></ResponsiveContainer></div>;
+}

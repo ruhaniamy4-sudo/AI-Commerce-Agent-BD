@@ -71,6 +71,8 @@ export interface IBusiness extends Document {
     monthlyRequestLimit?: number;
     monthlyTokenLimit?: number;
     warningThresholdPercent?: number;
+    pausedReply?: string;
+    lastBlockNotifiedAt?: Date;
   };
   brandVoice: {
     tone: "friendly" | "professional" | "casual" | "premium" | "custom";
@@ -216,6 +218,10 @@ const BusinessSchema = new Schema<IBusiness>(
       monthlyRequestLimit: { type: Number, min: 1 },
       monthlyTokenLimit: { type: Number, min: 1 },
       warningThresholdPercent: { type: Number, min: 1, max: 100, default: 80 },
+      // What a customer hears when the agent cannot answer. Silence loses the
+      // sale and tells the merchant nothing, so there is always a reply.
+      pausedReply: { type: String, maxlength: 500 },
+      lastBlockNotifiedAt: Date,
     },
     brandVoice: {
       tone: {

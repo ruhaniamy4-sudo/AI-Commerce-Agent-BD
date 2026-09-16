@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import '@/components/products/products.css';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -101,6 +103,13 @@ function ProductsContent() {
 
     function toggleSelect(id:string){
         setSelectedIds(prev=>{const next=new Set(prev);if(next.has(id))next.delete(id);else next.add(id);return next;});
+    }
+
+    // Select all covers the products currently on screen — selection already resets when the page or filters change.
+    const allSelected=products.length>0&&products.every(p=>selectedIds.has(p._id));
+    const someSelected=selectedIds.size>0&&!allSelected;
+    function toggleSelectAll(){
+        setSelectedIds(allSelected?new Set():new Set(products.map(p=>p._id)));
     }
 
     // Mutations
@@ -305,11 +314,23 @@ function ProductsContent() {
 return (<div><PageHeader title="Products" description="Manage your products, inventory and control what your AI agent can sell." actions={<><WorkspaceSearch value={searchInput} onChange={setSearchInput} placeholder="Search products by name"/><Button variant="outline" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={15} className="mr-2"/>Filter</Button><Button variant="outline" onClick={()=>setIsImportOpen(true)}><Upload size={15} className="mr-2"/>Import Products</Button><Button onClick={()=>{resetForm();setIsDialogOpen(true);}}><Plus size={15} className="mr-2"/>Add Product</Button></>}/>
 {filtersOpen&&<div className="product-filters"><select aria-label="Filter by AI selling status" value={statusFilter} onChange={e=>{setStatusFilter(e.target.value);setPage(1);}}><option value="">All selling states</option><option value="active">Active</option><option value="limited">Limited</option><option value="disabled">Disabled</option></select><select aria-label="Filter by category" value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setPage(1);}}><option value="">All categories</option>{categories?.map(c=><option key={c._id} value={c._id}>{c.name}</option>)}</select><Button variant="ghost" onClick={()=>{setStatusFilter('');setCategoryFilter('');setPage(1);}}>Reset filters</Button><Button asChild variant="ghost"><Link href="/categories"><Layers size={14} className="mr-2"/>Manage Categories</Link></Button></div>}
 <div className="flex justify-between mb-4 text-xs text-muted-foreground"><span>{pagination?.total||0} products in your catalog</span><span>Inventory & AI selling control</span></div>
-<div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+<div className="product-toolbar">
+    <div className="product-toolbar-group">
+    <label className="product-select-all" data-active={selectedIds.size>0} title={`Select all ${products.length} products on this page`}>
+        <Checkbox
+            ref={el=>{if(el)el.indeterminate=someSelected;}}
+            checked={allSelected}
+            onCheckedChange={toggleSelectAll}
+            disabled={!products.length}
+            aria-label={`Select all ${products.length} products on this page`}
+        />
+        {selectedIds.size>0?`${selectedIds.size} selected`:'Select all'}
+    </label>
+    {selectedIds.size>0&&<Button variant="ghost" size="sm" onClick={()=>setSelectedIds(new Set())}>Clear</Button>}
     <DropdownMenu>
         <DropdownMenuTrigger asChild>
             <Button variant="outline" disabled={selectedIds.size===0}>
-                More{selectedIds.size>0?` (${selectedIds.size} selected)`:''}
+                More
                 <ChevronDown size={14} className="ml-2"/>
             </Button>
         </DropdownMenuTrigger>
@@ -318,6 +339,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
             <DropdownMenuItem onClick={handleDeleteSelected} className="text-destructive focus:text-destructive"><Trash2 size={14} className="mr-2"/>Delete Selected</DropdownMenuItem>
         </DropdownMenuContent>
     </DropdownMenu>
+    </div>
     <div className="flex items-center gap-1 rounded-xl border border-border p-1">
         <Button type="button" variant={viewMode==='grid'?'default':'ghost'} size="sm" aria-pressed={viewMode==='grid'} onClick={()=>setViewMode('grid')} aria-label="Grid view"><LayoutGrid size={15}/></Button>
         <Button type="button" variant={viewMode==='list'?'default':'ghost'} size="sm" aria-pressed={viewMode==='list'} onClick={()=>setViewMode('list')} aria-label="List view"><ListIcon size={15}/></Button>
@@ -384,7 +406,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                                     value={formData.categoryId}
                                                     onValueChange={val => setFormData({ ...formData, categoryId: val })}
                                                 >
-                                                    <SelectTrigger className="h-11 bg-white/[0.03] border-white/10 rounded-2xl focus:bg-white/[0.06] transition-all px-6">
+                                                    <SelectTrigger className="h-11 bg-muted/30 border-border rounded-2xl focus:bg-muted/50 transition-all px-6">
                                                         <SelectValue placeholder="Select Category" />
                                                     </SelectTrigger>
                                                     <SelectContent className="rounded-2xl bg-popover border-border text-popover-foreground shadow-2xl">
@@ -419,7 +441,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                     </div>
                                     <div className="space-y-4">
                                         <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Product Images</Label>
-                                        <div className="bg-white/[0.02] border border-white/5 p-6 rounded-xl">
+                                        <div className="bg-muted/25 border border-border p-6 rounded-xl">
                                             <ImageUpload
                                                 value={formData.images || []}
                                                 onChange={(urls) => setFormData({ ...formData, images: urls })}
@@ -435,7 +457,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                             <h4 className="text-xl font-bold text-foreground tracking-tight">Product Variants</h4>
                                             <p className="text-sm text-muted-foreground mt-1">Manage multiple versions for size, color, or bundle variations.</p>
                                         </div>
-                                        <Button type="button" onClick={addVariant} variant="outline" className="h-12 rounded-2xl border-dashed border-white/10 bg-white/[0.02] hover:bg-white/[0.05] text-muted-foreground hover:text-primary transition-all px-6 font-bold text-xs tracking-normal">
+                                        <Button type="button" onClick={addVariant} variant="outline" className="h-12 rounded-2xl border-dashed border-border bg-muted/25 hover:bg-muted/20 text-muted-foreground hover:text-primary transition-all px-6 font-bold text-xs tracking-normal">
                                             <Plus className="h-4 w-4 mr-2" /> Add Variant
                                         </Button>
                                     </div>
@@ -443,14 +465,14 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                     {formData.variants && formData.variants.length > 0 ? (
                                         <div className="space-y-4">
                                             {formData.variants.map((variant, index) => (
-                                                <div key={variant.variantId} className="bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden group hover:bg-white/[0.03] transition-colors p-6">
+                                                <div key={variant.variantId} className="bg-muted/25 border border-border rounded-2xl overflow-hidden group hover:bg-muted/30 transition-colors p-6">
                                                     <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
                                                         <div className="md:col-span-4 space-y-2">
                                                             <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Identifier</Label>
                                                             <Input
                                                                 value={variant.name}
                                                                 onChange={e => updateVariant(index, { name: e.target.value })}
-                                                                className="h-11 bg-white/5 border-white/10 rounded-xl text-sm"
+                                                                className="h-11 bg-muted/40 border-border rounded-xl text-sm"
                                                                 placeholder="e.g. Midnight Black / XL"
                                                             />
                                                         </div>
@@ -460,7 +482,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                                                 type="number"
                                                                 value={variant.price}
                                                                 onChange={e => updateVariant(index, { price: Number(e.target.value) })}
-                                                                className="h-11 bg-white/5 border-white/10 rounded-xl text-sm"
+                                                                className="h-11 bg-muted/40 border-border rounded-xl text-sm"
                                                             />
                                                         </div>
                                                         <div className="md:col-span-2 space-y-2">
@@ -469,7 +491,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                                                 type="number"
                                                                 value={variant.stock ?? ''}
                                                                 onChange={e => updateVariant(index, { stock: Number(e.target.value) })}
-                                                                className="h-11 bg-white/5 border-white/10 rounded-xl text-sm"
+                                                                className="h-11 bg-muted/40 border-border rounded-xl text-sm"
                                                             />
                                                         </div>
                                                         <div className="md:col-span-3 space-y-2">
@@ -477,7 +499,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                                             <Input
                                                                 value={variant.sku}
                                                                 onChange={e => updateVariant(index, { sku: e.target.value })}
-                                                                className="h-11 bg-white/5 border-white/10 rounded-xl text-sm font-mono"
+                                                                className="h-11 bg-muted/40 border-border rounded-xl text-sm font-mono"
                                                                 placeholder="APX-UL-01"
                                                             />
                                                         </div>
@@ -491,7 +513,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="p-20 text-center bg-white/[0.01] rounded-xl border border-dashed border-white/5">
+                                        <div className="p-20 text-center bg-muted/20 rounded-xl border border-dashed border-border">
                                             <Layers className="h-12 w-12 text-muted-foreground/20 mx-auto mb-4" />
                                             <p className="text-muted-foreground font-bold tracking-tight">No product variants defined. Base parameters will apply.</p>
                                         </div>
@@ -506,14 +528,14 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 p-6 bg-white/[0.02] rounded-2xl border border-white/5">
+                                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 p-6 bg-muted/25 rounded-2xl border border-border">
                                         <div className="md:col-span-5 space-y-2">
                                             <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Spec Name</Label>
-                                            <Input value={specKey} onChange={e => setSpecKey(e.target.value)} placeholder="e.g. Color" className="h-12 bg-white/5 border-white/10 rounded-xl" />
+                                            <Input value={specKey} onChange={e => setSpecKey(e.target.value)} placeholder="e.g. Color" className="h-12 bg-muted/40 border-border rounded-xl" />
                                         </div>
                                         <div className="md:col-span-5 space-y-2">
                                             <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Spec Value</Label>
-                                            <Input value={specValue} onChange={e => setSpecValue(e.target.value)} placeholder="e.g. Blue" className="h-12 bg-white/5 border-white/10 rounded-xl" />
+                                            <Input value={specValue} onChange={e => setSpecValue(e.target.value)} placeholder="e.g. Blue" className="h-12 bg-muted/40 border-border rounded-xl" />
                                         </div>
                                         <div className="md:col-span-2 pt-6">
                                             <Button type="button" onClick={addSpec} className="w-full h-12 rounded-xl bg-primary text-white font-black text-xs tracking-normal hover:bg-violet-600 transition-all shadow-lg shadow-primary/20">Add</Button>
@@ -523,7 +545,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                     {Object.keys(formData.specs || {}).length > 0 ? (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {Object.entries(formData.specs || {}).map(([key, value]) => (
-                                                <div key={key} className="flex items-center justify-between p-5 bg-white/[0.02] border border-white/5 rounded-2xl group hover:border-primary/30 transition-all">
+                                                <div key={key} className="flex items-center justify-between p-5 bg-muted/25 border border-border rounded-2xl group hover:border-primary/30 transition-all">
                                                     <div className="flex flex-col">
                                                         <span className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-1">{key}</span>
                                                         <span className="text-foreground font-bold tracking-tight">{value as string}</span>
@@ -535,7 +557,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="p-20 text-center bg-white/[0.01] rounded-xl border border-dashed border-white/5">
+                                        <div className="p-20 text-center bg-muted/20 rounded-xl border border-dashed border-border">
                                             <ListChecks className="h-12 w-12 text-muted-foreground/20 mx-auto mb-4" />
                                             <p className="font-bold tracking-tight text-muted-foreground">No technical specifications have been added yet.</p>
                                         </div>
@@ -550,7 +572,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                                 <div className="grid gap-6 sm:grid-cols-3">
                                                     <div className="space-y-3">
                                                         <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Base Price</Label>
-                                                        <Input type="number" value={formData.basePrice} onChange={e => setFormData({ ...formData, basePrice: Number(e.target.value) })} className="h-11 bg-white/[0.03] border-white/10 rounded-2xl" />
+                                                        <Input type="number" value={formData.basePrice} onChange={e => setFormData({ ...formData, basePrice: Number(e.target.value) })} className="h-11 bg-muted/30 border-border rounded-2xl" />
                                                     </div>
                                                     <div className="space-y-3">
                                                         <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Currency</Label>
@@ -558,7 +580,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                                     </div>
                                                     <div className="space-y-3">
                                                         <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Total Stock</Label>
-                                                        <Input type="number" value={formData.stock ?? ''} onChange={e => setFormData({ ...formData, stock: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Leave blank if unknown" className="h-11 bg-white/[0.03] border-white/10 rounded-2xl" />
+                                                        <Input type="number" value={formData.stock ?? ''} onChange={e => setFormData({ ...formData, stock: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Leave blank if unknown" className="h-11 bg-muted/30 border-border rounded-2xl" />
                                                     </div>
                                                 </div>
                                             </div>
@@ -567,7 +589,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                                 <h5 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/50 border-l-2 border-primary pl-4">Alerts</h5>
                                                 <div className="space-y-3">
                                                     <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Low Stock Threshold</Label>
-                                                    <Input type="number" value={formData.lowStockThreshold} onChange={e => setFormData({ ...formData, lowStockThreshold: Number(e.target.value) })} className="h-11 bg-white/[0.03] border-white/10 rounded-2xl" />
+                                                    <Input type="number" value={formData.lowStockThreshold} onChange={e => setFormData({ ...formData, lowStockThreshold: Number(e.target.value) })} className="h-11 bg-muted/30 border-border rounded-2xl" />
                                                 </div>
                                             </div>
                                         </div>
@@ -575,7 +597,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                         <div className="space-y-8">
                                             <h5 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/50 border-l-2 border-rose-500 pl-4">Display Settings</h5>
                                             <div className="space-y-4">
-                                                <div className="flex items-center justify-between p-5 bg-white/[0.02] rounded-2xl border border-white/5 hover:bg-white/[0.04] transition-colors">
+                                                <div className="flex items-center justify-between p-5 bg-muted/25 rounded-2xl border border-border hover:bg-muted/50 transition-colors">
                                                     <div>
                                                         <p className="text-sm font-bold text-foreground tracking-tight">Show in Store</p>
                                                         <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter">Make this product visible to customers</p>
@@ -583,7 +605,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                                     <Switch checked={formData.isActive} onCheckedChange={checked => setFormData({ ...formData, isActive: checked })} />
                                                 </div>
 
-                                                <div className="flex items-center justify-between p-5 bg-white/[0.02] rounded-2xl border border-white/5 hover:bg-white/[0.04] transition-colors">
+                                                <div className="flex items-center justify-between p-5 bg-muted/25 rounded-2xl border border-border hover:bg-muted/50 transition-colors">
                                                     <div>
                                                         <p className="text-sm font-bold text-foreground tracking-tight">Featured Product</p>
                                                         <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter">Highlight this product in your store</p>
@@ -591,7 +613,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
                                                     <Switch checked={formData.isFeatured} onCheckedChange={checked => setFormData({ ...formData, isFeatured: checked })} />
                                                 </div>
 
-                                                <div className="flex items-center justify-between p-5 bg-white/[0.02] rounded-2xl border border-white/5 hover:bg-white/[0.04] transition-colors">
+                                                <div className="flex items-center justify-between p-5 bg-muted/25 rounded-2xl border border-border hover:bg-muted/50 transition-colors">
                                                     <div>
                                                         <p className="text-sm font-bold text-foreground tracking-tight">Returns Allowed</p>
                                                         <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter">Allow customers to return this product</p>
@@ -601,7 +623,7 @@ return (<div><PageHeader title="Products" description="Manage your products, inv
 
                                                 <div className="space-y-3 pt-4">
                                                     <Label className="text-[10px] font-black tracking-normal text-muted-foreground ml-1">Warranty (Months)</Label>
-                                                    <Input type="number" value={formData.warrantyMonths} onChange={e => setFormData({ ...formData, warrantyMonths: Number(e.target.value) })} className="h-11 bg-white/[0.03] border-white/10 rounded-2xl" />
+                                                    <Input type="number" value={formData.warrantyMonths} onChange={e => setFormData({ ...formData, warrantyMonths: Number(e.target.value) })} className="h-11 bg-muted/30 border-border rounded-2xl" />
                                                 </div>
                                             </div>
                                         </div>

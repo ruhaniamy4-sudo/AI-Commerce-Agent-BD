@@ -239,7 +239,7 @@ export function ProductImportDialog({ open, onOpenChange }: ProductImportDialogP
                                 </div>
                             </div>
 
-                            <div className="p-6 bg-white/[0.02] border border-white/5 rounded-2xl">
+                            <div className="p-6 bg-muted/25 border border-border rounded-2xl">
                                 <div className="flex items-center gap-2 mb-4">
                                     <FileSpreadsheet size={16} className="text-primary" />
                                     <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Supported Columns</h5>

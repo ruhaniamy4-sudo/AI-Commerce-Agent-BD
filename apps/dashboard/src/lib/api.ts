@@ -32,7 +32,10 @@ export const agentApi = {
   start: () => apiClient.post<{ success: boolean }>("/agent/start"),
   stop: () => apiClient.post<{ success: boolean }>("/agent/stop"),
 };
-export interface MerchantBilling {subscription?:Subscription;plans:SubscriptionPlan[];transactions:Array<{_id:string;type:string;amount:number;currency:string;status:string;paymentMethod?:string;provider?:string;providerReference?:string;invoiceNumber?:string;paidAt?:string;createdAt:string}>;usage:{requests:number;tokens:number};paymentProviderConfigured:boolean}
+export type AIAccessReason='BUSINESS_SUSPENDED'|'PLATFORM_SUSPENDED'|'SUBSCRIPTION_INACTIVE'|'MERCHANT_DISABLED'|'REQUEST_LIMIT_REACHED'|'TOKEN_LIMIT_REACHED';
+/** Whether the AI is currently allowed to reply, and how much of the allowance is gone. */
+export interface MerchantAIAccess {allowed:boolean;reason:AIAccessReason|null;limits:{requests:number|null;tokens:number|null;source:'plan'|'override'|'mixed'|'none';plan?:string}|null;consumed:number|null;warnAt:number}
+export interface MerchantBilling {subscription?:Subscription;plans:SubscriptionPlan[];transactions:Array<{_id:string;type:string;amount:number;currency:string;status:string;paymentMethod?:string;provider?:string;providerReference?:string;invoiceNumber?:string;paidAt?:string;createdAt:string}>;usage:{requests:number;tokens:number};aiAccess:MerchantAIAccess;paymentProviderConfigured:boolean}
 export const billingApi={get:()=>apiClient.get<MerchantBilling>('/api/billing'),checkout:(planSlug:string,billingPeriod:'monthly'|'annual')=>apiClient.post<{status:string;error?:string}>('/api/billing/checkout',{planSlug,billingPeriod})};
 
 /** One inbox row, plus the per-tab counts the merchant navigates by. */
@@ -857,6 +860,9 @@ export interface BusinessProfile {
   brandVoice?: BrandVoiceProfile;
   commerce?: CommerceSettings;
   storefront?: StorefrontSettings;
+  aiAccess?: { status?: string; pausedReply?: string };
+  /** Write-only: the update endpoint stores this on aiAccess.pausedReply. */
+  pausedReply?: string;
 }
 export interface SecuritySession {
   id: string;

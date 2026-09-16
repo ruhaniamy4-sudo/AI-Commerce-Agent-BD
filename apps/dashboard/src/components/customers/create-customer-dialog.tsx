@@ -88,13 +88,13 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="w-[calc(100vw-1.5rem)] sm:max-w-[500px] glass-card border-white/5 bg-background shadow-premium p-0 overflow-hidden rounded-2xl sm:rounded-[2rem] max-h-[90dvh]">
+            <DialogContent className="w-[calc(100vw-1.5rem)] sm:max-w-[500px] glass-card border-border bg-background shadow-premium p-0 overflow-hidden rounded-2xl sm:rounded-[2rem] max-h-[90dvh]">
                 <div className="p-4 sm:p-8 space-y-4 sm:space-y-6 max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-xl sm:rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-lg mb-3 sm:mb-4">
                             <UserPlus className="h-5 w-5 sm:h-7 sm:w-7 text-primary" />
                         </div>
-                        <DialogTitle className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight">Initialize Entity</DialogTitle>
+                        <DialogTitle className="text-xl sm:text-2xl md:text-3xl font-black text-foreground tracking-tight">Initialize Entity</DialogTitle>
                         <DialogDescription className="text-muted-foreground font-medium text-xs sm:text-sm">
                             Create a new node in the customer matrix with manual signature.
                         </DialogDescription>
@@ -112,7 +112,7 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
                                             <Input
                                                 placeholder="e.g., John Doe"
                                                 {...field}
-                                                className="h-11 sm:h-12 bg-white/[0.03] border-white/5 rounded-xl focus:bg-white/[0.05] transition-all text-white placeholder:text-muted-foreground/30 text-sm"
+                                                className="h-11 sm:h-12 bg-muted/30 border-border rounded-xl focus:bg-muted/20 transition-all text-foreground placeholder:text-muted-foreground/30 text-sm"
                                             />
                                         </FormControl>
                                         <FormMessage className="text-[10px] uppercase font-bold tracking-tight text-red-400" />
@@ -131,7 +131,7 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
                                                 <Input
                                                     placeholder="017..."
                                                     {...field}
-                                                    className="h-11 sm:h-12 bg-white/[0.03] border-white/5 rounded-xl focus:bg-white/[0.05] transition-all text-white placeholder:text-muted-foreground/30 text-sm"
+                                                    className="h-11 sm:h-12 bg-muted/30 border-border rounded-xl focus:bg-muted/20 transition-all text-foreground placeholder:text-muted-foreground/30 text-sm"
                                                 />
                                             </FormControl>
                                             <FormMessage className="text-[10px] uppercase font-bold tracking-tight text-red-400" />
@@ -147,11 +147,11 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
                                             <FormLabel className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Core Dialect</FormLabel>
                                             <Select onValueChange={field.onChange} defaultValue={field.value}>
                                                 <FormControl>
-                                                    <SelectTrigger className="h-11 sm:h-12 bg-white/[0.03] border-white/5 rounded-xl focus:bg-white/[0.05] transition-all text-white text-sm">
+                                                    <SelectTrigger className="h-11 sm:h-12 bg-muted/30 border-border rounded-xl focus:bg-muted/20 transition-all text-foreground text-sm">
                                                         <SelectValue placeholder="Language" />
                                                     </SelectTrigger>
                                                 </FormControl>
-                                                <SelectContent className="bg-popover border-white/10 rounded-xl">
+                                                <SelectContent className="bg-popover border-border rounded-xl">
                                                     <SelectItem value="en" className="text-sm font-medium">English</SelectItem>
                                                     <SelectItem value="bn" className="text-sm font-medium">Bengali</SelectItem>
                                                     <SelectItem value="hi" className="text-sm font-medium">Hindi</SelectItem>
@@ -173,7 +173,7 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
                                             <Input
                                                 placeholder="john@nexus.com"
                                                 {...field}
-                                                className="h-11 sm:h-12 bg-white/[0.03] border-white/5 rounded-xl focus:bg-white/[0.05] transition-all text-white placeholder:text-muted-foreground/30 text-sm"
+                                                className="h-11 sm:h-12 bg-muted/30 border-border rounded-xl focus:bg-muted/20 transition-all text-foreground placeholder:text-muted-foreground/30 text-sm"
                                             />
                                         </FormControl>
                                         <FormMessage className="text-[10px] uppercase font-bold tracking-tight text-red-400" />
@@ -191,7 +191,7 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
                                     type="button"
                                     variant="ghost"
                                     onClick={() => onOpenChange(false)}
-                                    className="h-10 sm:h-12 px-4 sm:px-6 rounded-xl text-muted-foreground hover:text-white hover:bg-white/5 transition-all text-[11px] font-black uppercase tracking-widest w-full sm:w-auto"
+                                    className="h-10 sm:h-12 px-4 sm:px-6 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all text-[11px] font-black uppercase tracking-widest w-full sm:w-auto"
                                 >
                                     Abort
                                 </Button>

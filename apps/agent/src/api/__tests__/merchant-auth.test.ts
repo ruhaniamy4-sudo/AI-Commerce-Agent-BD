@@ -12,6 +12,9 @@ import { BusinessMember } from "../../models/BusinessMember";
 import { PlatformAdmin } from "../../models/PlatformAdmin";
 import { signAccessToken, signAccountToken } from "../../auth/token";
 import { MerchantActivity } from "../../models/MerchantActivity";
+import { Subscription } from "../../models/Subscription";
+import { SubscriptionEvent } from "../../models/SubscriptionEvent";
+import { SubscriptionPlan } from "../../models/SubscriptionPlan";
 import { AuthSession } from "../../models/AuthSession";
 import { AuthActionToken } from "../../models/AuthActionToken";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../../auth/mail";
@@ -56,6 +59,26 @@ describe("merchant account and business onboarding", () => {
     vi.spyOn(BusinessMember, "find").mockReturnValue({
       limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
     } as any);
+    // Creating a business now provisions its trial subscription in the same path.
+    vi.spyOn(SubscriptionPlan, "estimatedDocumentCount").mockResolvedValue(
+      1 as any,
+    );
+    vi.spyOn(SubscriptionPlan, "findOne").mockReturnValue({
+      sort: () =>
+        Promise.resolve({
+          name: "Free trial",
+          slug: "free-trial",
+          trialDays: 14,
+          monthlyPrice: 0,
+          currency: "BDT",
+        }),
+    } as any);
+    vi.spyOn(Subscription, "findOne").mockResolvedValue(null as any);
+    vi.spyOn(Subscription, "create").mockImplementation(
+      async (data: any) =>
+        ({ _id: new mongoose.Types.ObjectId(), ...data }) as any,
+    );
+    vi.spyOn(SubscriptionEvent, "create").mockResolvedValue({} as any);
   });
 
 
@@ -191,8 +214,57 @@ describe("merchant account and business onboarding", () => {
     expect(createMembership).toHaveBeenCalledWith(
       expect.objectContaining({ businessId, userId, role: "Owner" }),
     );
+    // Without this the merchant has no plan, no period and nothing to convert.
+    expect(Subscription.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        businessId: businessId.toString(),
+        plan: "Free trial",
+        status: "TRIAL",
+      }),
+    );
     expect(response.body.accessToken).toBeTruthy();
     expect(response.body.role).toBe("Owner");
+  });
+
+  it("does not leave a business or membership behind when the trial cannot be provisioned", async () => {
+    vi.spyOn(User, "findOne").mockResolvedValue({
+      _id: userId,
+      name: "Merchant",
+      email: "owner@example.com",
+      status: "active",
+      emailVerified: true,
+    } as any);
+    vi.spyOn(BusinessMember, "findOne").mockReturnValue({
+      lean: vi.fn().mockResolvedValue(null),
+    } as any);
+    vi.spyOn(Business, "create").mockImplementation(
+      async (data: any) => ({ _id: businessId, ...data }) as any,
+    );
+    vi.spyOn(BusinessMember, "create").mockResolvedValue({
+      _id: membershipId,
+      businessId,
+      role: "Owner",
+    } as any);
+    // No enabled plan offers a trial, so provisioning refuses rather than guess one.
+    vi.mocked(SubscriptionPlan.findOne).mockReturnValue({
+      sort: () => Promise.resolve(null),
+    } as any);
+    const removeBusiness = vi
+      .spyOn(Business, "deleteOne")
+      .mockResolvedValue({ acknowledged: true } as any);
+    const removeMembers = vi
+      .spyOn(BusinessMember, "deleteMany")
+      .mockResolvedValue({ acknowledged: true } as any);
+
+    await request(app)
+      .post("/auth/business")
+      .set("authorization", `Bearer ${signAccountToken(userId.toString())}`)
+      .send({ name: "My Shop", businessType: "Fashion" })
+      .expect(500);
+
+    expect(Subscription.create).not.toHaveBeenCalled();
+    expect(removeMembers).toHaveBeenCalledWith({ businessId });
+    expect(removeBusiness).toHaveBeenCalledWith({ _id: businessId });
   });
 
   it("safely attaches a Test AI trial profile and bounded conversation history during onboarding", async () => {

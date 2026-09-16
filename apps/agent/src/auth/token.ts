@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS, MERCHANT_ACCESS_TOKEN_MAX_AGE_SECONDS } from '@edutechs/shared';
+import { ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS, MERCHANT_ACCESS_TOKEN_MAX_AGE_SECONDS, PLATFORM_ADMIN_TOKEN_MAX_AGE_SECONDS } from '@edutechs/shared';
 import { BusinessRole } from '../tenancy/context';
 
 export interface AccessTokenPayload {
@@ -24,6 +24,8 @@ export interface AccountTokenPayload {
 export interface PlatformAdminTokenPayload {
     sub: string;
     purpose: 'platform-admin';
+    /** When the admin actually signed in, carried so sliding renewal can be capped. */
+    sst: number;
     iat: number;
     exp: number;
 }
@@ -79,12 +81,16 @@ export function verifyAccountToken(token: string): AccountTokenPayload {
     return payload;
 }
 
-export function signPlatformAdminToken(adminId: string, ttlSeconds = 3600) {
-    return signPayload({ sub: adminId, purpose: 'platform-admin' }, ttlSeconds);
+export function signPlatformAdminToken(adminId: string, options: { ttlSeconds?: number; sessionStartedAt?: number } = {}) {
+    const sessionStartedAt = options.sessionStartedAt || Math.floor(Date.now() / 1000);
+    return signPayload({ sub: adminId, purpose: 'platform-admin', sst: sessionStartedAt }, options.ttlSeconds ?? PLATFORM_ADMIN_TOKEN_MAX_AGE_SECONDS);
 }
 
 export function verifyPlatformAdminToken(token: string): PlatformAdminTokenPayload {
     const payload = verifyPayload(token) as unknown as PlatformAdminTokenPayload;
     if (!payload.sub || payload.purpose !== 'platform-admin') throw new Error('Invalid platform admin token claims');
+    // Tokens issued before sliding renewal existed have no start time; treat the
+    // moment they were issued as the start rather than rejecting the admin.
+    if (typeof payload.sst !== 'number') payload.sst = payload.iat;
     return payload;
 }

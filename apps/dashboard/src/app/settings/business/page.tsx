@@ -44,7 +44,8 @@ export default function BusinessSettings() {
   const [example, setExample] = useState("");
   useEffect(() => {
     if (data) {
-      setForm(data);
+      // The API stores this under aiAccess but accepts it flat on update.
+      setForm({ ...data, pausedReply: data.aiAccess?.pausedReply || "" });
       setVoice({
         ...voiceDefaults,
         ...data.brandVoice,
@@ -145,6 +146,23 @@ export default function BusinessSettings() {
               <label className="space-y-2 text-sm">
                 <span>Currency</span>
                 <Input disabled value={form.currency || "BDT"} />
+              </label>
+              <label className="space-y-2 text-sm sm:col-span-2">
+                <span>Holding message when AI replies pause</span>
+                <Input
+                  disabled={!owner}
+                  maxLength={500}
+                  placeholder="Thanks for your message — someone from our team will reply shortly."
+                  value={form.pausedReply ?? ""}
+                  onChange={(event) =>
+                    setForm({ ...form, pausedReply: event.target.value })
+                  }
+                />
+                <span className="block text-xs text-muted-foreground">
+                  Sent to customers if your plan allowance runs out, your
+                  subscription lapses, or you switch AI selling off. Leave blank
+                  to use the default in the customer&apos;s language.
+                </span>
               </label>
               <div className="sm:col-span-2">
                 {owner ? (

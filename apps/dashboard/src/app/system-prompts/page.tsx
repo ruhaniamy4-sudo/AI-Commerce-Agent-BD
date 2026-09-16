@@ -347,7 +347,7 @@ export default function SystemPromptsPage() {
                         )}
 
                         {pagination && pagination.totalPages > 1 && (
-                            <div className="p-8 border-t border-white/5 bg-white/[0.01] flex items-center justify-between">
+                            <div className="p-8 border-t border-border bg-muted/20 flex items-center justify-between">
                                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
                                     Logic Nodes: Page {page} of {pagination.totalPages}
                                 </div>
@@ -356,7 +356,7 @@ export default function SystemPromptsPage() {
                                         variant="outline"
                                         onClick={() => setPage((p) => Math.max(1, p - 1))}
                                         disabled={page === 1}
-                                        className="h-12 w-12 rounded-2xl bg-white/5 border-white/10 text-white transition-all hover:bg-white/10 p-0"
+                                        className="h-12 w-12 rounded-2xl bg-muted/40 border-border text-foreground transition-all hover:bg-muted/60 p-0"
                                     >
                                         <ChevronLeft className="h-5 w-5" />
                                     </Button>
@@ -367,7 +367,7 @@ export default function SystemPromptsPage() {
                                         variant="outline"
                                         onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                                         disabled={page === pagination.totalPages}
-                                        className="h-12 w-12 rounded-2xl bg-white/5 border-white/10 text-white transition-all hover:bg-white/10 p-0"
+                                        className="h-12 w-12 rounded-2xl bg-muted/40 border-border text-foreground transition-all hover:bg-muted/60 p-0"
                                     >
                                         <ChevronRight className="h-5 w-5" />
                                     </Button>
@@ -385,7 +385,7 @@ export default function SystemPromptsPage() {
                 <DialogContent className="max-w-3xl p-0 overflow-hidden border-none shadow-2xl rounded-3xl bg-[#0a0a0c] text-white">
                     {editingPrompt && (
                         <form onSubmit={handleUpdateSubmit}>
-                            <DialogHeader className="p-8 bg-white/[0.02] border-b border-white/5">
+                            <DialogHeader className="p-8 bg-muted/25 border-b border-border">
                                 <div className="flex items-center gap-3 mb-2">
                                     <div className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20 flex items-center gap-2">
                                         <Scale className="h-3 w-3 text-primary" />
@@ -393,7 +393,7 @@ export default function SystemPromptsPage() {
                                     </div>
                                     <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest italic">Hash: {editingPrompt._id.slice(-8).toUpperCase()}</span>
                                 </div>
-                                <DialogTitle className="text-3xl font-black text-white tracking-tighter">Refine Directives</DialogTitle>
+                                <DialogTitle className="text-3xl font-black text-foreground tracking-tighter">Refine Directives</DialogTitle>
                             </DialogHeader>
                             <div className="p-8 space-y-6">
                                 <div className="grid grid-cols-2 gap-8">
@@ -408,8 +408,8 @@ export default function SystemPromptsPage() {
                                     </div>
                                     <div className="space-y-2.5">
                                         <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Live Status</Label>
-                                        <div className="flex items-center justify-between h-14 px-6 bg-white/[0.03] border border-white/5 rounded-2xl shadow-inner">
-                                            <span className="text-sm font-bold text-white tracking-tight">Active Stream</span>
+                                        <div className="flex items-center justify-between h-14 px-6 bg-muted/30 border border-border rounded-2xl shadow-inner">
+                                            <span className="text-sm font-bold text-foreground tracking-tight">Active Stream</span>
                                             <Switch
                                                 checked={editingPrompt.isActive}
                                                 onCheckedChange={(checked) => setEditingPrompt({ ...editingPrompt, isActive: checked })}
@@ -423,7 +423,7 @@ export default function SystemPromptsPage() {
                                     <Input
                                         value={editingPrompt.description || ''}
                                         onChange={(e) => setEditingPrompt({ ...editingPrompt, description: e.target.value })}
-                                        className="h-14 bg-white/[0.03] border-white/5 rounded-2xl focus:bg-white/[0.05] transition-all shadow-inner text-white"
+                                        className="h-14 bg-muted/30 border-border rounded-2xl focus:bg-muted/20 transition-all shadow-inner text-foreground"
                                     />
                                 </div>
                                 <div className="space-y-2.5">
@@ -433,12 +433,12 @@ export default function SystemPromptsPage() {
                                         onChange={(e) => setEditingPrompt({ ...editingPrompt, content: e.target.value })}
                                         required
                                         rows={14}
-                                        className="font-mono text-xs bg-white/[0.03] border-white/5 rounded-2xl focus:bg-white/[0.05] transition-all shadow-inner text-white py-6 leading-relaxed"
+                                        className="font-mono text-xs bg-muted/30 border-border rounded-2xl focus:bg-muted/20 transition-all shadow-inner text-foreground py-6 leading-relaxed"
                                     />
                                 </div>
                             </div>
-                            <div className="p-8 bg-black/40 border-t border-white/5 flex justify-end gap-3">
-                                <Button type="button" variant="outline" onClick={() => setEditingPrompt(null)} className="h-14 rounded-2xl border-white/10 bg-transparent text-white px-8 font-bold hover:bg-white/5">Cancel</Button>
+                            <div className="p-8 bg-black/40 border-t border-border flex justify-end gap-3">
+                                <Button type="button" variant="outline" onClick={() => setEditingPrompt(null)} className="h-14 rounded-2xl border-border bg-transparent text-foreground px-8 font-bold hover:bg-muted/40">Cancel</Button>
                                 <Button type="submit" disabled={updateMutation.isPending} className="h-14 bg-white text-black hover:bg-white/90 rounded-2xl px-12 font-black uppercase tracking-widest shadow-xl shadow-white/10">
                                     {updateMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                                     Sync logic

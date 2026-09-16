@@ -197,7 +197,7 @@ export default function StoreBuilderPage() {
               <div className="flex items-center justify-between border-b px-3.5 sm:px-5 py-3 sm:py-4">
                 <div className="flex items-center gap-2 font-bold text-sm sm:text-base">
                   <span
-                    className="grid h-7 w-7 sm:h-8 sm:w-8 place-items-center rounded-lg text-white shrink-0"
+                    className="grid h-7 w-7 sm:h-8 sm:w-8 place-items-center rounded-lg text-foreground shrink-0"
                     style={{ background: settings.primaryColor }}
                   >
                     <Store className="h-3.5 w-3.5 sm:h-4 sm:w-4" />

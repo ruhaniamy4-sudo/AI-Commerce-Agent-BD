@@ -201,7 +201,7 @@ export default function ManualTestPage() {
                                     onClick={() => setPendingImage(undefined)}
                                     className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                                 >
-                                    <X className="h-6 w-6 text-white" />
+                                    <X className="h-6 w-6 text-foreground" />
                                 </button>
                             </div>
                         )}

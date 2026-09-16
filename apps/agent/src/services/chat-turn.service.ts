@@ -11,6 +11,7 @@ import { invokeIfAIActive, isAIActive } from './conversation-control.service';
 import { getDeterministicResponse } from './deterministic-response.service';
 import { resolveConversationLanguage, shouldHandoffToHuman } from './conversation-intelligence.service';
 import { evaluateBusinessAIAccess } from './business-ai-access.service';
+import { customerFallbackMessage, notifyMerchantOfBlock } from './ai-access-messaging.service';
 import { recordConversationTurn } from './turn-metrics.service';
 import { classifyLightweightIntent } from './turn-routing.service';
 import { computeSalesSignals } from './sales-intelligence.service';
@@ -63,7 +64,14 @@ async function runProcessChatTurn(input: ChatTurnInput) {
     await saveMessage(input.businessId, convId, 'user', input.message || '', input.imageUrl, { messageId: eventIdentifier, platform: source });
     const entitlement = await evaluateBusinessAIAccess(input.businessId);
     if (!entitlement.allowed) {
-        const body = { conversationId: convId, messageId: eventIdentifier, reply: null, aiAccess: entitlement.reason };
+        // Answer the customer, hand the conversation to a human, and tell the
+        // merchant once. Silence here loses the sale the quota was protecting.
+        const language = resolveConversationLanguage(input.message || '', (conversation as any)?.metadata?.entityState?.preferredLanguage);
+        const reply = customerFallbackMessage(language, entitlement.pausedReply);
+        await saveMessage(input.businessId, convId, 'assistant', reply, undefined, { messageId: `${eventIdentifier}:assistant`, platform: source });
+        await safeUpdateSalesStage(input.businessId, convId, { needsHumanHandoff: true });
+        void notifyMerchantOfBlock(input.businessId, entitlement.reason!, entitlement).catch(() => undefined);
+        const body = { conversationId: convId, messageId: eventIdentifier, reply, aiAccess: entitlement.reason };
         await completeInboundEvent(eventIdentifier, processingToken, body);
         return { status: 202, body };
     }

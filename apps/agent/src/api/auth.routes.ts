@@ -23,6 +23,7 @@ import { authRateLimit } from "../auth/rate-limit";
 import crypto from "node:crypto";
 import { PASSWORD_MIN_LENGTH } from "@edutechs/shared";
 import { normalizeBusinessType } from "../services/adaptive-training.service";
+import { provisionTrialSubscription } from "../services/subscription-provisioning.service";
 import {
   createAuthSession,
   revokeAllUserSessions,
@@ -859,6 +860,9 @@ router.post(
         role: "Owner",
         status: "active",
       });
+      // A business without a subscription has no trial, no period and nothing for
+      // the AI access gate to read, so signup fails rather than leave that state.
+      await provisionTrialSubscription(business._id.toString());
       return res
         .status(201)
         .json(
@@ -870,7 +874,10 @@ router.post(
           ),
         );
     } catch (error) {
-      if (business?._id) await Business.deleteOne({ _id: business._id });
+      if (business?._id) {
+        await BusinessMember.deleteMany({ businessId: business._id });
+        await Business.deleteOne({ _id: business._id });
+      }
       throw error;
     }
   },
@@ -933,12 +940,20 @@ router.patch(
           .json({ error: "Choose a supported business type" });
       updates.businessType = normalized;
     }
+    // What customers hear when the AI cannot reply. Empty restores the default.
+    const pausedReply =
+      req.body?.pausedReply === undefined
+        ? undefined
+        : String(req.body.pausedReply).trim().slice(0, 500);
     const business = await Business.findByIdAndUpdate(
       req.auth!.businessId,
       {
         $set: {
           ...updates,
           ...(updates.businessType ? { businessTypeStatus: "confirmed" } : {}),
+          ...(pausedReply === undefined
+            ? {}
+            : { "aiAccess.pausedReply": pausedReply }),
         },
       },
       { new: true, runValidators: true },

@@ -317,11 +317,11 @@ return (<div><PageHeader title="Orders" description="From confirmation to fulfil
                                 </div>
                             </div>
 
-                            <div className="p-4 sm:p-6 bg-black/40 border-t border-white/5 flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4" >
+                            <div className="p-4 sm:p-6 bg-black/40 border-t border-border flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4" >
                                 <Button
                                     variant="outline"
                                     onClick={() => setSelectedOrder(null)}
-                                    className="h-11 rounded-2xl border-white/10 bg-transparent text-white px-6 sm:px-8 font-bold hover:bg-white/5 w-full sm:w-auto"
+                                    className="h-11 rounded-2xl border-border bg-transparent text-foreground px-6 sm:px-8 font-bold hover:bg-muted/40 w-full sm:w-auto"
                                 >
                                     Close Terminal
                                 </Button>

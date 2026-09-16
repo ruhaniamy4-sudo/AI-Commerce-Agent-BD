@@ -11,7 +11,7 @@ const REFRESH_TOKEN_BYTES = 48;
 // just rotated away by the winner a moment earlier. Within this grace window we
 // treat that as a benign race and ask the caller to retry, instead of treating it
 // as token-theft replay and revoking the whole session family.
-const ROTATION_GRACE_MS = 15_000;
+const ROTATION_GRACE_MS = 60_000;
 
 export interface SessionIdentity {
     userId: string;

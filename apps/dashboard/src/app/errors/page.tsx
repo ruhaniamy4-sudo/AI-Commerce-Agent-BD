@@ -146,7 +146,7 @@ export default function ErrorsPage() {
                                 errors.map((error: ErrorLog) => (
                                     <TableRow
                                         key={error._id}
-                                        className="hover:bg-white/[0.02] transition-colors border-b border-white/5 group"
+                                        className="hover:bg-muted/25 transition-colors border-b border-border group"
                                     >
                                         <TableCell className="py-6 pl-8">
                                             <div className="flex flex-col">
@@ -194,11 +194,11 @@ export default function ErrorsPage() {
                                     >
                                         <div className="flex flex-col items-center justify-center gap-6 opacity-20">
                                             <div className="h-20 w-20 rounded-full border-2 border-dashed border-white flex items-center justify-center">
-                                                <ShieldAlert className="h-10 w-10 text-white" />
+                                                <ShieldAlert className="h-10 w-10 text-foreground" />
                                             </div>
                                             <div className="space-y-1">
-                                                <p className="text-xl font-black text-white tracking-tighter uppercase">Static Signal</p>
-                                                <p className="text-xs font-bold text-white uppercase tracking-widest">No anomalies detected in this quadrant.</p>
+                                                <p className="text-xl font-black text-foreground tracking-tighter uppercase">Static Signal</p>
+                                                <p className="text-xs font-bold text-foreground uppercase tracking-widest">No anomalies detected in this quadrant.</p>
                                             </div>
                                         </div>
                                     </TableCell>
@@ -252,7 +252,7 @@ export default function ErrorsPage() {
                                 </div>
                             </div>
 
-                            <div className="space-y-4 pt-6 border-t border-white/5">
+                            <div className="space-y-4 pt-6 border-t border-border">
                                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">
                                     <Terminal className="h-3 w-3" /> Raw Payload Message
                                 </div>
@@ -262,7 +262,7 @@ export default function ErrorsPage() {
                             </div>
 
                             {selectedError.stack && (
-                                <div className="space-y-4 pt-6 border-t border-white/5">
+                                <div className="space-y-4 pt-6 border-t border-border">
                                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">
                                         <ShieldAlert className="h-3 w-3" /> Logic Execution Trace (Stack)
                                     </div>
@@ -273,7 +273,7 @@ export default function ErrorsPage() {
                             )}
 
                             {selectedError.context && Object.keys(selectedError.context).length > 0 && (
-                                <div className="space-y-4 pt-6 border-t border-white/5">
+                                <div className="space-y-4 pt-6 border-t border-border">
                                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">
                                         <Zap className="h-3 w-3" /> Environmental Context
                                     </div>

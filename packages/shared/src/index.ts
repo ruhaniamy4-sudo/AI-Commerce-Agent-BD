@@ -1,9 +1,21 @@
 export type ID = string;
 export type BusinessRole = 'Owner' | 'Admin' | 'Staff';
 export const PASSWORD_MIN_LENGTH = 10;
-export const MERCHANT_ACCESS_TOKEN_MAX_AGE_SECONDS = 15 * 60;
-export const ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS = 15 * 60;
-export const MERCHANT_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+/**
+ * Access tokens are long-lived on purpose. Every authenticated request looks the
+ * token's `sid` up in AuthSession, so a revoked session, a disabled user or a
+ * removed membership stops working immediately whatever the token says — the
+ * session record is the security boundary, not the token lifetime. A short TTL
+ * bought nothing here and forced a refresh-token rotation every few minutes,
+ * which is what was logging people out.
+ */
+export const MERCHANT_ACCESS_TOKEN_MAX_AGE_SECONDS = 24 * 60 * 60;
+export const ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS = 24 * 60 * 60;
+export const MERCHANT_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+/** Platform admin tokens carry no refresh family, so they slide on activity instead. */
+export const PLATFORM_ADMIN_TOKEN_MAX_AGE_SECONDS = 24 * 60 * 60;
+/** How long an admin can keep sliding before a fresh sign-in is required. */
+export const PLATFORM_ADMIN_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
 export const TEST_AI_API = {
   base: '/api/test-ai',

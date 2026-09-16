@@ -239,7 +239,7 @@ export default function CategoriesPage() {
                                                     </TableCell>
                                                 </TableRow>
                                                 {children.map(child => (
-                                                    <TableRow key={child._id} className="group border-b border-white/[0.01] hover:bg-white/[0.03] transition-colors bg-white/[0.005]">
+                                                    <TableRow key={child._id} className="group border-b border-border hover:bg-muted/30 transition-colors bg-muted/20">
                                                         <TableCell className="py-2.5 sm:py-4 pl-6 sm:pl-16">
                                                             <div className="flex items-center gap-3 sm:gap-4">
                                                                 <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary/40 group-hover:translate-x-1 transition-transform shrink-0" />
@@ -364,7 +364,7 @@ export default function CategoriesPage() {
                                 />
                             </div>
 
-                            <div className="flex items-center justify-between p-3.5 sm:p-6 bg-white/[0.02] rounded-xl sm:rounded-2xl border border-white/5 group hover:bg-white/[0.04] transition-colors">
+                            <div className="flex items-center justify-between p-3.5 sm:p-6 bg-muted/25 rounded-xl sm:rounded-2xl border border-border group hover:bg-muted/50 transition-colors">
                                 <div>
                                     <p className="text-xs sm:text-sm font-bold text-foreground tracking-tight">Architectural Priority</p>
                                     <p className="text-[10px] text-muted-foreground mt-0.5 sm:mt-1 uppercase tracking-tighter">Determine sequencing in public interfaces</p>

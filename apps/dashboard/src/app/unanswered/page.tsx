@@ -35,11 +35,11 @@ export default function UnansweredQuestionsPage() {
             />
 
             <div className="py-8">
-                <div className="glass-card rounded-3xl overflow-hidden border-white/5 shadow-premium">
-                    <div className="p-8 border-b border-white/5 bg-white/[0.01]">
+                <div className="glass-card rounded-3xl overflow-hidden border-border shadow-premium">
+                    <div className="p-8 border-b border-border bg-muted/20">
                         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                             <div className="space-y-1">
-                                <h2 className="text-2xl font-black text-white tracking-tight">Signal Anomalies</h2>
+                                <h2 className="text-2xl font-black text-foreground tracking-tight">Signal Anomalies</h2>
                                 <p className="text-sm text-muted-foreground font-medium">{questions?.length || 0} unresolved payloads detected</p>
                             </div>
                             <div className="bg-primary/10 px-4 py-2 rounded-2xl border border-primary/20 flex items-center gap-3">
@@ -52,7 +52,7 @@ export default function UnansweredQuestionsPage() {
                         {questions && questions.length > 0 ? (
                             <Table>
                                 <TableHeader>
-                                    <TableRow className="bg-white/[0.02] hover:bg-white/[0.02] border-b border-white/5">
+                                    <TableRow className="bg-muted/25 hover:bg-muted/25 border-b border-border">
                                         <TableHead className="font-bold py-5 pl-8 text-muted-foreground uppercase text-[10px] tracking-widest w-[120px]">Interrogation Status</TableHead>
                                         <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Question Payload (Raw)</TableHead>
                                         <TableHead className="font-bold py-5 text-muted-foreground uppercase text-[10px] tracking-widest">Pulse Frequency</TableHead>
@@ -61,7 +61,7 @@ export default function UnansweredQuestionsPage() {
                                 </TableHeader>
                                 <TableBody>
                                     {questions.map((q) => (
-                                        <TableRow key={q._id} className="group border-b border-white/[0.02] hover:bg-white/[0.02] transition-colors">
+                                        <TableRow key={q._id} className="group border-b border-border hover:bg-muted/25 transition-colors">
                                             <TableCell className="py-6 pl-8">
                                                 <Badge className={cn(
                                                     "rounded-full px-4 py-1.5 font-black uppercase text-[9px] tracking-widest border-none",
@@ -71,19 +71,19 @@ export default function UnansweredQuestionsPage() {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="py-6">
-                                                <div className="max-w-md text-sm font-bold text-white tracking-tight italic leading-relaxed">
+                                                <div className="max-w-md text-sm font-bold text-foreground tracking-tight italic leading-relaxed">
                                                     &ldquo;{q.query}&rdquo;
                                                 </div>
                                             </TableCell>
                                             <TableCell className="py-6">
-                                                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 w-fit">
+                                                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-muted/40 border border-border w-fit">
                                                     <Zap className="h-3.5 w-3.5 text-primary" />
-                                                    <span className="text-[10px] font-black text-white">{q.frequency} times asked</span>
+                                                    <span className="text-[10px] font-black text-foreground">{q.frequency} times asked</span>
                                                 </div>
                                             </TableCell>
                                             <TableCell className="py-6">
                                                 <div className="flex flex-col">
-                                                    <span className="text-sm font-bold text-white tracking-tighter">
+                                                    <span className="text-sm font-bold text-foreground tracking-tighter">
                                                         {format(new Date(q.lastAsked), 'PPp')}
                                                     </span>
                                                     <span className="text-[10px] text-muted-foreground/40 font-black uppercase tracking-widest mt-0.5">
@@ -97,10 +97,10 @@ export default function UnansweredQuestionsPage() {
                             </Table>
                         ) : (
                             <div className="py-32 text-center">
-                                <div className="h-20 w-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner border border-white/5">
+                                <div className="h-20 w-20 bg-muted/40 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner border border-border">
                                     <Target className="h-10 w-10 text-emerald-500/20" />
                                 </div>
-                                <h3 className="text-xl font-bold text-white tracking-tight">Zero Blindspots</h3>
+                                <h3 className="text-xl font-bold text-foreground tracking-tight">Zero Blindspots</h3>
                                 <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">Neural nexus is currently decoding all incoming signals with 100% precision. Total alignment achieved.</p>
                             </div>
                         )}

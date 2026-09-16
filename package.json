@@ -25,6 +25,7 @@
     "migrate:text-indexes": "npm run migrate:text-indexes -w apps/agent",
     "migrate:training-indexes": "npm run migrate:training-indexes -w apps/agent",
     "migrate:intelligence": "npm run migrate:intelligence -w apps/agent",
+    "migrate:subscriptions": "npm run migrate:subscriptions -w apps/agent --",
     "health:check": "node scripts/health-check.mjs",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",

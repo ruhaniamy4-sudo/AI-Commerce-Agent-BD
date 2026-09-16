@@ -1,11 +1,14 @@
 import { withAuth } from 'next-auth/middleware';
 import { NextResponse } from 'next/server';
+import { PLATFORM_COOKIE, hasLivePlatformToken } from '@/lib/platform-session';
 export default withAuth(function middleware(req) {
     const token = req.nextauth.token;
     const pathname = req.nextUrl.pathname;
-    const platformCookie = req.cookies.get('sellpilot-platform-session')?.value;
-    if (pathname === '/admin/login') return NextResponse.redirect(new URL(platformCookie ? '/platform-admin' : '/login?access=admin', req.url));
-    if (pathname.startsWith('/platform-admin')) return platformCookie ? NextResponse.next() : NextResponse.redirect(new URL('/login?access=admin', req.url));
+    // The cookie deliberately outlives a single token so an admin returning
+    // mid-session has something to renew with, so presence alone is not enough.
+    const platformSignedIn = hasLivePlatformToken(req.cookies.get(PLATFORM_COOKIE)?.value);
+    if (pathname === '/admin/login') return NextResponse.redirect(new URL(platformSignedIn ? '/platform-admin' : '/login?access=admin', req.url));
+    if (pathname.startsWith('/platform-admin')) return platformSignedIn ? NextResponse.next() : NextResponse.redirect(new URL('/login?access=admin', req.url));
     const legacyMerchantRoutes: Record<string, string> = {
         '/agent': '/assistant',
         '/manual-test': '/assistant',
