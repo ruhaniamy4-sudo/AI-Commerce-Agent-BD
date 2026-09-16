@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { AuthenticatedRequest } from '../auth/middleware';
+import { AuthenticatedRequest, authorize } from '../auth/middleware';
 import { BillingTransaction } from '../models/BillingTransaction';
 import { Subscription } from '../models/Subscription';
 import { SubscriptionPlan } from '../models/SubscriptionPlan';
@@ -8,7 +8,9 @@ import { ensureDefaultPlans } from '../services/subscription-provisioning.servic
 
 const router = Router();
 
-router.get('/billing', async (req: AuthenticatedRequest, res) => {
+// Billing is the Owner's alone: hiding the menu item never stopped a Staff
+// account calling the API and changing the subscription.
+router.get('/billing', authorize('Owner'), async (req: AuthenticatedRequest, res) => {
   const businessId = req.auth!.businessId;
   await ensureDefaultPlans();
   // Usage comes from the same reader the access gate uses, so the number a
@@ -30,7 +32,7 @@ router.get('/billing', async (req: AuthenticatedRequest, res) => {
   });
 });
 
-router.post('/billing/checkout', async (req: AuthenticatedRequest, res) => {
+router.post('/billing/checkout', authorize('Owner'), async (req: AuthenticatedRequest, res) => {
   const plan = await SubscriptionPlan.collection.findOne({ slug: String(req.body?.planSlug || ''), enabled: true });
   const billingPeriod = req.body?.billingPeriod === 'annual' ? 'annual' : 'monthly';
   if (!plan) return res.status(404).json({ error: 'Selected plan is unavailable' });

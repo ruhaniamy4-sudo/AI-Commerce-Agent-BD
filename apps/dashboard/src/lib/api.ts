@@ -37,6 +37,8 @@ export type AIAccessReason='BUSINESS_SUSPENDED'|'PLATFORM_SUSPENDED'|'SUBSCRIPTI
 export interface MerchantAIAccess {allowed:boolean;reason:AIAccessReason|null;limits:{requests:number|null;tokens:number|null;source:'plan'|'override'|'mixed'|'none';plan?:string}|null;consumed:number|null;warnAt:number}
 export interface MerchantBilling {subscription?:Subscription;plans:SubscriptionPlan[];transactions:Array<{_id:string;type:string;amount:number;currency:string;status:string;paymentMethod?:string;provider?:string;providerReference?:string;invoiceNumber?:string;paidAt?:string;createdAt:string}>;usage:{requests:number;tokens:number};aiAccess:MerchantAIAccess;paymentProviderConfigured:boolean}
 export const billingApi={get:()=>apiClient.get<MerchantBilling>('/api/billing'),checkout:(planSlug:string,billingPeriod:'monthly'|'annual')=>apiClient.post<{status:string;error?:string}>('/api/billing/checkout',{planSlug,billingPeriod})};
+/** Separate from billing so Admins see the quota warning without seeing invoices. */
+export const aiAccessApi={get:()=>apiClient.get<MerchantAIAccess>('/api/ai-access')};
 
 /** One inbox row, plus the per-tab counts the merchant navigates by. */
 export interface InboxConversation extends Conversation {

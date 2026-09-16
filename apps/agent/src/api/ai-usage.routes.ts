@@ -1,9 +1,27 @@
 import { Router } from 'express';
 import { AIUsage } from '../models/AIUsage';
+import { AuthenticatedRequest, requireAdministrator } from '../auth/middleware';
+import { evaluateBusinessAIAccess } from '../services/business-ai-access.service';
 
 const router = Router();
 
-router.get('/ai-usage/summary', async (req, res) => {
+/**
+ * Whether the AI is currently allowed to reply, and how much of the allowance
+ * is gone. Kept out of the billing payload so the warning banner works for
+ * whoever runs the workspace, without handing them invoices and plan pricing.
+ */
+router.get('/ai-access', requireAdministrator, async (req: AuthenticatedRequest, res) => {
+    const access = await evaluateBusinessAIAccess(req.auth!.businessId);
+    res.json({
+        allowed: access.allowed,
+        reason: access.reason || null,
+        limits: access.limits || null,
+        consumed: access.consumed ?? null,
+        warnAt: access.warnAt ?? 0.8,
+    });
+});
+
+router.get('/ai-usage/summary', requireAdministrator, async (req, res) => {
     const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
     const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const [summary] = await AIUsage.aggregate([

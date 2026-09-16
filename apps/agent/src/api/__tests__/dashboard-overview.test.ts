@@ -35,7 +35,9 @@ describe('merchant dashboard overview tenancy', () => {
     });
     it('queries non-plugin channel records with the authenticated business ID', async () => {
         const channelFind = vi.spyOn(BusinessChannel, 'find').mockReturnValue({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }) } as never);
-        const token = signAccessToken({ sub: userId.toString(), businessId: businessId.toString(), membershipId: membershipId.toString(), role: 'Staff' });
+        // Admin, because the overview now carries revenue and AI cost; the point
+        // of this test is the tenant scoping of the channel query, not the role.
+        const token = signAccessToken({ sub: userId.toString(), businessId: businessId.toString(), membershipId: membershipId.toString(), role: 'Admin' });
         const response = await request(app).get('/api/dashboard/overview').set('authorization', `Bearer ${token}`).expect(200);
         expect(channelFind).toHaveBeenCalledWith({ businessId: businessId.toString() });
         expect(response.body.business.name).toBe('Business A');

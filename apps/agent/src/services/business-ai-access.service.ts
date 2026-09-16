@@ -1,8 +1,8 @@
 import { AIUsage } from '../models/AIUsage';
 import { Business } from '../models/Business';
 import { Subscription } from '../models/Subscription';
-import { SubscriptionPlan } from '../models/SubscriptionPlan';
 import { assertTenantBusinessId } from '../tenancy/context';
+import { capOf, overrideOf, resolvePlanForSubscription } from './entitlement.service';
 
 export type AIAccessReason='BUSINESS_SUSPENDED'|'PLATFORM_SUSPENDED'|'SUBSCRIPTION_INACTIVE'|'MERCHANT_DISABLED'|'REQUEST_LIMIT_REACHED'|'TOKEN_LIMIT_REACHED';
 export type AIAccessUsage={requests:number;tokens:number};
@@ -27,38 +27,10 @@ const startOfMonth=(date=new Date())=>new Date(date.getFullYear(),date.getMonth(
  * merchant's allowance two or three times faster than the plan promises.
  */
 const REPLY_OPERATIONS=['chat','rag-assisted-chat'];
-/** Plans use -1 for unlimited; 0 is a real allowance of nothing. */
-const capOf=(value:unknown)=>typeof value==='number'&&value>=0?value:null;
-/** Per-business overrides are stored only when set, so falsy means "not overridden". */
-const overrideOf=(value:unknown)=>typeof value==='number'&&value>0?value:null;
 
-/**
- * The catalog is global and changes rarely, but this runs on every inbound
- * customer message — so plans are memoised briefly. Subscriptions deliberately
- * are not: a merchant who just upgraded must not stay blocked.
- */
-const PLAN_CACHE_MS=60_000;
-const planCache=new Map<string,{plan:any;expires:number}>();
-export function clearPlanCacheForTests(){planCache.clear();}
-
-async function findPlanCached(key:string,query:Record<string,unknown>){
-    const cached=planCache.get(key);
-    if(cached&&cached.expires>Date.now())return cached.plan;
-    const plan=await SubscriptionPlan.findOne(query).lean();
-    planCache.set(key,{plan,expires:Date.now()+PLAN_CACHE_MS});
-    return plan;
-}
-
-/** The plan a subscription entitles, by slug where present and by name for legacy rows. */
-export async function resolvePlanForSubscription(subscription:{planSlug?:string;plan?:string}|null|undefined){
-    if(!subscription)return null;
-    if(subscription.planSlug){
-        const bySlug=await findPlanCached(`slug:${subscription.planSlug}`,{slug:subscription.planSlug});
-        if(bySlug)return bySlug;
-    }
-    if(!subscription.plan)return null;
-    return findPlanCached(`name:${subscription.plan}`,{name:subscription.plan});
-}
+// Plan resolution and the catalog cache live in the shared entitlement service,
+// so the AI gate and the seat/channel gates read the same limits.
+export { clearPlanCacheForTests, resolvePlanForSubscription } from './entitlement.service';
 
 /** Plan allowance first, per-business override on top — the override always wins. */
 export function mergeLimits(planLimits:{messages?:number;tokens?:number}|undefined,override:{monthlyRequestLimit?:number;monthlyTokenLimit?:number}|undefined,planName?:string):AIAccessLimits{

@@ -18,6 +18,9 @@ export default withAuth(function middleware(req) {
     };
     if (legacyMerchantRoutes[pathname]) return NextResponse.redirect(new URL(legacyMerchantRoutes[pathname], req.url));
     if (token?.needsOnboarding && pathname !== '/onboarding') return NextResponse.redirect(new URL('/onboarding', req.url));
+    // The overview carries revenue and AI cost, which Staff cannot see, so the
+    // inbox they actually work is their landing page instead of a 403.
+    if (token?.role === 'Staff' && pathname === '/') return NextResponse.redirect(new URL('/conversations', req.url));
     if (!token?.needsOnboarding && token?.onboardingComplete && pathname === '/onboarding') return NextResponse.redirect(new URL('/', req.url));
     return NextResponse.next();
 }, { callbacks: { authorized: ({ req, token }) => req.nextUrl.pathname === '/admin/login' || req.nextUrl.pathname.startsWith('/platform-admin') ? true : Boolean(token) } });

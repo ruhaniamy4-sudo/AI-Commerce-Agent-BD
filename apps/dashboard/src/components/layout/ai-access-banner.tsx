@@ -6,8 +6,9 @@
  */
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
 import { AlertTriangle, PauseCircle } from "lucide-react";
-import { billingApi, MerchantAIAccess } from "@/lib/api";
+import { aiAccessApi, MerchantAIAccess } from "@/lib/api";
 
 const BLOCKED_COPY: Record<string, { title: string; detail: string; action?: string }> = {
     REQUEST_LIMIT_REACHED: { title: "AI replies are paused — monthly message allowance used up", detail: "Customers are getting your holding message and their conversations are waiting in your inbox.", action: "Upgrade plan" },
@@ -28,9 +29,16 @@ function warningText(access: MerchantAIAccess) {
 }
 
 export function AIAccessBanner() {
-    // Shares the billing page's cache entry, so this costs nothing extra there.
-    const { data } = useQuery({ queryKey: ["merchant-billing"], queryFn: billingApi.get, staleTime: 60_000, refetchOnWindowFocus: false });
-    const access = data?.aiAccess;
+    const { data: session } = useSession();
+    // Staff work the inbox and cannot act on a quota, so they are not asked to.
+    const canSee = Boolean(session) && session?.role !== "Staff";
+    const { data: access } = useQuery({
+        queryKey: ["ai-access"],
+        queryFn: aiAccessApi.get,
+        enabled: canSee,
+        staleTime: 60_000,
+        refetchOnWindowFocus: false,
+    });
     if (!access) return null;
 
     const blocked = !access.allowed && access.reason;

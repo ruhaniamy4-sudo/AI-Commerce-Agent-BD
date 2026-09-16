@@ -24,6 +24,7 @@ import crypto from "node:crypto";
 import { PASSWORD_MIN_LENGTH } from "@edutechs/shared";
 import { normalizeBusinessType } from "../services/adaptive-training.service";
 import { provisionTrialSubscription } from "../services/subscription-provisioning.service";
+import { capacityError, checkChannelCapacity, checkSeatCapacity } from "../services/entitlement.service";
 import {
   createAuthSession,
   revokeAllUserSessions,
@@ -1153,6 +1154,12 @@ router.post(
       });
     }
     let user = await User.findOne({ email: normalizedEmail });
+    // Changing an existing member's role is not a new seat; adding a person is.
+    const existingMember = user
+      ? Boolean(await BusinessMember.exists({ businessId: req.auth!.businessId, userId: user._id }))
+      : false;
+    const seats = await checkSeatCapacity(req.auth!.businessId, { existingMember });
+    if (!seats.allowed) return res.status(403).json(capacityError(seats));
     if (!user) {
       user = await User.create({
         name: normalizedName,
@@ -1246,6 +1253,11 @@ router.post(
       return res.status(400).json({
         error: "Facebook Pages must be connected through Meta authorization",
       });
+    const capacity = await checkChannelCapacity(req.auth!.businessId, {
+      platform: String(platform),
+      externalId: String(externalId),
+    });
+    if (!capacity.allowed) return res.status(403).json(capacityError(capacity));
     const channel = await BusinessChannel.create({
       businessId: new mongoose.Types.ObjectId(req.auth!.businessId),
       platform,
@@ -1266,7 +1278,7 @@ router.patch(
       _id: req.params.id,
       businessId: req.auth!.businessId,
     })
-      .select("platform")
+      .select("platform status")
       .lean();
     if (!current) return res.status(404).json({ error: "Channel not found" });
     const updates: Record<string, unknown> = {};
@@ -1276,6 +1288,12 @@ router.patch(
       if (!["active", "disabled"].includes(req.body.status))
         return res.status(400).json({ error: "Invalid channel status" });
       updates.status = req.body.status;
+      // Switching a channel back on takes a slot, so it answers to the same
+      // limit as connecting one — otherwise the cap is one disable away.
+      if (req.body.status === "active" && current?.status !== "active") {
+        const capacity = await checkChannelCapacity(req.auth!.businessId);
+        if (!capacity.allowed) return res.status(403).json(capacityError(capacity));
+      }
     }
     const channel = await BusinessChannel.findOneAndUpdate(
       { _id: req.params.id, businessId: req.auth!.businessId },

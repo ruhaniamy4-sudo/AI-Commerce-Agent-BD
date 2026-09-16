@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAdministrator } from '../auth/middleware';
 import { getAgentStatus } from '../services/agentManager';
 import { AIUsage } from '../models/AIUsage';
 import { Business } from '../models/Business';
@@ -12,7 +13,7 @@ import { Product } from '../models/Product';
 import { requireTenantContext } from '../tenancy/context';
 
 const router = Router();
-router.get('/dashboard/overview', async (_req, res) => {
+router.get('/dashboard/overview', requireAdministrator, async (_req, res) => {
     const { businessId } = requireTenantContext(); const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const [business, conversations, humanControlled, customers, newCustomers, products, knowledge, ordersByStatus, sales, usage, channels, courier, recentOrders, agentStatus] = await Promise.all([
         Business.findById(businessId).lean(), Conversation.countDocuments({}), Conversation.countDocuments({ controlMode: 'HUMAN_ACTIVE' }), Customer.countDocuments({}), Customer.countDocuments({ createdAt: { $gte: since } }), Product.countDocuments({ isActive: true }), Knowledge.countDocuments({ status: 'active' }),
