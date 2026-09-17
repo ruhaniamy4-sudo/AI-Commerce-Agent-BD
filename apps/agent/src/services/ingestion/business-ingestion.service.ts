@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
-import * as cheerio from 'cheerio';
 import { Business } from '../../models/Business';
 import { Category } from '../../models/Category';
 import { Knowledge } from '../../models/Knowledge';
@@ -12,6 +11,7 @@ import { TrainingSource } from '../../models/TrainingSource';
 import { BusinessAwareness } from '../../models/BusinessAwareness';
 import { assertTenantBusinessId, tenantDocument } from '../../tenancy/context';
 import { classifyProductSimilarity, knowledgeFact, normalizeCurrency, normalizeMoney, normalizeSku, normalizedText, productKey, stableFingerprint, tokenSimilarity } from './normalization';
+import { loadHtml } from './html';
 import { ExtractedKnowledge, ExtractedProduct, WebsiteExtraction, WebsiteIngestionError, ingestWebsite } from './website-ingestion.service';
 import { mirrorExternalProductImages } from './external-image.service';
 import { getImageEmbedding } from '../embedding.service';
@@ -34,8 +34,8 @@ function sourceMeta(source: any, url?: string, externalId?: string) {
 
 function productPayload(raw: ExtractedProduct) {
     const price = normalizeMoney(raw.basePrice);
-    const description = String(raw.description || '').includes('<') ? cheerio.load(String(raw.description || '')).text() : String(raw.description || '');
-    const name = cheerio.load(`<span>${String(raw.name || '')}</span>`).text();
+    const description = String(raw.description || '').includes('<') ? loadHtml(String(raw.description || '')).text() : String(raw.description || '');
+    const name = loadHtml(`<span>${String(raw.name || '')}</span>`).text();
     const images = [...new Set((raw.images || []).filter((url) => /^https?:\/\//i.test(String(url))))].slice(0, 12);
     const variants = (raw.variants || []).map((variant) => ({
         ...variant,

@@ -10,6 +10,7 @@
     "setup:env": "node scripts/setup-env.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:full": "node scripts/dev.mjs --full",
+    "dev:core": "node scripts/dev.mjs agent dashboard",
     "dev:agent": "npm run dev -w apps/agent",
     "dev:dashboard": "npm run dev -w apps/dashboard",
     "dev:storefront": "npm run dev -w apps/storefront",

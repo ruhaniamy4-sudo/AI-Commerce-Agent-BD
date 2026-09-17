@@ -1,6 +1,9 @@
 import path from 'node:path';
-import mammoth from 'mammoth';
-import ExcelJS from 'exceljs';
+// exceljs and mammoth together cost about a quarter of a second to load and are
+// only reached once someone actually uploads a spreadsheet or a Word file, so
+// they are imported at the point of use rather than on every server boot. The
+// type-only import is erased, so it adds nothing back.
+import type ExcelJS from 'exceljs';
 import { CandidateInput } from './business-ingestion.service';
 import { normalizeMoney } from './normalization';
 
@@ -108,7 +111,8 @@ function cellValue(value: ExcelJS.CellValue): unknown {
     return value ?? '';
 }
 async function workbookRows(buffer: Buffer): Promise<Record<string, unknown>[]> {
-    const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(buffer as any);
+    const { default: Excel } = await import('exceljs');
+    const workbook = new Excel.Workbook(); await workbook.xlsx.load(buffer as any);
     const result: Record<string, unknown>[] = [];
     workbook.eachSheet((sheet) => {
         const headers: string[] = [];
@@ -185,7 +189,7 @@ export async function extractFile(filename: string, buffer: Buffer): Promise<Can
         }
         let text = '';
         if (extension === '.txt') text = buffer.toString('utf8');
-        if (extension === '.docx') text = (await mammoth.extractRawText({ buffer })).value;
+        if (extension === '.docx') text = (await (await import('mammoth')).default.extractRawText({ buffer })).value;
         if (extension === '.pdf') text = (await pdf(buffer)).text;
         const classified = classifyTextDocument(text, safeName);
         if (!classified.products?.length && !classified.knowledge?.length && !classified.business) throw new FileIngestionError('No useful text was found in this file');

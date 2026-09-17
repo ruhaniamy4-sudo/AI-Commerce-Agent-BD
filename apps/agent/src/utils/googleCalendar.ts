@@ -1,37 +1,31 @@
-import { google } from "googleapis";
+// googleapis is by far the heaviest dependency in this tree — roughly 0.75s to
+// require, more than a quarter of the agent's boot — and every route that needs
+// it sits behind the Google connect flow. Requiring it on first use instead of
+// at import keeps that cost out of each dev-server restart and each cold start.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const loadGoogle = (): typeof import('googleapis').google => require('googleapis').google;
 
-// Helper to determine if credentials are in JSON format or a file path
-const getAuthOptions = () => {
-    const creds = "quiz-dev-d120e-1b0837683ede.json";
-    if (!creds) {
-        throw new Error("GOOGLE_CALENDAR_CREDENTIALS is not defined in .env");
+type OAuth2Client = InstanceType<typeof import('googleapis').google.auth.OAuth2>;
+
+let client: OAuth2Client | undefined;
+
+/**
+ * The process-wide OAuth client. It has to stay a singleton: `/google/callback`
+ * calls `setCredentials` on it and later routes read `credentials` back off the
+ * same object, so handing out a fresh client per call would lose the tokens.
+ */
+export function getOAuthClient(): OAuth2Client {
+    if (!client) {
+        client = new (loadGoogle().auth.OAuth2)(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI,
+        );
     }
+    return client;
+}
 
-    try {
-        // Try to parse if it's a JSON string
-        const credentials = JSON.parse(creds);
-        return { credentials, scopes: ["https://www.googleapis.com/auth/calendar"] };
-    } catch (e) {
-        // Otherwise treat it as a file path
-        return { keyFile: creds, scopes: ["https://www.googleapis.com/auth/calendar"] };
-    }
-};
-
-const auth = new google.auth.GoogleAuth(getAuthOptions());
-
-export const calendar = google.calendar({
-    version: "v3",
-    auth,
-});
-
-
-
-// Initialize the client
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI
-);
-
-// Now you can use oauth2Client to generate auth URLs or create meetings!
-export default oauth2Client;
+/** A Calendar v3 client bound to the OAuth credentials collected above. */
+export function getCalendar() {
+    return loadGoogle().calendar({ version: 'v3', auth: getOAuthClient() });
+}

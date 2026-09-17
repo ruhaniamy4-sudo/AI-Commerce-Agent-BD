@@ -8,8 +8,10 @@ const nextConfig = {
   transpilePackages: ['@edutechs/shared'],
   reactStrictMode: true,
   // Keep `next build` from replacing assets used by a concurrently running
-  // development server. Both commands otherwise share `.next`.
-  distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
+  // development server. Both commands otherwise share `.next`. NEXT_DIST_DIR
+  // overrides it again so a second server (a benchmark, a bisect) can run
+  // beside the first instead of fighting it for the same cache.
+  distDir: process.env.NEXT_DIST_DIR || (process.env.NODE_ENV === 'development' ? '.next-dev' : '.next'),
   images: {
     domains: ['localhost', '127.0.0.1', 'localhost:3000', 'res.cloudinary.com'],
   },

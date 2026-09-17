@@ -1,6 +1,7 @@
 import axios from 'axios';
-import * as cheerio from 'cheerio';
+import type * as cheerio from 'cheerio';
 import { canonicalUrl, normalizeCurrency, normalizeMoney, stableFingerprint } from './normalization';
+import { loadHtml } from './html';
 import { Resolver, validatePublicUrl } from './url-security';
 import { normalizeProductAvailability } from './product-availability';
 import { classifyUrlType, normalizeDiscoveryUrl, UrlPageType } from './url-classification';
@@ -366,7 +367,7 @@ function extractBusinessMarketing($: cheerio.CheerioAPI, pageUrl: string, canoni
 }
 
 export function pageContentFingerprint(html: string): string {
-    const $ = cheerio.load(html);
+    const $ = loadHtml(html);
     const structured = $('script[type="application/ld+json"]').map((_index, element) => $(element).text().replace(/\s+/g, ' ').trim()).get();
     $('script,style,noscript,template,svg').remove();
     const content = cleanContentRoot($).text().replace(/\s+/g, ' ').trim();
@@ -377,7 +378,7 @@ export function extractFromHtml(
     html: string,
     pageUrl: string
 ): Omit<WebsiteExtraction, 'pages' | 'warnings'> & { links: string[] } {
-    const $ = cheerio.load(html);
+    const $ = loadHtml(html);
     const products: ExtractedProduct[] = [];
     const knowledge: ExtractedKnowledge[] = [];
     const business: Record<string, string> = {};
@@ -725,7 +726,7 @@ export async function ingestWebsite(
 
                 result.products.push({
                     name,
-                    description: cheerio.load(String(row.description || row.short_description || row.body_html || '')).text().trim(),
+                    description: loadHtml(String(row.description || row.short_description || row.body_html || '')).text().trim(),
                     category: row.categories?.[0]?.name || row.product_type,
                     basePrice: price,
                     currency: feedCurrency || variants[0]?.currency,

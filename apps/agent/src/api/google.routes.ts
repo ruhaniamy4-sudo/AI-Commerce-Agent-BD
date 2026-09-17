@@ -1,14 +1,13 @@
 import { Router } from 'express';
-import { google } from 'googleapis';
 import { Customer } from '../models/Customer';
 import { Meeting } from '../models/Meeting';
-import oauth2Client from '../utils/googleCalendar';
+import { getCalendar, getOAuthClient } from '../utils/googleCalendar';
 
 const router = Router();
 
 // This route starts the login process
 router.get('/auth', (_, res) => {
-    const url = oauth2Client.generateAuthUrl({
+    const url = getOAuthClient().generateAuthUrl({
         access_type: 'offline', // Critical for AI Agents to get a Refresh Token
         scope: ['https://www.googleapis.com/auth/calendar.events'],
         prompt: 'consent', // Forces Google to provide a Refresh Token every time for testing
@@ -26,8 +25,8 @@ router.get('/callback', async (req, res) => {
         }
 
         // Exchange the code for actual tokens (Access Token & Refresh Token)
-        const { tokens } = await oauth2Client.getToken(code as string);
-        oauth2Client.setCredentials(tokens);
+        const { tokens } = await getOAuthClient().getToken(code as string);
+        getOAuthClient().setCredentials(tokens);
 
         // TODO: SAVE THESE TOKENS TO YOUR DATABASE
         // Especially the tokens.refresh_token for your AI Agent
@@ -66,7 +65,7 @@ router.get('/callback', async (req, res) => {
  * Check if OAuth2 authentication is active
  */
 router.get('/auth-status', (_, res) => {
-    const credentials = oauth2Client.credentials;
+    const credentials = getOAuthClient().credentials;
     const isAuthenticated = !!(credentials && credentials.access_token);
 
     res.json({
@@ -98,7 +97,7 @@ async function scheduleClientMeeting(
     description?: string
 ) {
     // Check if OAuth2 client has credentials
-    const credentials = oauth2Client.credentials;
+    const credentials = getOAuthClient().credentials;
     if (!credentials || !credentials.access_token) {
         throw new Error(
             'OAuth2 authentication required. Please authenticate first by visiting /google/auth'
@@ -106,7 +105,7 @@ async function scheduleClientMeeting(
     }
 
     // Create calendar instance using OAuth2 client (not service account)
-    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    const calendar = getCalendar();
 
     // Generate unique request ID for conference creation
     const requestId = `ai-gen-${Date.now()}-${Math.random()
@@ -300,7 +299,7 @@ router.get('/schedule-meeting', async (req, res) => {
 router.get('/list-events', async (req, res) => {
     try {
         // Check if OAuth2 client has credentials
-        const credentials = oauth2Client.credentials;
+        const credentials = getOAuthClient().credentials;
         if (!credentials || !credentials.access_token) {
             return res.status(401).json({
                 error: 'OAuth2 authentication required',
@@ -309,7 +308,7 @@ router.get('/list-events', async (req, res) => {
         }
 
         // Create calendar instance using OAuth2 client
-        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+        const calendar = getCalendar();
 
         const maxResults = parseInt(req.query.maxResults as string) || 10;
         const timeMin =

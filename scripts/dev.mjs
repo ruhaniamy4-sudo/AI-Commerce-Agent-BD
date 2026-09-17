@@ -6,6 +6,20 @@ import { readEnv } from './env-utils.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const full = process.argv.includes('--full');
+
+// Each app costs a few seconds of bundler/transpile work to boot and then keeps
+// a watcher and a compiler resident, so three of them racing for the same cores
+// makes every one of them slower to come up. Naming the ones you are actually
+// working on skips that: `npm run dev -- dashboard agent`.
+const APPS = ['agent', 'dashboard', 'storefront'];
+const requested = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
+const unknown = requested.filter((name) => !APPS.includes(name));
+if (unknown.length) {
+  console.error(`Unknown app: ${unknown.join(', ')}. Expected one of ${APPS.join(', ')}.`);
+  process.exit(1);
+}
+const selected = requested.length ? requested : APPS;
+
 const env = readEnv(path.join(root, '.env'));
 if (full && !env.REDIS_URL && !env.REDIS_HOST && !env.REDIS_PORT) {
   console.error('Full mode requires Redis. Set REDIS_URL in the root .env, then run npm run dev:full again.');
@@ -41,14 +55,15 @@ if (!fs.existsSync(sharedEntry)) {
   }
 }
 
-const services = [
-  ['agent', ['run', 'dev', '-w', 'apps/agent']],
-  ['dashboard', ['run', 'dev', '-w', 'apps/dashboard']],
-  ['storefront', ['run', 'dev', '-w', 'apps/storefront', '--', '--port', '3001']],
-];
+const commands = {
+  agent: ['run', 'dev', '-w', 'apps/agent'],
+  dashboard: ['run', 'dev', '-w', 'apps/dashboard'],
+  storefront: ['run', 'dev', '-w', 'apps/storefront', '--', '--port', '3001'],
+};
+const services = selected.map((name) => [name, commands[name]]);
 if (full) services.push(['worker', ['run', 'worker', '-w', 'apps/agent']]);
 
-console.log(`Starting SellPilot ${full ? 'full' : 'core'} development mode...`);
+console.log(`Starting SellPilot ${full ? 'full' : 'core'} development mode (${selected.join(', ')})...`);
 let stopping = false;
 const children = [];
 
