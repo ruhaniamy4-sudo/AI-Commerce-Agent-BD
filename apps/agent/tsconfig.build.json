@@ -8,6 +8,7 @@
     "**/__tests__/**",
     "src/scripts/validate-*.ts",
     "src/scripts/measure-*.ts",
-    "src/scripts/verify-*.ts"
+    "src/scripts/verify-*.ts",
+    "vitest.config.ts"
   ]
 }

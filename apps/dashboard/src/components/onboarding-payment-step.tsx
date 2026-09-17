@@ -19,7 +19,7 @@ export function OnboardingPaymentStep({ onContinue }: { onContinue: () => void }
     },
     onSuccess: async () => { await client.invalidateQueries({ queryKey: ["business-profile"] }); onContinue(); },
   });
-  return <section className="mx-auto max-w-3xl rounded-3xl border bg-card p-6 shadow-sm sm:p-10">
+  return <section className="mx-auto max-w-3xl rounded-3xl border bg-card p-6 shadow-xs sm:p-10">
     <CreditCard className="mb-5 h-10 w-10 rounded-xl bg-primary/10 p-2 text-primary" />
     <p className="sp-eyebrow">Payment preferences</p><h1 className="mt-3 text-3xl font-bold tracking-tight">Make the next step clear for customers.</h1>
     <p className="mt-4 text-sm leading-7 text-muted-foreground">Tell your AI which payment methods your business accepts. This controls your ordering preferences; it does not charge you or connect an online gateway.</p>

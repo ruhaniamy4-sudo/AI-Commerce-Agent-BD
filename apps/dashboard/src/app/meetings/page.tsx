@@ -262,7 +262,7 @@ function MeetingDetailsDialog({ meeting, onClose }: MeetingDetailsDialogProps) {
                                     Operational Brief
                                 </label>
                                 <textarea
-                                    className="w-full min-h-[90px] sm:min-h-[120px] p-3 sm:p-6 rounded-xl sm:rounded-2xl border-border bg-muted/5 text-sm text-foreground focus:bg-muted/10 transition-all outline-none shadow-inner leading-relaxed"
+                                    className="w-full min-h-[90px] sm:min-h-[120px] p-3 sm:p-6 rounded-xl sm:rounded-2xl border-border bg-muted/5 text-sm text-foreground focus:bg-muted/10 transition-all outline-hidden shadow-inner leading-relaxed"
                                     value={editData.description || ''}
                                     onChange={(e) =>
                                         setEditData({
@@ -504,7 +504,7 @@ function CalendarView({
                                 className={cn(
                                     'bg-background min-h-[70px] sm:min-h-[140px] p-1.5 sm:p-3 transition-all relative group border-r border-b border-border/20',
                                     !isCurrentMonth && 'opacity-20 pointer-events-none grayscale',
-                                    isToday && 'bg-primary/[0.03]'
+                                    isToday && 'bg-primary/3'
                                 )}
                             >
                                 <div
@@ -529,7 +529,7 @@ function CalendarView({
                                             key={meeting._id}
                                             onClick={() => onSelect(meeting)}
                                             className={cn(
-                                                'w-full text-left p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl truncate transition-all border shadow-sm group/btn',
+                                                'w-full text-left p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl truncate transition-all border shadow-xs group/btn',
                                                 meeting.status === 'scheduled' && 'bg-primary/10 border-primary/20 text-foreground hover:bg-primary/20',
                                                 meeting.status === 'completed' && 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20',
                                                 meeting.status === 'cancelled' && 'bg-muted/5 border-border text-muted-foreground/40 hover:bg-muted/10 line-through'
@@ -703,7 +703,7 @@ export default function MeetingsPage() {
 
                     <TabsContent
                         value="calendar"
-                        className="m-0 border-none outline-none animate-in fade-in slide-in-from-bottom-4 duration-700"
+                        className="m-0 border-none outline-hidden animate-in fade-in slide-in-from-bottom-4 duration-700"
                     >
                         <CalendarView
                             meetings={meetingsList}
@@ -713,7 +713,7 @@ export default function MeetingsPage() {
 
                     <TabsContent
                         value="list"
-                        className="m-0 border-none outline-none animate-in fade-in slide-in-from-bottom-4 duration-700"
+                        className="m-0 border-none outline-hidden animate-in fade-in slide-in-from-bottom-4 duration-700"
                     >
                         <ListView
                             meetings={meetingsList}

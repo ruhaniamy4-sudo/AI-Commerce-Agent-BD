@@ -56,7 +56,7 @@ export default function ConversationsPage() {
         refetchInterval: 5_000,
         refetchIntervalInBackground: false,
     });
-    const seenVersion = useRef<string>();
+    const seenVersion = useRef<string | undefined>(undefined);
     useEffect(() => {
         if (!pulse?.version) return;
         if (seenVersion.current && seenVersion.current !== pulse.version) {
@@ -176,7 +176,7 @@ export default function ConversationsPage() {
                                     const name = c.customer?.name || "Unnamed customer";
                                     const identity = c.customer?.phone || c.psid || "No contact saved";
                                     return (
-                                        <tr key={c._id} className={c.unread ? "bg-primary/[0.04]" : undefined}>
+                                        <tr key={c._id} className={c.unread ? "bg-primary/4" : undefined}>
                                             <td>
                                                 <div className="flex items-center gap-3">
                                                     <span className="relative grid w-9 h-9 place-items-center bg-primary/10 text-primary rounded-full text-xs shrink-0">

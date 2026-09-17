@@ -16,7 +16,5 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc"
   },
-  "dependencies": {
-    "typescript": "^5.9.3"
-  }
+  "dependencies": {}
 }

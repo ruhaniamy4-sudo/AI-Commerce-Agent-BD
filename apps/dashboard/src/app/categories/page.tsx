@@ -282,7 +282,7 @@ export default function CategoriesPage() {
                         ) : (
                             <div className="py-32 text-center space-y-6">
                                 <div className="h-24 w-24 bg-muted rounded-3xl flex items-center justify-center mx-auto mb-8 border border-border shadow-2xl relative overflow-hidden group">
-                                    <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <div className="absolute inset-0 bg-linear-to-br from-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                                     <Layers className="h-12 w-12 text-muted-foreground relative z-10" />
                                 </div>
                                 <div className="space-y-2">
@@ -343,7 +343,7 @@ export default function CategoriesPage() {
                             <div className="space-y-2 sm:space-y-3">
                                 <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Architectural Parent</Label>
                                 <select
-                                    className="w-full h-11 sm:h-12 md:h-14 bg-muted/5 border border-border rounded-xl sm:rounded-2xl px-4 sm:px-6 text-sm text-foreground outline-none focus:bg-muted/10 transition-all appearance-none cursor-pointer"
+                                    className="w-full h-11 sm:h-12 md:h-14 bg-muted/5 border border-border rounded-xl sm:rounded-2xl px-4 sm:px-6 text-sm text-foreground outline-hidden focus:bg-muted/10 transition-all appearance-none cursor-pointer"
                                     value={formData.parentId || ''}
                                     onChange={e => setFormData({ ...formData, parentId: e.target.value || null })}
                                 >

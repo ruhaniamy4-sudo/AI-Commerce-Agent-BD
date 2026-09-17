@@ -126,7 +126,7 @@ export default function BusinessDetail() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">{b.name}</h1>
-          <p className="text-[color:var(--pa-muted)]">
+          <p className="text-(--pa-muted)">
             {b.businessType || "Unspecified"} · created{" "}
             {new Date(b.createdAt).toLocaleDateString()}
           </p>
@@ -197,7 +197,7 @@ export default function BusinessDetail() {
           }
         />
       </div>
-      <Card className="border-[color:var(--pa-line)] bg-[color:var(--pa-panel)] text-[color:var(--pa-text)]">
+      <Card className="border-(--pa-line) bg-(--pa-panel) text-(--pa-text)">
         <CardHeader>
           <CardTitle>Business data</CardTitle>
         </CardHeader>
@@ -207,7 +207,7 @@ export default function BusinessDetail() {
           ))}
         </CardContent>
       </Card>
-      <Card className="border-[color:var(--pa-line)] bg-[color:var(--pa-panel)] text-[color:var(--pa-text)]">
+      <Card className="border-(--pa-line) bg-(--pa-panel) text-(--pa-text)">
         <CardHeader>
           <CardTitle>Owner and team</CardTitle>
         </CardHeader>
@@ -215,7 +215,7 @@ export default function BusinessDetail() {
           {data.members.map((m) => (
             <div
               key={m.user.id}
-              className="flex justify-between rounded border border-[color:var(--pa-line)] p-3"
+              className="flex justify-between rounded border border-(--pa-line) p-3"
             >
               <span>
                 {m.user.name} · {m.user.email}
@@ -228,7 +228,7 @@ export default function BusinessDetail() {
           ))}
         </CardContent>
       </Card>
-      <Card className="border-[color:var(--pa-line)] bg-[color:var(--pa-panel)] text-[color:var(--pa-text)]">
+      <Card className="border-(--pa-line) bg-(--pa-panel) text-(--pa-text)">
         <CardHeader>
           <CardTitle>Integration and training health</CardTitle>
         </CardHeader>
@@ -254,11 +254,11 @@ export default function BusinessDetail() {
           {!data.integrations.channels.length &&
             !data.integrations.couriers.length &&
             !data.integrations.training.length && (
-              <p className="text-[color:var(--pa-muted)]">No integrations configured.</p>
+              <p className="text-(--pa-muted)">No integrations configured.</p>
             )}
         </CardContent>
       </Card>
-      <Card className="border-[color:var(--pa-line)] bg-[color:var(--pa-panel)] text-[color:var(--pa-text)]">
+      <Card className="border-(--pa-line) bg-(--pa-panel) text-(--pa-text)">
         <CardHeader>
           <CardTitle>Subscription history</CardTitle>
         </CardHeader>
@@ -269,7 +269,7 @@ export default function BusinessDetail() {
             </p>
           ))}
           {!data.subscriptionHistory.length && (
-            <p className="text-[color:var(--pa-muted)]">No subscription history.</p>
+            <p className="text-(--pa-muted)">No subscription history.</p>
           )}
         </CardContent>
       </Card>
@@ -278,8 +278,8 @@ export default function BusinessDetail() {
 }
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg border border-[color:var(--pa-line)] bg-[color:var(--pa-bg)] p-4">
-      <p className="text-xs capitalize text-[color:var(--pa-muted)]">{label}</p>
+    <div className="rounded-lg border border-(--pa-line) bg-(--pa-bg) p-4">
+      <p className="text-xs capitalize text-(--pa-muted)">{label}</p>
       <p className="mt-1 font-semibold">
         {typeof value === "number" ? value.toLocaleString() : value}
       </p>

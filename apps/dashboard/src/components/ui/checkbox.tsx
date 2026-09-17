@@ -16,7 +16,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             checked={checked}
             onChange={(event) => onCheckedChange?.(event.target.checked)}
             className={cn(
-                "h-4 w-4 shrink-0 rounded border-border text-primary accent-primary focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
+                "h-4 w-4 shrink-0 rounded border-border text-primary accent-primary focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
                 className
             )}
             {...props}

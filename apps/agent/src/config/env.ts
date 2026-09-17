@@ -33,10 +33,19 @@ let loaded = false;
 export function loadEnv(): void {
     if (loaded) return;
     loaded = true;
-    // Resolved at runtime: the loader lives outside this package's rootDir, so it
-    // is shared with the two Next apps rather than duplicated three times.
-    const loader = require(path.join(workspaceRoot(), 'scripts', 'load-env.cjs'));
-    loader.loadEnv('agent');
+    try {
+        // Resolved at runtime: the loader lives outside this package's rootDir, so it
+        // is shared with the two Next apps rather than duplicated three times.
+        const loader = require(path.join(workspaceRoot(), 'scripts', 'load-env.cjs'));
+        loader.loadEnv('agent');
+    } catch (error) {
+        // A hosted deploy (Render, a container) injects configuration as real
+        // environment variables and may not ship the repository's .env or the
+        // loader beside the build. process.env already holds everything in that
+        // case, so a missing file is not a reason to refuse to boot — whereas a
+        // genuinely missing value still fails loudly at its own point of use.
+        console.warn('Workspace .env was not loaded; using the process environment only:', error instanceof Error ? error.message : error);
+    }
 }
 
 export default loadEnv;

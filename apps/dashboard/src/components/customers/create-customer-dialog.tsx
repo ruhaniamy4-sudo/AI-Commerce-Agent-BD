@@ -88,7 +88,7 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="w-[calc(100vw-1.5rem)] sm:max-w-[500px] glass-card border-border bg-background shadow-premium p-0 overflow-hidden rounded-2xl sm:rounded-[2rem] max-h-[90dvh]">
+            <DialogContent className="w-[calc(100vw-1.5rem)] sm:max-w-[500px] glass-card border-border bg-background shadow-premium p-0 overflow-hidden rounded-2xl sm:rounded-4xl max-h-[90dvh]">
                 <div className="p-4 sm:p-8 space-y-4 sm:space-y-6 max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-xl sm:rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-lg mb-3 sm:mb-4">

@@ -271,7 +271,7 @@ function GuidedBusinessWizard({ businessType, questions, answers, onSaved }: { b
                                         <textarea
                                             ref={(element) => { customInputRef.current = element; }}
                                             rows={3}
-                                            className="w-full rounded-xl border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
+                                            className="w-full rounded-xl border border-input bg-background p-3 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
                                             value={customValue}
                                             onChange={(e) => setCustomValue(e.target.value)}
                                             placeholder="Type your policy or answer"
@@ -381,7 +381,7 @@ function GuidedBusinessWizard({ businessType, questions, answers, onSaved }: { b
             </div>
 
             {answered.length > 0 && (
-                <div className="rounded-2xl border border-border bg-card/60 overflow-hidden shadow-sm">
+                <div className="rounded-2xl border border-border bg-card/60 overflow-hidden shadow-xs">
                     <button
                         type="button"
                         onClick={() => setShowReview((prev) => !prev)}
@@ -415,7 +415,7 @@ function GuidedBusinessWizard({ businessType, questions, answers, onSaved }: { b
                                             <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                                             <div className="min-w-0">
                                                 <p className="font-medium text-foreground">{question.question}</p>
-                                                <p className="mt-0.5 break-words text-xs text-muted-foreground">{display}</p>
+                                                <p className="mt-0.5 wrap-break-word text-xs text-muted-foreground">{display}</p>
                                             </div>
                                         </div>
                                         <Button
@@ -585,7 +585,7 @@ export function TrainingWorkspace({ onboarding = false, onFinish }: { onboarding
         {error && <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
         <section id="training-business" className="scroll-mt-6 space-y-5">
             {businessType && overview?.businessProfile.status !== 'inferred' && !showBusinessTypeEditor ? (
-                <div className="training-panel rounded-2xl border bg-card p-4 sm:p-5 shadow-sm">
+                <div className="training-panel rounded-2xl border bg-card p-4 sm:p-5 shadow-xs">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div className="flex items-start gap-3.5">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">

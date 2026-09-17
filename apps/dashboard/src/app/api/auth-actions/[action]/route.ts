@@ -7,8 +7,8 @@ const endpoints: Record<string, string> = {
     'email-verification-confirm': '/auth/email-verification/confirm',
 };
 
-export async function POST(request: Request, { params }: { params: { action: string } }) {
-    const endpoint = endpoints[params.action];
+export async function POST(request: Request, { params }: { params: Promise<{ action: string }> }) {
+    const endpoint = endpoints[(await params).action];
     if (!endpoint) return NextResponse.json({ error: 'Unknown authentication action' }, { status: 404 });
     const apiBase = process.env.AGENT_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
     try {

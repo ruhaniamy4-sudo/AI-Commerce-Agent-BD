@@ -276,7 +276,7 @@ export default function SystemPromptsPage() {
                                     {prompts.map((prompt) => (
                                         <TableRow key={prompt._id} className={cn(
                                             "group border-b border-border/10 hover:bg-muted/5 transition-colors",
-                                            prompt.isActive && "bg-primary/[0.03]"
+                                            prompt.isActive && "bg-primary/3"
                                         )}>
                                             <TableCell className="py-6 pl-8">
                                                 <div className="flex items-center gap-3">

@@ -33,7 +33,7 @@ export interface BillingValues {
 }
 
 const fieldClass =
-    "mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary";
+    "mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-hidden focus:border-primary";
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
     return (

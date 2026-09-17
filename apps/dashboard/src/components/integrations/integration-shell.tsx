@@ -39,7 +39,7 @@ export function ChannelSummaryTile({
         <button
             type="button"
             onClick={onOpen}
-            className="group flex w-full items-center gap-4 rounded-2xl border border-border bg-card p-4 text-left transition hover:border-primary/40 hover:shadow-premium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="group flex w-full items-center gap-4 rounded-2xl border border-border bg-card p-4 text-left transition hover:border-primary/40 hover:shadow-premium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
         >
             <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${accent}`}>
                 <Icon className="h-5 w-5" />

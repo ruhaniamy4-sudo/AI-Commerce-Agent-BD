@@ -55,13 +55,56 @@ if (!fs.existsSync(sharedEntry)) {
   }
 }
 
+// One PORT variable cannot serve three services. Inherited from the shell it
+// reaches all of them at once: the agent binds it, Next binds it too, and
+// because the agent listens on 0.0.0.0 while Next listens on ::, they can share
+// a port without either reporting a conflict — the API then answers on the
+// dashboard's port and nothing is listening where the dashboard looks for it.
+// Every service is therefore told its own port explicitly.
+const PORTS = {
+  agent: Number(env.PORT) || 4000,
+  dashboard: 3000,
+  storefront: 3001,
+};
+
 const commands = {
+  // --port keeps Next from quietly drifting to the next free port when something
+  // already holds this one; a moved dashboard breaks NEXTAUTH_URL and OAuth
+  // callbacks in ways that surface much later than the warning does.
   agent: ['run', 'dev', '-w', 'apps/agent'],
-  dashboard: ['run', 'dev', '-w', 'apps/dashboard'],
-  storefront: ['run', 'dev', '-w', 'apps/storefront', '--', '--port', '3001'],
+  dashboard: ['run', 'dev', '-w', 'apps/dashboard', '--', '--port', String(PORTS.dashboard)],
+  storefront: ['run', 'dev', '-w', 'apps/storefront', '--', '--port', String(PORTS.storefront)],
 };
 const services = selected.map((name) => [name, commands[name]]);
 if (full) services.push(['worker', ['run', 'worker', '-w', 'apps/agent']]);
+
+// Check the ports before anything boots: otherwise the first service takes what
+// it can get, the second dies on EADDRINUSE, and the real cause is buried in
+// three stack traces. Both address families are probed because a server bound to
+// 0.0.0.0 and one bound to :: can hold the same port without colliding.
+async function portHolder(port) {
+  const { createServer } = await import('node:net');
+  for (const host of ['0.0.0.0', '::']) {
+    const busy = await new Promise((resolve) => {
+      const probe = createServer();
+      probe.once('error', (error) => resolve(error.code === 'EADDRINUSE'));
+      probe.once('listening', () => probe.close(() => resolve(false)));
+      probe.listen(port, host);
+    });
+    if (busy) return true;
+  }
+  return false;
+}
+
+const conflicts = [];
+for (const name of selected) {
+  if (PORTS[name] && await portHolder(PORTS[name])) conflicts.push(`${name} (port ${PORTS[name]})`);
+}
+if (conflicts.length) {
+  console.error(`Already in use: ${conflicts.join(', ')}.`);
+  console.error('Another dev session is probably still running. Stop it, or start only what you need: npm run dev -- dashboard');
+  process.exit(1);
+}
 
 console.log(`Starting SellPilot ${full ? 'full' : 'core'} development mode (${selected.join(', ')})...`);
 let stopping = false;
@@ -71,7 +114,9 @@ for (const [name, args] of services) {
   const invocation = npmInvocation(args);
   const child = spawn(invocation.command, invocation.args, {
     cwd: root,
-    env: process.env,
+    // PORT is set per service rather than inherited, so a stray PORT in the
+    // shell cannot point every app at the same one. The worker has no server.
+    env: { ...process.env, ...(PORTS[name] ? { PORT: String(PORTS[name]) } : {}) },
     stdio: ['inherit', 'pipe', 'pipe'],
     detached: process.platform !== 'win32',
     windowsHide: true,

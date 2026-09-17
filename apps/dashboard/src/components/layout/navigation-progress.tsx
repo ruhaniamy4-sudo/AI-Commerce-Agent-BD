@@ -26,9 +26,9 @@ export function NavigationProgress() {
     const pathname = usePathname();
     const [progress, setProgress] = useState(0);
     const [visible, setVisible] = useState(false);
-    const creep = useRef<ReturnType<typeof setInterval>>();
-    const abandon = useRef<ReturnType<typeof setTimeout>>();
-    const settle = useRef<ReturnType<typeof setTimeout>>();
+    const creep = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+    const abandon = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const running = useRef(false);
 
     const stop = useCallback(() => {

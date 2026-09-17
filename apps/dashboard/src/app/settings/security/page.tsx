@@ -36,7 +36,7 @@ export default function SecurityPage() {
             {sessions.isError && <p role="alert" className="text-sm text-destructive">Device information could not load. Please try again.</p>}
             {revoke.isError && <p role="alert" className="mb-4 text-sm text-destructive">Could not revoke this session. Please try again.</p>}
             <div className="divide-y divide-border">{sessions.data?.filter((item) => !item.revokedAt).map((item) => <div key={item.id} className="flex flex-wrap items-start justify-between gap-4 py-5 first:pt-0 last:pb-0">
-                <div className="min-w-0 flex-1"><p className="break-words text-sm font-medium">{item.userAgent || 'Unknown device'}</p>{item.current && <Badge className="mt-2">This device</Badge>}<p className="mt-2 text-xs leading-6 text-muted-foreground">Signed in {new Date(item.createdAt).toLocaleString()}<br />Expires {new Date(item.expiresAt).toLocaleString()}</p></div>
+                <div className="min-w-0 flex-1"><p className="wrap-break-word text-sm font-medium">{item.userAgent || 'Unknown device'}</p>{item.current && <Badge className="mt-2">This device</Badge>}<p className="mt-2 text-xs leading-6 text-muted-foreground">Signed in {new Date(item.createdAt).toLocaleString()}<br />Expires {new Date(item.expiresAt).toLocaleString()}</p></div>
                 <Button size="sm" variant="outline" disabled={revoke.isPending} onClick={() => revoke.mutate(item.id)}>{item.current ? 'Sign out' : 'Revoke access'}</Button>
             </div>)}</div>
             {sessions.data && !sessions.data.some((item) => !item.revokedAt) && <p className="text-sm text-muted-foreground">No active sessions.</p>}

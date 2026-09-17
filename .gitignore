@@ -1,13 +1,28 @@
+# One ignore list for the whole workspace — the apps do not carry their own.
+
+# Secrets
 .env
 .env.*
 !.env.example
+
+# Dependencies — installed only at the root
 node_modules/
+
+# Build output
+dist/
 .next/
 .next-dev/
-dist/
-coverage/
+/out/
 *.tsbuildinfo
-__MACOSX/
+next-env.d.ts
+
+# Caches
+.vite/
+.turbo/
+coverage/
+
+# Editor and OS noise
 .DS_Store
+__MACOSX/
 *.log
 .vercel/

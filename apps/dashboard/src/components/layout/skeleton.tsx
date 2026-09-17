@@ -21,8 +21,8 @@ function PageHeaderSkeleton({ actions = 1 }: { actions?: number }) {
         <div className="merchant-page-header">
             <div className="w-full">
                 <Skeleton className="block h-7 w-56 max-w-[70%]" />
-                <Skeleton className="mt-3 block h-3 w-[34rem] max-w-full" />
-                <Skeleton className="mt-2 block h-3 w-[22rem] max-w-[80%]" />
+                <Skeleton className="mt-3 block h-3 w-136 max-w-full" />
+                <Skeleton className="mt-2 block h-3 w-88 max-w-[80%]" />
             </div>
             {actions > 0 && (
                 <div className="merchant-page-actions">
@@ -265,7 +265,7 @@ export function AssistantSkeleton() {
 /** Sign-in and the other pages that render without the workspace around them. */
 export function AuthSkeleton() {
     return (
-        <div className="grid min-h-[100dvh] place-items-center p-6">
+        <div className="grid min-h-dvh place-items-center p-6">
             <Announce label="Loading…" />
             <div className="w-full max-w-sm space-y-5">
                 <div className="flex items-center gap-3">

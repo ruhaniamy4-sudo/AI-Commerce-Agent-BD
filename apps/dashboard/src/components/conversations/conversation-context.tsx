@@ -117,7 +117,7 @@ export function ConversationContextPanel({ conversationId }: { conversationId: s
             </div>
 
             {draft && (
-                <div className="rounded-xl border border-primary/30 bg-primary/[0.04]">
+                <div className="rounded-xl border border-primary/30 bg-primary/4">
                     <header className="flex items-center gap-2 border-b border-primary/20 px-5 py-3">
                         <Package size={14} className="text-primary" />
                         <h2 className="text-sm font-semibold">Order in progress</h2>

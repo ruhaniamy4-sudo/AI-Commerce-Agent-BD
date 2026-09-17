@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "start": "next start",
     "test": "vitest run",
-    "lint": "next lint"
+    "lint": "eslint"
   },
   "dependencies": {
     "@edutechs/shared": "*",
@@ -33,29 +33,27 @@
     "jspdf-autotable": "^5.0.7",
     "lru-cache": "^6.0.0",
     "lucide-react": "^0.454.0",
-    "next": "^14.2.5",
+    "next": "16.1.2",
     "next-auth": "^4.24.13",
     "next-themes": "^0.4.6",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-hook-form": "^7.71.1",
     "recharts": "^2.12.7",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^2.5.2",
+    "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^4.3.5",
     "zustand": "^5.0.10"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^20.14.12",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "autoprefixer": "^10.4.19",
-    "eslint": "^8.57.0",
-    "eslint-config-next": "^14.2.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.2",
     "postcss": "^8.4.40",
-    "tailwindcss": "^3.4.7",
-    "typescript": "^5.5.4",
-    "vitest": "^4.0.17"
+    "tailwindcss": "^4.3.3"
   }
 }

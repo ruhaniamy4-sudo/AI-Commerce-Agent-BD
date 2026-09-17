@@ -168,7 +168,7 @@ export default function StoreBuilderPage() {
                 onClick={() => setPreview("desktop")}
                 className={cn(
                   "rounded-lg p-2",
-                  preview === "desktop" && "bg-background shadow-sm",
+                  preview === "desktop" && "bg-background shadow-xs",
                 )}
               >
                 <Monitor className="h-4 w-4" />
@@ -180,7 +180,7 @@ export default function StoreBuilderPage() {
                 onClick={() => setPreview("mobile")}
                 className={cn(
                   "rounded-lg p-2",
-                  preview === "mobile" && "bg-background shadow-sm",
+                  preview === "mobile" && "bg-background shadow-xs",
                 )}
               >
                 <Smartphone className="h-4 w-4" />

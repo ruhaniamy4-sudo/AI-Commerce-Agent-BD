@@ -102,7 +102,7 @@ export default function ManualTestPage() {
                 }
             />
             <div className="flex-1 container px-6 py-8 flex flex-col min-h-0">
-                <Card className="flex-1 flex flex-col min-h-0 border-none shadow-sm bg-muted/30">
+                <Card className="flex-1 flex flex-col min-h-0 border-none shadow-xs bg-muted/30">
                     <CardContent
                         className="flex-1 overflow-y-auto p-6 space-y-4"
                         ref={scrollRef}
@@ -147,7 +147,7 @@ export default function ManualTestPage() {
                                     </div>
                                     <div
                                         className={cn(
-                                            'rounded-2xl px-4 py-2 text-sm shadow-sm',
+                                            'rounded-2xl px-4 py-2 text-sm shadow-xs',
                                             msg.role === 'user'
                                                 ? 'bg-primary text-primary-foreground rounded-tr-none'
                                                 : 'bg-card text-card-foreground border rounded-tl-none'
@@ -183,7 +183,7 @@ export default function ManualTestPage() {
                                         AI
                                     </span>
                                 </div>
-                                <div className="bg-card text-card-foreground border rounded-2xl rounded-tl-none px-4 py-3 shadow-sm">
+                                <div className="bg-card text-card-foreground border rounded-2xl rounded-tl-none px-4 py-3 shadow-xs">
                                     <Loader2 className="h-4 w-4 animate-spin text-primary" />
                                 </div>
                             </div>
@@ -191,7 +191,7 @@ export default function ManualTestPage() {
                     </CardContent>
                     <CardFooter className="p-4 bg-background border-t flex flex-col gap-4">
                         {pendingImage && (
-                            <div className="relative h-24 w-24 rounded-lg overflow-hidden border shadow-sm group">
+                            <div className="relative h-24 w-24 rounded-lg overflow-hidden border shadow-xs group">
                                 <img
                                     src={pendingImage}
                                     alt="Pending upload"

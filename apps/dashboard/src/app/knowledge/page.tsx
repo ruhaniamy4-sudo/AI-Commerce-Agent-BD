@@ -115,8 +115,8 @@ export default function KnowledgeBasePage() {
                         <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:flex"><BookOpen size={18} /></span>
                         <div className="min-w-0 flex-1">
                             <div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">{entry.type}</Badge><span className="text-xs text-muted-foreground">{entry.language === 'en' ? 'English' : 'Bangla'}</span></div>
-                            <h2 className="break-words text-base font-semibold">{entry.title}</h2>
-                            <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-muted-foreground">{entry.content}</p>
+                            <h2 className="wrap-break-word text-base font-semibold">{entry.title}</h2>
+                            <p className="mt-2 line-clamp-3 wrap-break-word text-sm leading-6 text-muted-foreground">{entry.content}</p>
                             <div className="mt-3 flex flex-wrap gap-2">{Array.from(new Set(entry.tags)).map((tag) => <span key={tag} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">#{tag}</span>)}</div>
                         </div>
                         <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
