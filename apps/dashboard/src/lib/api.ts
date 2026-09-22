@@ -685,6 +685,29 @@ export const dashboardApi = {
   overview: () => apiClient.get<MerchantOverview>("/api/dashboard/overview"),
 };
 
+export interface PlatformNotice {
+  _id: string;
+  title: string;
+  body: string;
+  severity: "info" | "success" | "warning" | "critical";
+  dismissible: boolean;
+  publishedAt?: string;
+}
+
+/**
+ * Announcements aimed at this workspace, the feature flags it resolves to, and the
+ * platform settings the dashboard renders — one request, because all three come
+ * from the same operator configuration and change at the same cadence.
+ */
+export const platformNoticeApi = {
+  get: () =>
+    apiClient.get<{
+      announcements: PlatformNotice[];
+      flags: Record<string, boolean>;
+      settings: Record<string, unknown>;
+    }>("/api/dashboard/platform-notices"),
+};
+
 export const trainingApi = {
   status: () => apiClient.get<TrainingOverview>("/api/training/status"),
   candidates: (params?: {

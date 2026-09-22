@@ -7,6 +7,7 @@ import { User } from '../models/User';
 import { Business } from '../models/Business';
 import { touchMerchantActivity } from '../services/merchant-activity.service';
 import { isSessionActive } from './session';
+import { permissionsFor } from '../services/platform-permissions';
 
 export interface AuthenticatedRequest extends Request {
     auth?: TenantPrincipal;
@@ -17,7 +18,7 @@ export interface AccountAuthenticatedRequest extends Request {
 }
 
 export interface PlatformAdminAuthenticatedRequest extends Request {
-    platformAdmin?: { id: string; email: string; name: string };
+    platformAdmin?: { id: string; email: string; name: string; role: string; permissions: string[] };
 }
 
 function bearerToken(req: Request) {
@@ -99,7 +100,7 @@ export async function authenticatePlatformAdmin(req: PlatformAdminAuthenticatedR
         const payload = verifyPlatformAdminToken(token);
         const admin = await PlatformAdmin.findOne({ _id: payload.sub, status: 'active' }).lean();
         if (!admin) return res.status(401).json({ error: 'Platform administrator session is unavailable' });
-        req.platformAdmin = { id: admin._id.toString(), email: admin.email, name: admin.name };
+        req.platformAdmin = { id: admin._id.toString(), email: admin.email, name: admin.name, role: admin.role, permissions: permissionsFor(admin.role, admin.permissions) };
         return next();
     } catch {
         return res.status(401).json({ error: 'Invalid or expired platform administrator session' });

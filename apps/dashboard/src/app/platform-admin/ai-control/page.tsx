@@ -1,2 +1,97 @@
-'use client';import {useConfirm} from '@/components/ui/confirm-dialog';import {useState} from 'react';import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';import {platformApi} from '@/lib/platform-api';import {Input} from '@/components/ui/input';import {Button} from '@/components/ui/button';import {Badge} from '@/components/ui/badge';
-export default function AIControl(){const confirm=useConfirm();const [search,setSearch]=useState('');const qc=useQueryClient();const {data}=useQuery({queryKey:['ai-control',search],queryFn:()=>platformApi.businesses(search,'',1)});const change=useMutation({mutationFn:async({id,name,suspended}:{id:string;name:string;suspended:boolean})=>{const reason=await confirm({title:`${suspended?'Suspend':'Resume'} AI for ${name}?`,description:'This affects future automated replies only; nothing already sent changes.',confirmLabel:suspended?'Suspend AI':'Resume AI',tone:suspended?'danger':'neutral',reason:{label:'Reason (kept in the audit log)',placeholder:'Why this is happening'}});if(!reason)throw new Error('Cancelled');return platformApi.setAIStatus(id,suspended?'SUSPENDED_BY_PLATFORM':'ENABLED',reason)},onSuccess:()=>qc.invalidateQueries({queryKey:['ai-control']})});return <div className="space-y-6"><div><h1 className="text-3xl font-bold">AI Control</h1><p className="text-(--pa-muted)">Business-level AI access. This is separate from human takeover and business status.</p></div><Input className="max-w-md border-(--pa-line-strong) bg-(--pa-panel)" placeholder="Search businesses" value={search} onChange={e=>setSearch(e.target.value)}/><div className="overflow-x-auto rounded-xl border border-(--pa-line)"><table className="w-full min-w-[850px] text-sm"><thead className="bg-(--pa-panel) text-left text-(--pa-muted)"><tr>{['Business','Business status','Subscription','AI status','Requests this month','Cost','Action'].map(x=><th className="p-4" key={x}>{x}</th>)}</tr></thead><tbody>{data?.data.map(b=>{const suspended=b.aiAccess?.status==='SUSPENDED_BY_PLATFORM';return <tr className="border-t border-(--pa-line)" key={b._id}><td className="p-4 font-semibold">{b.name}</td><td className="p-4"><Badge>{b.status}</Badge></td><td className="p-4">{b.subscription?.status||'Not configured'}</td><td className="p-4"><Badge variant={suspended?'destructive':'secondary'}>{b.aiAccess?.status||'ENABLED'}</Badge></td><td className="p-4">{b.usage.requests}</td><td className="p-4">{b.usage.unknown?'Unavailable':`$${b.usage.cost.toFixed(4)}`}</td><td className="p-4"><Button variant="outline" onClick={()=>change.mutate({id:b._id,name:b.name,suspended:!suspended})}>{suspended?'Resume AI':'Suspend AI'}</Button></td></tr>})}</tbody></table></div></div>}
+'use client';
+import {useState} from 'react';
+import Link from 'next/link';
+import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
+import {Bot,Gauge} from 'lucide-react';
+import {platformApi,type PlatformBusiness} from '@/lib/platform-api';
+import {ExportLink,PageHeading,Panel,StatCard,Status,Toolbar,percent} from '@/components/platform/platform-ui';
+import {useCan} from '@/components/platform/platform-session';
+import {useConfirm} from '@/components/ui/confirm-dialog';
+import {Button} from '@/components/ui/button';
+
+const AI_STATES:Record<string,{label:string;tone:'success'|'warning'|'danger'|'neutral'}>={
+ ENABLED:{label:'Enabled',tone:'success'},
+ SUSPENDED_BY_PLATFORM:{label:'Suspended by platform',tone:'danger'},
+ SUSPENDED_BY_SUBSCRIPTION:{label:'Suspended by subscription',tone:'warning'},
+ DISABLED_BY_MERCHANT:{label:'Disabled by merchant',tone:'neutral'},
+};
+
+/**
+ * Per-workspace AI access. Deliberately separate from business status and from
+ * human takeover: pausing a workspace's AI is a commercial or safety decision, and
+ * an operator should be able to make it without touching anything else.
+ */
+export default function AiControl(){
+ const confirm=useConfirm();
+ const can=useCan();
+ const qc=useQueryClient();
+ const [search,setSearch]=useState('');
+ const [problem,setProblem]=useState('');
+ const {data,isLoading}=useQuery({queryKey:['ai-control',search],queryFn:()=>platformApi.businesses(search,'',1)});
+ const invalidate=()=>qc.invalidateQueries({queryKey:['ai-control']});
+
+ const change=useMutation({
+  mutationFn:async(business:PlatformBusiness)=>{
+   const suspended=business.aiAccess?.status==='SUSPENDED_BY_PLATFORM';
+   const why=await confirm({
+    title:`${suspended?'Resume':'Suspend'} AI for ${business.name}?`,
+    description:suspended?'Automated replies start again on the next customer message.':'Customers keep messaging, but the agent stops replying until this is resumed.',
+    consequences:suspended?undefined:['Future automated replies only — nothing already sent changes','Their team can still reply by hand','The workspace is told why if a paused reply is set'],
+    confirmLabel:suspended?'Resume AI':'Suspend AI',
+    tone:suspended?'neutral':'danger',
+    reason:{label:'Reason (kept in the audit log)',placeholder:'Why this is happening'},
+   });
+   if(!why)throw new Error('Cancelled');
+   return platformApi.setAIStatus(business._id,suspended?'ENABLED':'SUSPENDED_BY_PLATFORM',why);
+  },
+  onSuccess:invalidate,
+  onError:(error:Error)=>{if(error.message!=='Cancelled')setProblem(error.message)},
+ });
+
+ const manage=can('ai.manage');
+ const rows=data?.data||[];
+ const suspended=rows.filter(row=>row.aiAccess?.status?.startsWith('SUSPENDED')).length;
+ const spend=rows.reduce((total,row)=>total+(row.usage.cost||0),0);
+
+ return <div>
+  <PageHeading eyebrow="AI & intelligence" title="AI control" copy="Which workspaces the agent is answering for, what each is consuming, and the switch to pause one." actions={<>
+   <Link className="platform-control" href="/platform-admin/ai-config">Model & routing</Link>
+   <ExportLink href={platformApi.exportUrl('usage','this_month')} label="Export usage"/>
+  </>}/>
+
+  {problem&&<p className="platform-banner danger">{problem}</p>}
+
+  <div className="platform-metrics">
+   <StatCard label="Workspaces shown" value={rows.length} detail="Matching the current search" tone="violet"/>
+   <StatCard label="AI suspended" value={suspended} detail="By platform or subscription" tone="amber"/>
+   <StatCard label="Requests this month" value={rows.reduce((total,row)=>total+(row.usage.requests||0),0)} detail="Across the workspaces shown" tone="blue"/>
+   <StatCard label="Estimated spend" value={`$${spend.toFixed(4)}`} detail="Where cost is known" tone="green"/>
+  </div>
+
+  <Panel title="Workspaces" copy="A limit shown as plan means the workspace has no override of its own" action={<Toolbar>
+   <input className="platform-control" placeholder="Search workspaces" value={search} onChange={event=>setSearch(event.target.value)}/>
+  </Toolbar>}>
+   <div className="platform-table-wrap"><table className="platform-data-table"><thead><tr><th>Workspace</th><th>Business</th><th>Subscription</th><th>AI access</th><th>Request limit</th><th>Requests</th><th>Cost</th><th /></tr></thead><tbody>
+    {rows.map(business=>{
+     const state=AI_STATES[business.aiAccess?.status||'ENABLED']||AI_STATES.ENABLED;
+     const cap=business.aiAccess?.monthlyRequestLimit;
+     const used=cap?percent((business.usage.requests/cap)*100):null;
+     return <tr key={business._id}>
+      <td><Link href={`/platform-admin/businesses/${business._id}`}><strong>{business.name}</strong></Link><small>{business.owner?.email||'No owner recorded'}</small></td>
+      <td><Status tone={business.status==='active'?'success':'danger'}>{business.status}</Status></td>
+      <td>{business.subscription?.status||'Not configured'}</td>
+      <td><Status tone={state.tone}>{state.label}</Status>{business.aiAccess?.reason&&<small>{business.aiAccess.reason}</small>}</td>
+      <td>{cap?<>{cap.toLocaleString()}<small>{used} used</small></>:<span style={{color:'var(--pa-faint)'}}>Plan allowance</span>}</td>
+      <td>{business.usage.requests.toLocaleString()}</td>
+      <td>{business.usage.unknown?'Partially unknown':`$${business.usage.cost.toFixed(4)}`}</td>
+      <td><div className="platform-actions">
+       <Link className="platform-control" href={`/platform-admin/businesses/${business._id}`}><Gauge size={13}/> Limits</Link>
+       {manage&&<Button variant="outline" size="sm" onClick={()=>change.mutate(business)}>{business.aiAccess?.status==='SUSPENDED_BY_PLATFORM'?'Resume AI':'Suspend AI'}</Button>}
+      </div></td>
+     </tr>;
+    })}
+   </tbody></table>
+   {!isLoading&&!rows.length&&<div className="platform-empty"><Bot size={20}/>No workspaces match this search.</div>}</div>
+  </Panel>
+ </div>;
+}

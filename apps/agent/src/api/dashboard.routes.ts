@@ -11,6 +11,9 @@ import { Knowledge } from '../models/Knowledge';
 import { Order } from '../models/Order';
 import { Product } from '../models/Product';
 import { requireTenantContext } from '../tenancy/context';
+import { announcementsForBusiness } from '../services/platform-announcement.service';
+import { resolveFeatureFlags } from '../services/feature-flag.service';
+import { effectiveSettings } from '../services/platform-settings.service';
 
 const router = Router();
 router.get('/dashboard/overview', requireAdministrator, async (_req, res) => {
@@ -28,4 +31,25 @@ router.get('/dashboard/overview', requireAdministrator, async (_req, res) => {
         conversations, humanControlled, customers, newCustomers, products, knowledge, orders: statuses, revenue: sales[0]?.revenue || 0, salesOrders: sales[0]?.orders || 0,
         usage: usage[0] || { requests: 0, totalTokens: 0, estimatedCost: 0 }, channels, courier: courier?.status || 'not_configured', recentOrders, agentStatus });
 });
+/**
+ * What the platform is currently telling this workspace: live announcements, the
+ * feature flags it resolves to, and the handful of platform settings the merchant
+ * dashboard renders. Every member reads it, not just administrators, because a
+ * maintenance or billing notice has to reach whoever is working.
+ */
+router.get('/dashboard/platform-notices', async (_req, res) => {
+    const { businessId } = requireTenantContext();
+    const [announcements, flags, settings] = await Promise.all([
+        announcementsForBusiness(businessId),
+        resolveFeatureFlags(businessId),
+        effectiveSettings(),
+    ]);
+    const publicKeys = ['platform.name', 'platform.support_email', 'platform.status_page_url', 'support.enabled', 'support.chat_url', 'support.onboarding_call_url', 'support.response_sla_hours', 'compliance.privacy_policy_url', 'compliance.terms_url', 'localization.default_locale', 'localization.supported_locales', 'localization.default_timezone', 'subscription.allow_self_serve'];
+    res.json({
+        announcements,
+        flags,
+        settings: Object.fromEntries(settings.filter(row => publicKeys.includes(row.key)).map(row => [row.key, row.value])),
+    });
+});
+
 export default router;

@@ -5,6 +5,7 @@ import { platformApi } from "@/lib/platform-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { ExportLink } from "@/components/platform/platform-ui";
 export default function Revenue() {
   const [period, setPeriod] = useState("30d");
   const [search, setSearch] = useState("");
@@ -49,6 +50,7 @@ export default function Revenue() {
             </option>
           ))}
         </select>
+        <ExportLink href={platformApi.exportUrl("payments", period)} />
       </div>
       <div className="grid gap-4 sm:grid-cols-4">
         {[

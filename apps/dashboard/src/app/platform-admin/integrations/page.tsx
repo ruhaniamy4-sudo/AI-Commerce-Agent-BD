@@ -1,3 +1,72 @@
-'use client';import {useQuery} from '@tanstack/react-query';import {platformApi} from '@/lib/platform-api';import {Card,CardContent,CardHeader,CardTitle} from '@/components/ui/card';
-export default function Integrations(){const {data,isLoading}=useQuery({queryKey:['platform-integrations'],queryFn:platformApi.integrations});return <div className="space-y-6"><div><h1 className="text-3xl font-bold">Integration Health</h1><p className="text-(--pa-muted)">Safe connection and training metadata only; credentials and Page identifiers are never returned.</p></div>{isLoading?<p>Loading…</p>:<><div className="grid gap-4 lg:grid-cols-2"><Group title="Channels" rows={(data?.channels||[]).map(x=>({label:Object.values(x._id).filter(Boolean).join(' · '),value:x.count}))}/><Group title="Courier" rows={(data?.couriers||[]).map(x=>({label:Object.values(x._id).join(' · '),value:x.count}))}/><Group title="Website / Training" rows={(data?.training||[]).map(x=>({label:`${Object.values(x._id).join(' · ')} · failed ${x.failedScans} · review ${x.needsReview}`,value:x.count}))}/><Group title="Platform configuration" rows={[{label:'AI provider',value:data?.aiProviderConfigured?'Configured':'Not configured'},{label:'Storage',value:data?.storageConfigured?'Configured':'Not configured'}]}/></div><Card className="border-(--pa-line) bg-(--pa-panel) text-(--pa-text)"><CardHeader><CardTitle>Facebook Page connections</CardTitle></CardHeader><CardContent className="overflow-x-auto"><table className="w-full min-w-[850px] text-sm"><thead className="text-left text-(--pa-muted)"><tr>{['Business','Page','State','Last event','Last verified','Attention'].map(label=><th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{data?.facebookConnections.map(connection=><tr key={connection._id} className="border-t border-(--pa-line)"><td className="p-3">{connection.businessName||'Unknown'}</td><td className="p-3">{connection.pageName}<span className="block text-xs text-(--pa-faint)">{connection.pageCategory||'Facebook Page'}</span></td><td className="p-3">{connection.connectionStatus}</td><td className="p-3">{connection.lastEventAt?new Date(connection.lastEventAt).toLocaleString():'Never'}</td><td className="p-3">{connection.lastVerifiedAt?new Date(connection.lastVerifiedAt).toLocaleString():'Never'}</td><td className="p-3">{connection.reauthorizationRequired?'Reauthorization required':connection.lastErrorCode||'—'}</td></tr>)}</tbody></table></CardContent></Card></>}</div>}
-function Group({title,rows}:{title:string;rows:Array<{label:string;value:string|number}>}){return <Card className="border-(--pa-line) bg-(--pa-panel) text-(--pa-text)"><CardHeader><CardTitle>{title}</CardTitle></CardHeader><CardContent className="space-y-3">{rows.map((r,i)=><div className="flex justify-between rounded-lg border border-(--pa-line) p-3" key={i}><span>{r.label}</span><b>{r.value}</b></div>)}{!rows.length&&<p className="text-(--pa-muted)">Not configured.</p>}</CardContent></Card>}
+'use client';
+import Link from 'next/link';
+import {useQuery} from '@tanstack/react-query';
+import {PlugZap,ShieldCheck,TriangleAlert} from 'lucide-react';
+import {platformApi} from '@/lib/platform-api';
+import {PageHeading,Panel,StatCard,Status,dateTime} from '@/components/platform/platform-ui';
+
+const label=(id:Record<string,string>)=>Object.values(id).filter(Boolean).join(' · ')||'Unspecified';
+const sum=(rows:Array<{count:number}>|undefined)=>(rows||[]).reduce((total,row)=>total+row.count,0);
+
+export default function Integrations(){
+ const {data,isLoading}=useQuery({queryKey:['platform-integrations'],queryFn:platformApi.integrations});
+ const attention=(data?.facebookConnections||[]).filter(connection=>connection.reauthorizationRequired||connection.lastErrorCode).length;
+ const needsReview=(data?.training||[]).reduce((total,row)=>total+(row.needsReview||0),0);
+
+ return <div>
+  <PageHeading eyebrow="Channels" title="Integration health" copy="Connection and training metadata only — credentials and Page identifiers are never returned." actions={<>
+   <Status tone={attention?'warning':'success'}>{attention?`${attention} connections need attention`:'All connections healthy'}</Status>
+   <Link className="platform-control" href="/platform-admin/providers">Provider settings</Link>
+  </>}/>
+
+  <div className="platform-metrics">
+   <StatCard label="Channel connections" value={sum(data?.channels)} detail={`Across ${data?.businesses||0} workspaces`} tone="violet"/>
+   <StatCard label="Courier connections" value={sum(data?.couriers)} detail="Delivery integrations" tone="blue"/>
+   <StatCard label="Training sources" value={sum(data?.training)} detail={`${needsReview} entries need review`} tone="amber"/>
+   <StatCard label="Needs attention" value={attention} detail="Reauthorisation or last error" tone="green"/>
+  </div>
+
+  <div className="platform-grid equal">
+   <Panel title="Channels" copy="By platform and connection state">
+    <div className="platform-kv">{(data?.channels||[]).map((row,index)=><div key={index}><dt>{label(row._id)}</dt><dd>{row.count.toLocaleString()}</dd></div>)}</div>
+    {!isLoading&&!data?.channels.length&&<div className="platform-empty"><PlugZap size={20}/>No channels connected.</div>}
+   </Panel>
+   <Panel title="Couriers" copy="By provider and state">
+    <div className="platform-kv">{(data?.couriers||[]).map((row,index)=><div key={index}><dt>{label(row._id)}</dt><dd>{row.count.toLocaleString()}</dd></div>)}</div>
+    {!isLoading&&!data?.couriers.length&&<div className="platform-empty">No courier integrations connected.</div>}
+   </Panel>
+  </div>
+
+  <Panel title="Training sources" copy="Website and catalogue ingestion, by type and state" className="mt-4">
+   <div className="platform-table-wrap"><table className="platform-data-table"><thead><tr><th>Source</th><th>Sources</th><th>Products</th><th>Knowledge</th><th>Failed scans</th><th>Needs review</th><th>Last success</th></tr></thead><tbody>
+    {(data?.training||[]).map((row,index)=><tr key={index}>
+     <td><strong>{label(row._id)}</strong></td>
+     <td>{row.count.toLocaleString()}</td>
+     <td>{(row.products||0).toLocaleString()}</td>
+     <td>{(row.knowledge||0).toLocaleString()}</td>
+     <td>{row.failedScans?<Status tone="danger">{row.failedScans}</Status>:'—'}</td>
+     <td>{row.needsReview?<Status tone="warning">{row.needsReview}</Status>:'—'}</td>
+     <td>{dateTime(row.lastSuccessful)}</td>
+    </tr>)}
+   </tbody></table>
+   {!isLoading&&!data?.training.length&&<div className="platform-empty">No training sources configured.</div>}</div>
+  </Panel>
+
+  <Panel title="Facebook Page connections" copy="Most recently active first" className="mt-4">
+   <div className="platform-table-wrap"><table className="platform-data-table"><thead><tr><th>Workspace</th><th>Page</th><th>State</th><th>Last event</th><th>Last verified</th><th>Attention</th></tr></thead><tbody>
+    {(data?.facebookConnections||[]).map(connection=><tr key={connection._id}>
+     <td><strong>{connection.businessName||'Unknown workspace'}</strong></td>
+     <td>{connection.pageName}<small>{connection.pageCategory||'Facebook Page'}</small></td>
+     <td><Status tone={connection.connectionStatus==='connected'?'success':connection.connectionStatus==='disconnected'?'danger':'warning'}>{connection.connectionStatus}</Status></td>
+     <td>{dateTime(connection.lastEventAt)}</td>
+     <td>{dateTime(connection.lastVerifiedAt)}</td>
+     <td>{connection.reauthorizationRequired
+      ?<Status tone="danger"><TriangleAlert size={10}/> Reauthorisation required</Status>
+      :connection.lastErrorCode?<Status tone="warning">{connection.lastErrorCode}</Status>
+      :<Status tone="success"><ShieldCheck size={10}/> Healthy</Status>}</td>
+    </tr>)}
+   </tbody></table>
+   {!isLoading&&!data?.facebookConnections.length&&<div className="platform-empty">No Facebook Pages connected.</div>}</div>
+  </Panel>
+ </div>;
+}

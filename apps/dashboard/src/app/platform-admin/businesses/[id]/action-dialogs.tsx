@@ -258,3 +258,138 @@ export function BillingAdjustmentDialog({
         </Dialog>
     );
 }
+
+export interface AiLimitValues {
+    monthlyRequestLimit: number;
+    monthlyTokenLimit: number;
+    warningThresholdPercent: number;
+    pausedReply: string;
+    reason: string;
+}
+
+/**
+ * Per-workspace AI allowance. These override the plan, so 0 is meaningful: it
+ * clears the override and hands the workspace back to whatever its plan allows.
+ */
+export function AiLimitsDialog({
+    open,
+    onOpenChange,
+    businessName,
+    current,
+    pending,
+    onSubmit,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    businessName: string;
+    current?: { monthlyRequestLimit?: number; monthlyTokenLimit?: number; warningThresholdPercent?: number; pausedReply?: string } | null;
+    pending?: boolean;
+    onSubmit: (values: AiLimitValues) => void;
+}) {
+    const [requests, setRequests] = useState("0");
+    const [tokens, setTokens] = useState("0");
+    const [threshold, setThreshold] = useState("80");
+    const [pausedReply, setPausedReply] = useState("");
+    const [reason, setReason] = useState("");
+
+    useEffect(() => {
+        if (!open) return;
+        setRequests(String(current?.monthlyRequestLimit ?? 0));
+        setTokens(String(current?.monthlyTokenLimit ?? 0));
+        setThreshold(String(current?.warningThresholdPercent ?? 80));
+        setPausedReply(current?.pausedReply || "");
+        setReason("");
+    }, [open, current]);
+
+    const numeric = (value: string) => Number.isFinite(Number(value)) && Number(value) >= 0;
+    const valid = numeric(requests) && numeric(tokens) && numeric(threshold) && Number(threshold) <= 100 && reason.trim().length >= 3;
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>AI usage limits</DialogTitle>
+                    <DialogDescription>{businessName}. Leave a limit at 0 to use the plan allowance instead.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                    <Field label="Monthly request limit" hint="0 means the plan allowance applies.">
+                        <input className={fieldClass} type="number" min={0} value={requests} onChange={(event) => setRequests(event.target.value)} />
+                    </Field>
+                    <Field label="Monthly token limit" hint="0 means the plan allowance applies.">
+                        <input className={fieldClass} type="number" min={0} value={tokens} onChange={(event) => setTokens(event.target.value)} />
+                    </Field>
+                    <Field label="Warning threshold (%)" hint="The workspace is warned at this share of its allowance.">
+                        <input className={fieldClass} type="number" min={0} max={100} value={threshold} onChange={(event) => setThreshold(event.target.value)} />
+                    </Field>
+                    <Field label="Reply while paused" hint="What customers are told if AI is paused for this workspace.">
+                        <input className={fieldClass} value={pausedReply} onChange={(event) => setPausedReply(event.target.value)} />
+                    </Field>
+                    <Field label="Reason (kept in the audit log)">
+                        <input className={fieldClass} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Why these limits are changing" />
+                    </Field>
+                    <Button
+                        className="w-full"
+                        disabled={!valid || pending}
+                        onClick={() => onSubmit({ monthlyRequestLimit: Number(requests), monthlyTokenLimit: Number(tokens), warningThresholdPercent: Number(threshold), pausedReply, reason: reason.trim() })}
+                    >
+                        {pending ? "Saving…" : "Save limits"}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/**
+ * Erasure asks for two different things — the workspace name, typed exactly, and a
+ * reason — because the confirmation has to be impossible to click through and the
+ * record has to explain why it happened.
+ */
+export function EraseDialog({
+    open,
+    onOpenChange,
+    businessName,
+    pending,
+    onSubmit,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    businessName: string;
+    pending?: boolean;
+    onSubmit: (values: { confirmation: string; reason: string }) => void;
+}) {
+    const [confirmation, setConfirmation] = useState("");
+    const [reason, setReason] = useState("");
+
+    useEffect(() => {
+        if (!open) return;
+        setConfirmation("");
+        setReason("");
+    }, [open]);
+
+    const valid = confirmation.trim() === businessName && reason.trim().length >= 3;
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Erase this workspace</DialogTitle>
+                    <DialogDescription>
+                        Products, orders, customers, conversations, knowledge, integrations and members are deleted permanently. The billing ledger is deliberately kept, because financial records outlive the workspace.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                    <Field label={`Type "${businessName}" to confirm`}>
+                        <input className={fieldClass} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+                    </Field>
+                    <Field label="Reason (kept in the audit log)">
+                        <input className={fieldClass} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Why this workspace is being erased" />
+                    </Field>
+                    <Button className="w-full" variant="destructive" disabled={!valid || pending} onClick={() => onSubmit({ confirmation: confirmation.trim(), reason: reason.trim() })}>
+                        {pending ? "Erasing…" : "Erase permanently"}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}

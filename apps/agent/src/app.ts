@@ -24,6 +24,7 @@ import onboardingRoutes from './api/onboarding.routes';
 import testAiRoutes from './api/test-ai.routes';
 import platformAuthRoutes from './api/platform-auth.routes';
 import platformAdminRoutes from './api/platform-admin.routes';
+import platformControlRoutes from './api/platform-control.routes';
 import billingRoutes from './api/billing.routes';
 import intelligenceRoutes from './api/intelligence.routes';
 import whatsappRoutes, {whatsappPublicRouter} from './api/whatsapp.routes';
@@ -38,8 +39,9 @@ import { connectMongo } from './db/mongodb';
 import { getAgentStatus } from './services/agentManager';
 import { warmPromptCache } from './services/systemPrompt.service';
 import morgan from 'morgan';
-import { ensurePlatformAdmin } from './services/platform-admin-bootstrap.service';
+import { backfillPlatformAdminRoles, ensurePlatformAdmin } from './services/platform-admin-bootstrap.service';
 import { getHealthStatus, printDeveloperStatus } from './services/health.service';
+import { settingFlag, settingText, warmSettingCache } from './services/platform-settings.service';
 import { TEST_AI_API } from '@edutechs/shared';
 import crypto from 'node:crypto';
 
@@ -80,6 +82,22 @@ app.get('/', (req, res) => {
     res.send('Edutechs AI Agent Server');
 });
 
+/**
+ * Maintenance mode is a console switch, not a redeploy. The platform console, its
+ * sign-in, health, and inbound provider webhooks stay reachable so operators can
+ * work and nothing inbound is silently lost while merchant traffic is paused.
+ */
+const MAINTENANCE_EXEMPT = /^\/(platform-auth|platform-admin|health|facebook|whatsapp|payment-events|courier-events)(\/|$)/;
+app.use(async (req, res, next) => {
+    if (req.method === 'OPTIONS' || req.path === '/' || MAINTENANCE_EXEMPT.test(req.path)) return next();
+    try {
+        if (!await settingFlag('platform.maintenance_mode')) return next();
+    } catch {
+        return next();
+    }
+    return res.status(503).json({ error: await settingText('platform.maintenance_message'), code: 'MAINTENANCE' });
+});
+
 app.get('/health', async (_req, res) => {
     const health = await getHealthStatus();
     res.status(health.status === 'ok' ? 200 : 503).json({ ...health, timestamp: new Date().toISOString() });
@@ -87,7 +105,7 @@ app.get('/health', async (_req, res) => {
 
 app.use('/auth', authRoutes);
 app.use('/platform-auth', platformAuthRoutes);
-app.use('/platform-admin', authenticatePlatformAdmin, platformAdminRoutes);
+app.use('/platform-admin', authenticatePlatformAdmin, platformAdminRoutes, platformControlRoutes);
 app.use('/chat', authenticate, chatRoutes);
 app.use('/agent', authenticate, requireAdministrator, agentRoutes);
 app.use('/facebook', metaPublicRouter);
@@ -121,10 +139,16 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 connectMongo()
     .then(async () => {
         await ensurePlatformAdmin();
+        // A one-off backfill for administrators created before roles existed. It
+        // must never stop the server from coming up, so a failure only reports.
+        await backfillPlatformAdminRoles().catch(error => console.error('Platform administrator role backfill failed:', error instanceof Error ? error.message : error));
         console.log(
             'Effective LLM Model:',
             (llm as any).modelName || (llm as any).model
         );
+        // Model selection reads the settings cache synchronously, so it is
+        // populated before the first customer turn rather than by it.
+        await warmSettingCache();
         await warmPromptCache();
         await getAgentStatus();
         printDeveloperStatus('Connected');

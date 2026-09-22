@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
 import NodeCache from "node-cache";
 import { AuthenticatedRequest, requireAdministrator } from "../auth/middleware";
@@ -10,7 +10,6 @@ import { Message } from "../models/Message";
 import { Order } from "../models/Order";
 import { Product } from "../models/Product";
 import { SystemPrompt } from "../models/SystemPrompt";
-import { invalidatePromptCache } from "../services/systemPrompt.service";
 import { saveMessage } from "../services/memory.service";
 import { sendMessage } from "../services/facebook.service";
 import crypto from "crypto";
@@ -541,44 +540,21 @@ router.get(
   },
 );
 
-router.post("/system-prompts", requireAdministrator, async (req, res) => {
-  try {
-    const prompt = await SystemPrompt.create(req.body);
-    await invalidatePromptCache();
-    res.status(201).json(prompt);
-  } catch (e) {
-    res.status(500).json({ error: "Failed to create prompt" });
-  }
-});
-
-router.patch("/system-prompts/:id", requireAdministrator, async (req, res) => {
-  try {
-    const prompt = await SystemPrompt.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      },
-    );
-    if (!prompt) return res.status(404).json({ error: "Prompt not found" });
-    await invalidatePromptCache();
-    res.json(prompt);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to update prompt" });
-  }
-});
-
-router.delete("/system-prompts/:id", requireAdministrator, async (req, res) => {
-  try {
-    const prompt = await SystemPrompt.findByIdAndDelete(req.params.id);
-    if (!prompt) return res.status(404).json({ error: "Prompt not found" });
-    await invalidatePromptCache();
-    res.json({ message: "Deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to delete prompt" });
-  }
-});
+/**
+ * The system prompt is a single global record that drives every tenant's agent, so
+ * one merchant administrator editing it used to change every other merchant's
+ * replies. Authoring now lives in the platform console
+ * (`/platform-admin/prompts`), and merchants keep read access only.
+ */
+const promptWritesMoved = (_req: Request, res: Response) =>
+  res.status(403).json({
+    error:
+      "The shared system prompt is managed by platform operations. Use Training to shape this workspace's replies.",
+    code: "PROMPT_PLATFORM_MANAGED",
+  });
+router.post("/system-prompts", requireAdministrator, promptWritesMoved);
+router.patch("/system-prompts/:id", requireAdministrator, promptWritesMoved);
+router.delete("/system-prompts/:id", requireAdministrator, promptWritesMoved);
 
 // Tenant-scoped merchant commerce analytics.
 const analyticsCache = new NodeCache({ stdTTL: 300 });

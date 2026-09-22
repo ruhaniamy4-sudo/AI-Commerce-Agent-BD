@@ -8,17 +8,25 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
+  AiLimitsDialog,
   BillingAdjustmentDialog,
+  EraseDialog,
   SubscriptionDialog,
+  type AiLimitValues,
   type BillingValues,
   type SubscriptionValues,
 } from "./action-dialogs";
+import { useCan } from "@/components/platform/platform-session";
 export default function BusinessDetail() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const can = useCan();
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
+  const [limitsOpen, setLimitsOpen] = useState(false);
+  const [eraseOpen, setEraseOpen] = useState(false);
+  const [problem, setProblem] = useState("");
   const { data, isLoading } = useQuery({
     queryKey: ["platform-business", id],
     queryFn: () => platformApi.business(id),
@@ -119,6 +127,24 @@ export default function BusinessDetail() {
       refresh();
     },
   });
+  const limits = useMutation({
+    mutationFn: (values: AiLimitValues) => platformApi.setAiLimits(id, values),
+    onSuccess: () => {
+      setLimitsOpen(false);
+      refresh();
+    },
+    onError: (error: Error) => setProblem(error.message),
+  });
+  const erase = useMutation({
+    mutationFn: (values: { confirmation: string; reason: string }) =>
+      platformApi.eraseBusiness(id, values.confirmation, values.reason),
+    onSuccess: () => {
+      setEraseOpen(false);
+      // The workspace no longer exists, so the list is the only honest place to be.
+      window.location.href = "/platform-admin/businesses";
+    },
+    onError: (error: Error) => setProblem(error.message),
+  });
   if (isLoading || !data) return <p>Loading business…</p>;
   const b = data.business;
   return (
@@ -146,8 +172,22 @@ export default function BusinessDetail() {
           <Button variant="outline" onClick={() => setBillingOpen(true)}>
             Manual billing adjustment
           </Button>
+          <Button variant="outline" onClick={() => setLimitsOpen(true)}>
+            AI usage limits
+          </Button>
+          {can("compliance.view") && (
+            <a className="platform-control platform-export" href={platformApi.businessExportUrl(id)} download>
+              Export workspace data
+            </a>
+          )}
+          {can("merchants.delete") && (
+            <Button variant="outline" onClick={() => setEraseOpen(true)}>
+              Erase workspace
+            </Button>
+          )}
         </div>
       </div>
+      {problem && <p className="platform-banner danger">{problem}</p>}
       <SubscriptionDialog
         open={subscriptionOpen}
         onOpenChange={setSubscriptionOpen}
@@ -163,6 +203,21 @@ export default function BusinessDetail() {
         currency={data.subscription?.currency || "BDT"}
         pending={billing.isPending}
         onSubmit={(values) => billing.mutate(values)}
+      />
+      <AiLimitsDialog
+        open={limitsOpen}
+        onOpenChange={setLimitsOpen}
+        businessName={b.name}
+        current={b.aiAccess}
+        pending={limits.isPending}
+        onSubmit={(values) => limits.mutate(values)}
+      />
+      <EraseDialog
+        open={eraseOpen}
+        onOpenChange={setEraseOpen}
+        businessName={b.name}
+        pending={erase.isPending}
+        onSubmit={(values) => erase.mutate(values)}
       />
       <div className="grid gap-4 md:grid-cols-4">
         <Metric label="Business status" value={b.status} />

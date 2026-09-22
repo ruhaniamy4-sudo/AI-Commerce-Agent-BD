@@ -1,30 +1,35 @@
 'use client';
 import {useState} from 'react';
-import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
-import {CreditCard,Flag,Globe2,PlugZap,Save,type LucideIcon} from 'lucide-react';
-import {platformApi} from '@/lib/platform-api';
-import {PageHeading,Panel,Status} from '@/components/platform/platform-ui';
-import {Button} from '@/components/ui/button';
+import {PageHeading,TabBar} from '@/components/platform/platform-ui';
+import {SettingsEditor,useSettingValue} from '@/components/platform/settings-registry';
+import {TriangleAlert} from 'lucide-react';
 
-type SettingItem={key:string;value:unknown;category:string;description:string};
-const defaults:SettingItem[]=[
- {key:'platform.maintenance_mode',value:false,category:'platform',description:'Limit merchant access during planned maintenance'},
- {key:'billing.invoice_prefix',value:'SP',category:'billing',description:'Prefix used for newly issued invoice numbers'},
- {key:'subscription.allow_self_serve',value:true,category:'subscription',description:'Allow merchants to initiate plan changes'},
- {key:'feature.whatsapp_channel',value:false,category:'feature',description:'Expose the WhatsApp channel to eligible plans'},
+type Section='platform'|'billing'|'subscription'|'integration'|'support'|'feature';
+const TABS:Array<[Section,string]>=[
+ ['platform','Platform & access'],
+ ['billing','Billing'],
+ ['subscription','Subscription policy'],
+ ['integration','Integrations'],
+ ['support','Support'],
 ];
-const groups:Array<{title:string;Icon:LucideIcon;category:string}>=[
- {title:'Platform & access',Icon:Globe2,category:'platform'},
- {title:'Billing',Icon:CreditCard,category:'billing'},
- {title:'Subscriptions & flags',Icon:Flag,category:'subscription'},
- {title:'Integrations',Icon:PlugZap,category:'integration'},
-];
+const COPY:Record<Section,string>={
+ platform:'Product identity, availability, and whether new merchants can sign themselves up.',
+ billing:'Invoicing, collection, dunning, and what an operator may refund.',
+ subscription:'How plans start, change, and end for merchants.',
+ integration:'Which channels and couriers exist platform-wide, and how integrations behave.',
+ support:'What merchants are offered when they need help.',
+ feature:'Legacy feature switches. New capability gating lives in Feature flags.',
+};
 
 export default function Settings(){
- const qc=useQueryClient();
- const query=useQuery({queryKey:['platform-settings'],queryFn:platformApi.settings});
- const [draft,setDraft]=useState<Record<string,unknown>>({});
- const save=useMutation({mutationFn:(item:SettingItem)=>platformApi.updateSetting(item.key,{...item,value:draft[item.key]??item.value}),onSuccess:()=>qc.invalidateQueries({queryKey:['platform-settings']})});
- const values=new Map(query.data?.map(x=>[x.key,x.value]));
- return <div><PageHeading eyebrow="Operations" title="Platform settings" copy="Control billing behavior, subscription policy, integrations, and feature availability." actions={<Status tone="success">Configuration audited</Status>}/><div className="platform-grid equal">{groups.map(({title,Icon,category})=>{const items=defaults.filter(x=>x.category===category||(category==='subscription'&&x.category==='feature'));return <Panel key={title} title={title} copy="Changes are written to the platform audit log"><div className="platform-form-grid">{items.map(item=>{const current=draft[item.key]??values.get(item.key)??item.value;return <div className="platform-form-field" style={{gridColumn:'1 / -1'}} key={item.key}><label>{item.key}</label><div style={{display:'flex',gap:8}}>{typeof current==='boolean'?<select value={String(current)} onChange={e=>setDraft({...draft,[item.key]:e.target.value==='true'})}><option value="true">Enabled</option><option value="false">Disabled</option></select>:<input value={String(current)} onChange={e=>setDraft({...draft,[item.key]:e.target.value})}/>}<Button size="sm" variant="outline" onClick={()=>save.mutate({...item,value:current})}><Save size={13}/></Button></div><small style={{color:'var(--pa-muted)',fontSize:9}}>{item.description}</small></div>})}{!items.length&&<div className="platform-empty" style={{gridColumn:'1 / -1'}}><Icon size={18}/>No configurable integration values have been added.</div>}</div></Panel>})}</div></div>
+ const [section,setSection]=useState<Section>('platform');
+ const maintenance=useSettingValue<boolean>('platform.maintenance_mode');
+ const signup=useSettingValue<boolean>('platform.signup_enabled');
+ return <div>
+  <PageHeading eyebrow="Configuration" title="Platform settings" copy="Every runtime knob the platform reads, editable here instead of in a deployment." />
+  {maintenance&&<p className="platform-banner"><TriangleAlert size={14}/>Maintenance mode is on. Merchant and public API requests are being refused; this console stays reachable.</p>}
+  {signup===false&&<p className="platform-banner info"><TriangleAlert size={14}/>Self-serve signup is closed. New workspaces have to be created by an operator.</p>}
+  <TabBar tabs={TABS} active={section} onChange={setSection}/>
+  <SettingsEditor categories={section==='platform'?['platform']:[section]} title={TABS.find(([value])=>value===section)?.[1]||'Settings'} copy={COPY[section]}/>
+ </div>;
 }

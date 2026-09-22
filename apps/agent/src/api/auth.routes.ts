@@ -8,11 +8,7 @@ import {
   authorize,
   requireAdministrator,
 } from "../auth/middleware";
-import {
-  hashPassword,
-  passwordValidationError,
-  verifyPassword,
-} from "../auth/password";
+import { hashPassword, verifyPassword } from "../auth/password";
 import { signAccessToken, signAccountToken } from "../auth/token";
 import { Business } from "../models/Business";
 import { BusinessMember } from "../models/BusinessMember";
@@ -37,6 +33,8 @@ import {
   consumeAuthActionToken,
 } from "../auth/action-token";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../auth/mail";
+import { settingFlag, settingText } from "../services/platform-settings.service";
+import { platformPasswordError } from "../services/platform-security.service";
 import {
   ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS,
   MERCHANT_ACCESS_TOKEN_MAX_AGE_SECONDS,
@@ -232,10 +230,18 @@ async function sessionForUser(
 }
 
 router.post("/signup", limited, async (req, res) => {
+  // Self-serve signup is a platform switch, so an operator can close registration
+  // without a deploy while invited workspaces keep being created by an admin.
+  if (!(await settingFlag("platform.signup_enabled"))) {
+    return res.status(403).json({
+      error: await settingText("platform.signup_blocked_message"),
+      code: "SIGNUP_CLOSED",
+    });
+  }
   const name = String(req.body?.name || "").trim();
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || "");
-  const passwordError = passwordValidationError(password, [
+  const passwordError = await platformPasswordError(password, [
     name,
     email.split("@")[0],
   ]);
@@ -627,7 +633,7 @@ router.post("/password-reset/request", limited, async (req, res) => {
 
 router.post("/password-reset/confirm", limited, async (req, res) => {
   const password = String(req.body?.password || "");
-  const passwordError = passwordValidationError(password);
+  const passwordError = await platformPasswordError(password);
   if (passwordError) return res.status(400).json({ error: passwordError });
   const record = await consumeAuthActionToken(
     String(req.body?.token || ""),
@@ -668,7 +674,7 @@ router.post(
     ) {
       return res.status(401).json({ error: "Current password is incorrect" });
     }
-    const error = passwordValidationError(newPassword, [
+    const error = await platformPasswordError(newPassword, [
       user.name,
       user.email.split("@")[0],
     ]);
@@ -1136,7 +1142,7 @@ router.post(
     const { name, email, password, role } = req.body || {};
     const normalizedName = String(name || "").trim();
     const normalizedEmail = normalizeEmail(email);
-    const memberPasswordError = passwordValidationError(
+    const memberPasswordError = await platformPasswordError(
       String(password || ""),
       [normalizedName, normalizedEmail.split("@")[0]],
     );

@@ -13,7 +13,9 @@ const adminId = new mongoose.Types.ObjectId().toString();
 const businessId = new mongoose.Types.ObjectId().toString();
 const app = express()
     .use(express.json())
-    .use((req, _res, next) => { (req as any).platformAdmin = { id: adminId, email: 'ops@sellpilot.test' }; next(); })
+    // Authentication resolves the admin's permissions, so the stub carries them too:
+    // the route is now guarded by `requirePlatformPermission('billing.manage')`.
+    .use((req, _res, next) => { (req as any).platformAdmin = { id: adminId, email: 'ops@sellpilot.test', name: 'Ops', role: 'OWNER', permissions: ['*'] }; next(); })
     .use('/platform-admin', platformAdminRoutes);
 
 const post = (body: unknown) => request(app).post('/platform-admin/billing/adjustments').send(body as object);

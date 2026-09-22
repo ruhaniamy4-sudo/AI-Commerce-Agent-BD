@@ -19,7 +19,13 @@ export const getAIHistoryCharBudget = () => boundedInteger('AI_HISTORY_CHAR_BUDG
 // fits six to eight real turns into the same budget, which is the difference the
 // customer feels when they say "1 please" three messages after seeing a product.
 export const getAIHistoryMessageCharCap = () => boundedInteger('AI_HISTORY_MESSAGE_CHAR_CAP', 400, 120, 2000);
-export const getAIMaxOutputTokens = () => boundedInteger('AI_MAX_OUTPUT_TOKENS', 500, 100, 2000);
+export const getAIMaxOutputTokens = () => {
+    // An operator ceiling wins when one is set; 0 means "use whatever this
+    // deployment was configured with", which is also what a cold cache reads.
+    const override = Number(cachedSetting<number>('ai.max_output_tokens'));
+    if (Number.isFinite(override) && override > 0) return Math.min(2000, Math.max(100, Math.round(override)));
+    return boundedInteger('AI_MAX_OUTPUT_TOKENS', 500, 100, 2000);
+};
 export type ResponseComplexity = 'simple' | 'normal' | 'recommendation' | 'complex';
 export function getTurnOutputTokenLimit(complexity: ResponseComplexity) {
     // Every reply is wrapped in a structured JSON envelope (language, message_text,
@@ -32,7 +38,12 @@ export function getTurnOutputTokenLimit(complexity: ResponseComplexity) {
     const defaults = { simple: 160, normal: 192, recommendation: 300, complex: 500 } as const;
     return Math.min(getAIMaxOutputTokens(), boundedInteger(`AI_${complexity.toUpperCase()}_OUTPUT_TOKENS`, defaults[complexity], 64, 500));
 }
-export const getAIModel = () => getAIConfiguration().model;
+/**
+ * The console can name a different model on the same provider — the API key and
+ * base URL stay with the deployment, so switching provider remains a deploy-time
+ * decision while switching model does not.
+ */
+export const getAIModel = () => String(cachedSetting<string>('ai.primary_model') || '').trim() || getAIConfiguration().model;
 
 export function getModelPricing(model: string): { input: number; output: number } | undefined {
     try {
@@ -44,3 +55,4 @@ export function getModelPricing(model: string): { input: number; output: number 
     }
 }
 import { getAIConfiguration } from '../config/runtime';
+import { cachedSetting } from './platform-settings.service';

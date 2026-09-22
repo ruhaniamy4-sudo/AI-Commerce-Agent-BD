@@ -5,15 +5,39 @@ import { signPlatformAdminToken, verifyPlatformAdminToken } from '../auth/token'
 import { PLATFORM_ADMIN_SESSION_MAX_AGE_SECONDS, PLATFORM_ADMIN_TOKEN_MAX_AGE_SECONDS } from '@edutechs/shared';
 import { PlatformAdmin } from '../models/PlatformAdmin';
 import { writePlatformAudit } from '../services/platform-audit.service';
+import { LOCKOUT_MINUTES, adminAddressAllowed, lockoutThreshold } from '../services/platform-security.service';
 
 const router = Router();
 router.post('/login', authRateLimit({ limit: 10 }), async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
     if (!email || !password || password.length > 200) return res.status(400).json({ error: 'Email and password are required' });
+    // The allowlist is checked before credentials so an address that is not permitted
+    // learns nothing about which emails exist.
+    if (!await adminAddressAllowed(req.ip || req.socket.remoteAddress || undefined)) {
+        return res.status(403).json({ error: 'Platform administration is not available from this network', code: 'IP_NOT_ALLOWED' });
+    }
     const admin = await PlatformAdmin.findOne({ email, status: 'active' }).select('+passwordHash');
-    if (!admin || !(await verifyPassword(password, admin.passwordHash))) return res.status(401).json({ error: 'Invalid credentials' });
+    if (admin?.lockedUntil && admin.lockedUntil > new Date()) {
+        return res.status(423).json({ error: 'This administrator account is temporarily locked after repeated failed sign-ins', code: 'ACCOUNT_LOCKED' });
+    }
+    if (!admin || !(await verifyPassword(password, admin.passwordHash))) {
+        // Counting failures per account, not per address, is what stops a distributed
+        // attempt from slipping past the per-address rate limit.
+        if (admin) {
+            const threshold = await lockoutThreshold();
+            admin.failedLoginAttempts = (admin.failedLoginAttempts || 0) + 1;
+            if (threshold && admin.failedLoginAttempts >= threshold) {
+                admin.lockedUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60_000);
+                admin.failedLoginAttempts = 0;
+            }
+            await admin.save();
+        }
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
     admin.lastLoginAt = new Date();
+    admin.failedLoginAttempts = 0;
+    admin.lockedUntil = undefined;
     await admin.save();
     await writePlatformAudit({ platformAdminId: admin._id.toString(), action: 'ADMIN_LOGIN', targetType: 'platform_admin', targetId: admin._id.toString(), previousValue: null, newValue: { lastLoginAt: admin.lastLoginAt }, reason: 'Successful platform administrator login' });
     res.json({

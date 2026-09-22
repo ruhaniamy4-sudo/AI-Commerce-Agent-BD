@@ -100,7 +100,7 @@ export interface PlatformBusiness {
   status: "active" | "suspended";
   businessType?: string;
   createdAt: string;
-  aiAccess?: { status: string; reason?: string };
+  aiAccess?: { status: string; reason?: string; monthlyRequestLimit?: number; monthlyTokenLimit?: number };
   owner?: { name?: string; email?: string };
   merchantUsers: number;
   subscription?: Subscription;
@@ -192,7 +192,7 @@ export interface BusinessDetail {
     businessType?: string;
     status: "active" | "suspended";
     createdAt: string;
-    aiAccess?: { status: string };
+    aiAccess?: { status: string; monthlyRequestLimit?: number; monthlyTokenLimit?: number; warningThresholdPercent?: number; pausedReply?: string };
   };
   members: Array<{
     role: string;
@@ -265,6 +265,88 @@ export interface RevenueResponse {
   data: BillingRow[];
   pagination: Pagination;
 }
+
+// --- Control plane -------------------------------------------------------------
+
+export interface PlatformIdentity {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  permissions: string[];
+}
+export interface RoleDefinition { role: string; description: string; permissions: string[] }
+export interface TeamMember {
+  _id: string; name: string; email: string; role: string; permissions: string[];
+  effectivePermissions: string[]; status: "active" | "disabled"; mustChangePassword?: boolean;
+  notes?: string; lastLoginAt?: string; createdAt: string;
+}
+export interface Announcement {
+  _id: string; title: string; body: string; severity: "info" | "success" | "warning" | "critical";
+  audience: "all" | "plan" | "status" | "business"; planSlugs: string[]; subscriptionStatuses: string[];
+  businessIds: string[]; status: "draft" | "scheduled" | "published" | "expired";
+  dismissible: boolean; emailDelivery: boolean; startsAt?: string; endsAt?: string;
+  publishedAt?: string; authorName?: string; createdAt: string;
+}
+export interface FeatureFlagRow {
+  _id: string; key: string; label: string; description: string; enabled: boolean;
+  rolloutPercent: number; planSlugs: string[]; businessIds: string[]; killSwitch: boolean; updatedAt: string;
+}
+export interface CouponRow {
+  _id: string; code: string; description: string; type: "PERCENT" | "FIXED" | "TRIAL_EXTENSION";
+  value: number; currency: string; planSlugs: string[]; maxRedemptions: number; redemptions: number;
+  recurringPeriods: number; validFrom?: string; validUntil?: string; enabled: boolean;
+  rejection: string | null; createdAt: string;
+}
+export interface SettingRow {
+  key: string; label: string; description: string; category: string; group: string;
+  type: "boolean" | "number" | "string" | "text" | "select" | "list" | "json";
+  default: unknown; options?: string[]; unit?: string; value: unknown; isDefault: boolean;
+}
+export interface AiOverview {
+  month: { requests: number; totalTokens: number; knownCost: number };
+  byModel: Array<{ _id: { provider: string; model: string }; requests: number; tokens: number; cost: number }>;
+  topBusinesses: Array<{ _id: string; businessName: string; requests: number; tokens: number; cost: number }>;
+  states: Record<string, number>;
+  ceiling: { limit: number; spend: number; percent: number | null; warnAt: number };
+  runtime: { provider: string; deploymentModel: string; effectiveModel: string; maxOutputTokens: number; groqConfigured: boolean; openAiConfigured: boolean };
+}
+export interface PromptRow { _id: string; name: string; description?: string; content: string; isActive: boolean; updatedAt: string }
+export interface NotificationTemplateRow { _id: string; event: string; locale: string; subject: string; body: string; enabled: boolean; updatedAt: string }
+export interface QueueRow {
+  name: string; available: boolean; error?: string; paused: boolean;
+  counts: Record<string, number>;
+  failures: Array<{ id: string; name: string; attempts: number; failedReason: string; timestamp: number }>;
+}
+export interface ProviderRow { id: string; label: string; settingKey: string; enabled: boolean; credentials: boolean; total: number; connected: number }
+export interface ProvidersResponse {
+  channels: ProviderRow[]; couriers: ProviderRow[];
+  infrastructure: { ai: { groq: boolean; openai: boolean }; storage: boolean; email: boolean; redis: boolean; sandbox: boolean };
+}
+export interface CatalogOverview {
+  totals: { products: number; orders: number; conversations: number; customers: number; knowledge: number; messages: number };
+  topProducts: Array<{ _id: string; name?: string; count: number }>;
+  topOrders: Array<{ _id: string; name?: string; count: number; value: number }>;
+  topConversations: Array<{ _id: string; name?: string; count: number }>;
+}
+export interface CatalogOrder { _id: string; orderNumber: string; status: string; paymentStatus: string; total: number; createdAt: string; itemCount: number; customerName?: string; businessId: string; businessName?: string }
+export interface CatalogProduct { _id: string; name: string; sku?: string; price: number; stock?: number; isActive: boolean; updatedAt: string; businessId: string; businessName?: string }
+export interface OnboardingPipeline {
+  funnel: Record<string, number>;
+  stuck: Array<{ _id: string; name: string; status: string; stage: string; createdAt: string; ageDays: number; onboarding?: Record<string, boolean> }>;
+}
+export interface SecurityPosture {
+  admins: Array<{ _id: string; name: string; email: string; role: string; status: string; lastLoginAt?: string; mustChangePassword?: boolean; logins30d: number }>;
+  sensitiveEvents: Array<{ _id: string; action: string; targetId: string; reason: string; createdAt: string }>;
+  activeMerchantUsers24h: number;
+}
+export interface ComplianceOverview {
+  datasets: Array<{ id: string; label: string; settingKey: string; days: number; total: number; expired: number }>;
+  requests: Array<{ _id: string; providerUserHash: string; status: string; completedAt?: string; createdAt: string; overdue: boolean }>;
+  sla: number;
+  exportEnabled: boolean;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/platform-admin/${path}`, {
     ...init,
@@ -344,8 +426,70 @@ export const platformApi = {
     request<Paginated<AuditRow>>(
       `audit?search=${encodeURIComponent(search)}&action=${encodeURIComponent(action)}&page=${page}`,
     ),
-  me: () => request<{ id: string; name: string; email: string }>("me"),
+  me: () => request<PlatformIdentity>("me"),
   activity: () => request<{merchantActivity:Array<{_id:string;businessName?:string;userName?:string;userEmail?:string;lastSeenAt:string}>;events:Array<{_id:string;action:string;reason:string;businessName?:string;createdAt:string}>}>("activity"),
   settings: () => request<PlatformSetting[]>("settings"),
   updateSetting: (key:string,payload:{value:unknown;category:string;description?:string}) => request<PlatformSetting>(`settings/${encodeURIComponent(key)}`, {method:"PUT",body:JSON.stringify(payload)}),
+  // --- Control plane ---------------------------------------------------------
+  roles: () => request<RoleDefinition[]>("roles"),
+  team: () => request<TeamMember[]>("team"),
+  createTeamMember: (payload: Record<string, unknown>) => request<TeamMember>("team", { method: "POST", body: JSON.stringify(payload) }),
+  updateTeamMember: (id: string, payload: Record<string, unknown>) => request<TeamMember>(`team/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  resetTeamPassword: (id: string, password: string, reason: string) => request(`team/${id}/password`, { method: "POST", body: JSON.stringify({ password, reason }) }),
+
+  announcements: () => request<Announcement[]>("announcements"),
+  createAnnouncement: (payload: Record<string, unknown>) => request<Announcement>("announcements", { method: "POST", body: JSON.stringify(payload) }),
+  updateAnnouncement: (id: string, payload: Record<string, unknown>) => request<Announcement>(`announcements/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  setAnnouncementStatus: (id: string, status: string, reason?: string) => request(`announcements/${id}/status`, { method: "POST", body: JSON.stringify({ status, reason }) }),
+  deleteAnnouncement: (id: string) => request(`announcements/${id}`, { method: "DELETE" }),
+
+  flags: () => request<FeatureFlagRow[]>("flags"),
+  createFlag: (payload: Record<string, unknown>) => request<FeatureFlagRow>("flags", { method: "POST", body: JSON.stringify(payload) }),
+  updateFlag: (id: string, payload: Record<string, unknown>) => request<FeatureFlagRow>(`flags/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteFlag: (id: string) => request(`flags/${id}`, { method: "DELETE" }),
+
+  coupons: () => request<CouponRow[]>("coupons"),
+  createCoupon: (payload: Record<string, unknown>) => request<CouponRow>("coupons", { method: "POST", body: JSON.stringify(payload) }),
+  updateCoupon: (id: string, payload: Record<string, unknown>) => request<CouponRow>(`coupons/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteCoupon: (id: string) => request(`coupons/${id}`, { method: "DELETE" }),
+
+  registry: () => request<SettingRow[]>("settings/registry"),
+  saveSetting: (key: string, value: unknown) => request<{ value: unknown }>(`settings/registry/${encodeURIComponent(key)}`, { method: "PUT", body: JSON.stringify({ value }) }),
+  resetSetting: (key: string) => request<{ value: unknown }>(`settings/registry/${encodeURIComponent(key)}/reset`, { method: "POST" }),
+
+  aiOverview: () => request<AiOverview>("ai/overview"),
+  setAiLimits: (businessId: string, payload: {monthlyRequestLimit:number;monthlyTokenLimit:number;warningThresholdPercent:number;pausedReply:string;reason:string}) => request(`businesses/${businessId}/ai-limits`, { method: "PATCH", body: JSON.stringify(payload) }),
+  prompts: () => request<PromptRow[]>("prompts"),
+  createPrompt: (payload: Record<string, unknown>) => request<PromptRow>("prompts", { method: "POST", body: JSON.stringify(payload) }),
+  updatePrompt: (id: string, payload: Record<string, unknown>) => request<PromptRow>(`prompts/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  activatePrompt: (id: string, reason: string) => request(`prompts/${id}/activate`, { method: "POST", body: JSON.stringify({ reason }) }),
+  deletePrompt: (id: string) => request(`prompts/${id}`, { method: "DELETE" }),
+
+  notifications: () => request<{ templates: NotificationTemplateRow[]; events: Array<{ event: string; variables: string[] }>; wired: string[] }>("notifications"),
+  createTemplate: (payload: Record<string, unknown>) => request<NotificationTemplateRow>("notifications", { method: "POST", body: JSON.stringify(payload) }),
+  updateTemplate: (id: string, payload: Record<string, unknown>) => request<NotificationTemplateRow>(`notifications/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+
+  setMembershipRole: (userId: string, businessId: string, role: string, reason: string) => request(`users/${userId}/membership`, { method: "PATCH", body: JSON.stringify({ businessId, role, reason }) }),
+  verifyUserEmail: (userId: string, reason: string) => request(`users/${userId}/verify-email`, { method: "POST", body: JSON.stringify({ reason }) }),
+  revokeUserSessions: (userId: string, reason: string) => request(`users/${userId}/revoke-sessions`, { method: "POST", body: JSON.stringify({ reason }) }),
+
+  refundPayment: (id: string, payload: Record<string, unknown>) => request(`payments/${id}/refund`, { method: "POST", body: JSON.stringify(payload) }),
+
+  jobs: () => request<{ queues: QueueRow[]; redisConfigured: boolean }>("jobs"),
+  runQueueAction: (queue: string, action: string, reason: string) => request(`jobs/${queue}/${action}`, { method: "POST", body: JSON.stringify({ reason }) }),
+
+  providers: () => request<ProvidersResponse>("providers"),
+  catalog: () => request<CatalogOverview>("catalog"),
+  catalogOrders: (search = "", status = "", page = 1) => request<Paginated<CatalogOrder>>(`catalog/orders?search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}&page=${page}`),
+  catalogProducts: (search = "", page = 1) => request<Paginated<CatalogProduct>>(`catalog/products?search=${encodeURIComponent(search)}&page=${page}`),
+  onboarding: () => request<OnboardingPipeline>("onboarding"),
+  security: () => request<SecurityPosture>("security"),
+  compliance: () => request<ComplianceOverview>("compliance"),
+  completeDeletionRequest: (id: string, reason: string) => request(`compliance/requests/${id}/complete`, { method: "POST", body: JSON.stringify({ reason }) }),
+  purgeRetention: (dataset: string, reason: string) => request<{ deleted: number }>(`compliance/retention/${dataset}/purge`, { method: "POST", body: JSON.stringify({ reason }) }),
+  eraseBusiness: (id: string, confirmation: string, reason: string) => request<{ removed: Record<string, number> }>(`businesses/${id}/erase`, { method: "POST", body: JSON.stringify({ confirmation, reason }) }),
+
+  /** Exports stream a file, so they bypass the JSON helper and go straight to a download. */
+  exportUrl: (dataset: string, period = "30d") => `/api/platform-admin/exports/${dataset}?period=${period}`,
+  businessExportUrl: (id: string) => `/api/platform-admin/businesses/${id}/export`,
 };
