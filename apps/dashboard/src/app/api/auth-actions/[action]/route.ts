@@ -5,6 +5,9 @@ const endpoints: Record<string, string> = {
     'password-reset-confirm': '/auth/password-reset/confirm',
     'email-verification-request': '/auth/email-verification/request',
     'email-verification-confirm': '/auth/email-verification/confirm',
+    // Lists the businesses a set of credentials can open, so someone in more than
+    // one can pick from names instead of quoting an id. It issues no session.
+    workspaces: '/auth/workspaces',
 };
 
 export async function POST(request: Request, { params }: { params: Promise<{ action: string }> }) {

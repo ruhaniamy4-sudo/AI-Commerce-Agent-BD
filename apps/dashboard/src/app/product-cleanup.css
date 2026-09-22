@@ -4,6 +4,19 @@ body,h1,h2,h3,h4,.merchant-brand a,.work-metric>strong{font-family:var(--font-pr
 .auth-access-switch button{min-height:38px;border-radius:8px;color:#686a7e;font-size:12px;font-weight:650;transition:background .18s ease,color .18s ease,box-shadow .18s ease}
 .auth-access-switch button[aria-pressed=true]{background:#fff;color:#332650;box-shadow:0 4px 16px #31215114}
 .auth-access-note{margin:-12px 0 22px;padding:11px 12px;border-radius:9px;background:#f0ecfa;color:#66587d;font-size:11px;line-height:1.6}
+/* Workspace chooser: shown once credentials are accepted and the account can open more than one business. */
+.auth-workspace-list{display:grid;gap:9px;margin:4px 0 22px}
+.auth-workspace-list button{display:flex;width:100%;align-items:center;gap:12px;padding:13px 14px;border:1px solid #dedbea;border-radius:11px;background:#fff;text-align:left;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+.auth-workspace-list button:hover:not(:disabled){border-color:#8054f6;box-shadow:0 8px 24px #31215112;transform:translateY(-1px)}
+.auth-workspace-list button:focus-visible{outline:2px solid #8054f6;outline-offset:2px}
+.auth-workspace-list button:disabled{opacity:.55}
+.auth-workspace-list button>span:first-child{display:grid;place-items:center;width:38px;height:38px;flex:none;border-radius:10px;background:#efeafc;color:#6b46c7;font-size:12px;font-weight:700}
+.auth-workspace-list button>span:nth-child(2){min-width:0;flex:1}
+.auth-workspace-list strong{display:block;font-size:13px;color:#2a2440;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.auth-workspace-list small{display:block;margin-top:3px;font-size:10px;color:#82849a}
+.auth-workspace-list em{flex:none;font-style:normal;font-size:11px;font-weight:650;color:#7546c7}
+.auth-workspace-back{font-size:12px;color:#7546c7}
+@media (prefers-reduced-motion:reduce){.auth-workspace-list button{transition:none}.auth-workspace-list button:hover:not(:disabled){transform:none}}
 .platform-frame{font-family:var(--font-primary),var(--font-bengali),sans-serif}
 .platform-frame h1,.platform-frame h2,.platform-frame h3{font-weight:650;letter-spacing:-.02em}
 .platform-brand small,.platform-environment small,.platform-sidebar nav p,.platform-page-heading p{font-size:10px}

@@ -44,9 +44,34 @@ function npmInvocation(args) {
 // built dist/index.js. Without this, the agent fails silently (module not found)
 // and every dashboard login/signup then errors with "Unable to connect to the
 // authentication service" since there is nothing listening on the agent port.
+//
+// Staleness matters as much as absence. The package resolves to src for types
+// and to dist at runtime, so an out-of-date dist typechecks and tests clean
+// while the running services read the previous build's values. A constant that
+// had been removed from src came back as `undefined` that way, and the platform
+// admin token it sized was signed with `exp: null` — every admin signed in
+// successfully and was bounced straight back to the login page.
+const sharedSrc = path.join(root, 'packages/shared/src');
 const sharedEntry = path.join(root, 'packages/shared/dist/index.js');
-if (!fs.existsSync(sharedEntry)) {
-  console.log('Building @edutechs/shared (missing dist output)...');
+
+function newestSourceChange(directory) {
+  let newest = 0;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const candidate = path.join(directory, entry.name);
+    newest = Math.max(newest, entry.isDirectory() ? newestSourceChange(candidate) : fs.statSync(candidate).mtimeMs);
+  }
+  return newest;
+}
+
+function sharedBuildReason() {
+  if (!fs.existsSync(sharedEntry)) return 'missing dist output';
+  if (!fs.existsSync(sharedSrc)) return undefined;
+  return newestSourceChange(sharedSrc) > fs.statSync(sharedEntry).mtimeMs ? 'sources changed since the last build' : undefined;
+}
+
+const sharedReason = sharedBuildReason();
+if (sharedReason) {
+  console.log(`Building @edutechs/shared (${sharedReason})...`);
   const buildInvocation = npmInvocation(['run', 'build', '-w', 'packages/shared']);
   const build = spawnSync(buildInvocation.command, buildInvocation.args, { cwd: root, stdio: 'inherit' });
   if (build.status !== 0) {

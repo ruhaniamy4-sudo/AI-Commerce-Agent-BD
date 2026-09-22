@@ -41,9 +41,19 @@ function encode(value: unknown) {
 }
 
 function signPayload(payload: Record<string, unknown>, ttlSeconds: number) {
+    // JSON.stringify turns NaN into null, so a lifetime that arrived undefined —
+    // a constant lost to a stale build, a mistyped env value — used to be signed
+    // as `exp: null` rather than failing. The token verified as malformed on
+    // every later request, which reads as "signed in, then immediately signed
+    // out" and points nowhere near the real cause. Refuse to issue it instead.
+    // Finite rather than positive: an already-elapsed lifetime is how the tests
+    // mint a token that must be refused, and it still produces a real `exp`.
+    if (!Number.isFinite(ttlSeconds)) {
+        throw new Error(`Cannot sign a token with an invalid lifetime (${String(ttlSeconds)} seconds)`);
+    }
     const now = Math.floor(Date.now() / 1000);
     const header = encode({ alg: 'HS256', typ: 'JWT' });
-    const body = encode({ ...payload, iat: now, exp: now + ttlSeconds });
+    const body = encode({ ...payload, iat: now, exp: now + Math.floor(ttlSeconds) });
     const signature = crypto.createHmac('sha256', secret()).update(`${header}.${body}`).digest('base64url');
     return `${header}.${body}.${signature}`;
 }
@@ -57,7 +67,9 @@ function verifyPayload(token: string): Record<string, unknown> {
     const supplied = Buffer.from(suppliedSignature, 'base64url');
     if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) throw new Error('Invalid access token');
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as Record<string, unknown>;
-    if (typeof payload.exp !== 'number' || payload.exp <= Math.floor(Date.now() / 1000)) throw new Error('Access token expired');
+    // Number.isFinite rather than typeof: NaN is a number and compares false
+    // against everything, so a NaN expiry would otherwise read as "not expired".
+    if (!Number.isFinite(payload.exp) || (payload.exp as number) <= Math.floor(Date.now() / 1000)) throw new Error('Access token expired');
     return payload;
 }
 
@@ -91,6 +103,6 @@ export function verifyPlatformAdminToken(token: string): PlatformAdminTokenPaylo
     if (!payload.sub || payload.purpose !== 'platform-admin') throw new Error('Invalid platform admin token claims');
     // Tokens issued before sliding renewal existed have no start time; treat the
     // moment they were issued as the start rather than rejecting the admin.
-    if (typeof payload.sst !== 'number') payload.sst = payload.iat;
+    if (!Number.isFinite(payload.sst)) payload.sst = payload.iat;
     return payload;
 }

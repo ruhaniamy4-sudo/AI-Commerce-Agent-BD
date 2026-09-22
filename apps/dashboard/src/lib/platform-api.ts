@@ -347,14 +347,42 @@ export interface ComplianceOverview {
   exportEnabled: boolean;
 }
 
+/**
+ * An admin whose token has expired or been revoked is no longer signed in, and
+ * every panel on the page would otherwise fill with the same unexplained error.
+ * Drop the dead cookie and return them to the admin sign-in once, rather than
+ * leaving a console that looks broken.
+ */
+let returningToSignIn = false;
+function returnToSignIn() {
+  if (returningToSignIn || typeof window === "undefined") return;
+  returningToSignIn = true;
+  void fetch("/api/platform-auth/logout", { method: "POST" })
+    .catch(() => undefined)
+    .finally(() => window.location.assign("/login?access=admin&reason=session-expired"));
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/platform-admin/${path}`, {
-    ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
-    cache: "no-store",
-  });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "Platform request failed");
+  let response: Response;
+  try {
+    response = await fetch(`/api/platform-admin/${path}`, {
+      ...init,
+      headers: { "content-type": "application/json", ...init?.headers },
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error("Cannot reach the platform service. Check your connection and try again.");
+  }
+  // A sentinel rather than null, so a legitimate falsy body is not mistaken for
+  // a body that could not be parsed at all.
+  const unparsable = Symbol("unparsable");
+  const body = await response.json().catch(() => unparsable);
+  if (response.status === 401) {
+    returnToSignIn();
+    throw new Error("Your administrator session has ended. Sign in again.");
+  }
+  if (body === unparsable) throw new Error("The platform service returned an unreadable response.");
+  if (!response.ok) throw new Error((body as { error?: string })?.error || "Platform request failed");
   return body as T;
 }
 export const platformApi = {

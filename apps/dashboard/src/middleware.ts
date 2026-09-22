@@ -23,5 +23,12 @@ export default withAuth(function middleware(req) {
     if (token?.role === 'Staff' && pathname === '/') return NextResponse.redirect(new URL('/conversations', req.url));
     if (!token?.needsOnboarding && token?.onboardingComplete && pathname === '/onboarding') return NextResponse.redirect(new URL('/', req.url));
     return NextResponse.next();
-}, { callbacks: { authorized: ({ req, token }) => req.nextUrl.pathname === '/admin/login' || req.nextUrl.pathname.startsWith('/platform-admin') ? true : Boolean(token) } });
+}, {
+    // The middleware cannot see authOptions — it runs on the edge, in its own
+    // module — so naming the pages here is the only thing keeping a signed-out
+    // visitor off NextAuth's stock, unbranded /api/auth/signin form. Keep these
+    // in step with `pages` in lib/auth.ts.
+    pages: { signIn: '/login', error: '/login' },
+    callbacks: { authorized: ({ req, token }) => req.nextUrl.pathname === '/admin/login' || req.nextUrl.pathname.startsWith('/platform-admin') ? true : Boolean(token) },
+});
 export const config = { matcher: ['/((?!api|login|signup|forgot-password|reset-password|verify-email|resend-verification|_next/static|_next/image|favicon.ico).*)'] };

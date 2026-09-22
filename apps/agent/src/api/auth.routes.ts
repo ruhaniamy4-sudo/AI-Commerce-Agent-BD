@@ -184,7 +184,13 @@ async function sessionForUser(
     userId: user._id,
     status: "active",
   };
-  if (requestedBusinessId) membershipQuery.businessId = requestedBusinessId;
+  if (requestedBusinessId) {
+    // An id that is not a valid ObjectId would make the query throw; treat it the
+    // same as one that simply matches nothing.
+    if (!mongoose.Types.ObjectId.isValid(requestedBusinessId))
+      return { notAMember: true as const };
+    membershipQuery.businessId = requestedBusinessId;
+  }
   const memberships = await BusinessMember.find(membershipQuery)
     .limit(2)
     .lean();
@@ -220,6 +226,10 @@ async function sessionForUser(
   if (!requestedBusinessId && memberships.length > 1)
     return { conflict: true as const };
   const membership = memberships[0];
+  // Asking for a workspace you are not a member of is a refusal, not a reason to
+  // start onboarding: that path used to hand a seasoned merchant an account
+  // session and drop them into "create your business" whenever the id was stale.
+  if (!membership && requestedBusinessId) return { notAMember: true as const };
   if (!membership) return accountSession(user, metadata);
   const business = await Business.findOne({
     _id: membership.businessId,
@@ -298,22 +308,28 @@ router.post("/signup", limited, async (req, res) => {
   }
 });
 
-router.post("/login", limited, async (req, res) => {
-  const { email, password, businessId } = req.body || {};
-  if (!email || !password)
-    return res.status(400).json({ error: "Email and password are required" });
+/**
+ * The single place a password is checked against an account.
+ *
+ * Both sign-in and the workspace lookup go through here, so the lockout counter
+ * cannot be sidestepped by preferring whichever endpoint does not count. The
+ * dummy hash keeps the work — and so the response time — the same whether or not
+ * the address exists.
+ */
+const DUMMY_PASSWORD_HASH =
+  "scrypt$AQEBAQEBAQEBAQEBAQEBAQ$iXsU78TTkxXslqQiAizBFyhJ8xpNZx6zZmeVM50aAxhqonxpkVTsT1yPDY7DiLQLcXYj5JARkwzOdbrzKB5_Uw";
+const MAX_FAILED_LOGINS = 5;
+const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
 
-  const normalizedEmail = normalizeEmail(email);
+async function authenticateCredentials(email: unknown, password: unknown) {
   const user = await User.findOne({
-    email: normalizedEmail,
+    email: normalizeEmail(email),
     status: "active",
   }).select("+passwordHash +failedLoginAttempts +lockedUntil");
   const locked = Boolean(user?.lockedUntil && user.lockedUntil > new Date());
-  const dummyHash =
-    "scrypt$AQEBAQEBAQEBAQEBAQEBAQ$iXsU78TTkxXslqQiAizBFyhJ8xpNZx6zZmeVM50aAxhqonxpkVTsT1yPDY7DiLQLcXYj5JARkwzOdbrzKB5_Uw";
   const passwordMatches = await verifyPassword(
     String(password),
-    user?.passwordHash || dummyHash,
+    user?.passwordHash || DUMMY_PASSWORD_HASH,
   );
   if (!user || locked || !user.passwordHash || !passwordMatches) {
     if (user && !locked) {
@@ -323,20 +339,31 @@ router.post("/login", limited, async (req, res) => {
         {
           $set: {
             failedLoginAttempts: failures,
-            ...(failures >= 5
-              ? { lockedUntil: new Date(Date.now() + 15 * 60 * 1000) }
+            ...(failures >= MAX_FAILED_LOGINS
+              ? { lockedUntil: new Date(Date.now() + LOGIN_LOCKOUT_MS) }
               : {}),
           },
         },
       );
     }
-    return res.status(401).json({ error: "Invalid credentials" });
+    return null;
   }
   if (user.failedLoginAttempts || user.lockedUntil)
     await User.updateOne(
       { _id: user._id },
       { $set: { failedLoginAttempts: 0 }, $unset: { lockedUntil: 1 } },
     );
+  return user;
+}
+
+router.post("/login", limited, async (req, res) => {
+  const { email, password, businessId } = req.body || {};
+  if (!email || !password)
+    return res.status(400).json({ error: "Email and password are required" });
+
+  const user = await authenticateCredentials(email, password);
+  if (!user) return res.status(401).json({ error: "Invalid credentials" });
+
   const result = await sessionForUser(user, requestMetadata(req), businessId);
   if ("conflict" in result) {
     return res.status(409).json({
@@ -344,12 +371,77 @@ router.post("/login", limited, async (req, res) => {
       code: "BUSINESS_ID_REQUIRED",
     });
   }
+  if ("notAMember" in result)
+    return res.status(403).json({
+      error: "You do not have access to that workspace",
+      code: "WORKSPACE_NOT_AVAILABLE",
+    });
   if ("forbidden" in result)
     return res.status(403).json({
       error: "Business is not active",
       code: "BUSINESS_INACTIVE",
     });
   return res.json(result);
+});
+
+/**
+ * The workspaces a set of credentials can open, so the sign-in form can offer a
+ * list to choose from. Someone who belongs to more than one business was
+ * previously asked to type a raw ObjectId, which nobody knows by heart.
+ *
+ * It answers exactly as sign-in does for a bad password, a locked account or an
+ * unverified address, and it mints nothing: the chosen workspace still goes
+ * through /login to get a session.
+ */
+router.post("/workspaces", limited, async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password)
+    return res.status(400).json({ error: "Email and password are required" });
+
+  const user = await authenticateCredentials(email, password);
+  if (!user) return res.status(401).json({ error: "Invalid credentials" });
+  if (verificationIsRequired() && !user.emailVerified) {
+    return res.status(403).json({
+      error: "Verify your email before signing in",
+      code: "EMAIL_VERIFICATION_REQUIRED",
+    });
+  }
+
+  const memberships = await BusinessMember.find({
+    userId: user._id,
+    status: "active",
+  })
+    .limit(50)
+    .lean();
+  const businesses = memberships.length
+    ? await Business.find({
+        _id: { $in: memberships.map((membership) => membership.businessId) },
+        status: "active",
+      })
+        .select("name slug")
+        .lean()
+    : [];
+  const byId = new Map(
+    businesses.map((business) => [business._id.toString(), business]),
+  );
+
+  return res.json({
+    workspaces: memberships
+      .map((membership) => {
+        const business = byId.get(membership.businessId.toString());
+        return business
+          ? {
+              id: business._id.toString(),
+              name: business.name,
+              slug: business.slug,
+              role: membership.role,
+            }
+          : null;
+      })
+      .filter(Boolean)
+      // Stable, readable order rather than whatever the index returns.
+      .sort((left, right) => left!.name.localeCompare(right!.name)),
+  });
 });
 
 router.post("/oauth/exchange", limited, async (req, res) => {
@@ -447,7 +539,7 @@ router.post("/oauth/exchange", limited, async (req, res) => {
       .status(409)
       .json({ error: "Choose a business using email sign in" });
   }
-  if ("forbidden" in result) {
+  if ("forbidden" in result || "notAMember" in result) {
     console.warn(
       "[AUTH_DIAGNOSTIC] oauth/exchange rejected: business not active",
       {
@@ -762,6 +854,13 @@ router.post(
         requestMetadata(req),
         existingMembership.businessId.toString(),
       );
+      // The membership was read a moment ago, so these only happen if it was
+      // withdrawn in between; say so rather than returning a shapeless body.
+      if ("notAMember" in result || "forbidden" in result)
+        return res.status(403).json({
+          error: "Your workspace is no longer available",
+          code: "WORKSPACE_NOT_AVAILABLE",
+        });
       return res.json(result);
     }
     const name = String(req.body?.name || "").trim();

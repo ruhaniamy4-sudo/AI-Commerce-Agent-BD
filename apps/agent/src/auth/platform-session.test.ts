@@ -70,6 +70,37 @@ describe('platform administrator session lifetime', () => {
         await request(app).post('/platform-auth/renew').set('authorization', 'Bearer not-a-token').expect(401);
     });
 
+    it('refuses to sign a token when the configured lifetime is not a real number', () => {
+        // A constant that went missing from a stale build arrived here as
+        // undefined. JSON.stringify wrote the resulting NaN as `exp: null`, so
+        // sign-in succeeded and every request afterwards read the token as
+        // malformed — the admin was returned to the login page each time, with
+        // nothing in the logs pointing at the lifetime. Fail at the signature.
+        expect(() => signPlatformAdminToken(adminId.toString(), { ttlSeconds: undefined as unknown as number })).not.toThrow();
+        expect(() => signPlatformAdminToken(adminId.toString(), { ttlSeconds: NaN })).toThrow(/invalid lifetime/i);
+        expect(() => signPlatformAdminToken(adminId.toString(), { ttlSeconds: Infinity })).toThrow(/invalid lifetime/i);
+    });
+
+    it('always carries a finite expiry that the verifier accepts', () => {
+        for (const token of [signPlatformAdminToken(adminId.toString()), signPlatformAdminToken(adminId.toString(), { ttlSeconds: 600 })]) {
+            const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as { exp: unknown };
+            expect(Number.isFinite(payload.exp)).toBe(true);
+            expect(() => verifyPlatformAdminToken(token)).not.toThrow();
+        }
+    });
+
+    it('rejects a token whose expiry is absent or not a number', () => {
+        // `exp: null` and `exp: NaN` both used to slip past a `typeof` check —
+        // NaN is a number, and it compares false against every deadline.
+        const signed = signPlatformAdminToken(adminId.toString());
+        for (const broken of [null, 'soon', undefined]) {
+            const body = JSON.parse(Buffer.from(signed.split('.')[1], 'base64url').toString('utf8')) as Record<string, unknown>;
+            body.exp = broken;
+            const forged = `${signed.split('.')[0]}.${Buffer.from(JSON.stringify(body)).toString('base64url')}.${signed.split('.')[2]}`;
+            expect(() => verifyPlatformAdminToken(forged)).toThrow();
+        }
+    });
+
     it('treats a token issued before sliding renewal existed as starting when it was issued', () => {
         // Legacy tokens carry no `sst`; rejecting them would sign every admin out on deploy.
         const legacy = signPlatformAdminToken(adminId.toString());

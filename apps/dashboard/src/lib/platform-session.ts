@@ -8,12 +8,16 @@ export const PLATFORM_COOKIE = 'sellpilot-platform-session';
  * renew with; the agent enforces the real limits either way.
  */
 export function setPlatformCookie(response: NextResponse, token: string, maxAgeSeconds = PLATFORM_ADMIN_SESSION_MAX_AGE_SECONDS) {
+    // Math.max(60, NaN) is NaN, which writes a cookie the browser drops at the end
+    // of the session — so a bad lifetime would sign the admin out on every restart
+    // instead of failing anywhere visible. Fall back to the shipped default.
+    const lifetime = Number.isFinite(maxAgeSeconds) ? Math.max(60, Math.round(maxAgeSeconds)) : PLATFORM_ADMIN_SESSION_MAX_AGE_SECONDS;
     response.cookies.set(PLATFORM_COOKIE, token, {
         httpOnly: true,
         sameSite: 'strict',
         secure: process.env.NODE_ENV === 'production',
         path: '/',
-        maxAge: Math.max(60, Math.round(maxAgeSeconds)),
+        maxAge: lifetime,
     });
 }
 
@@ -30,8 +34,8 @@ export function tokenSecondsRemaining(token: string) {
     if (!body) return 0;
     try {
         const payload = JSON.parse(decodeBase64Url(body)) as { exp?: number };
-        if (typeof payload.exp !== 'number') return 0;
-        return payload.exp - Math.floor(Date.now() / 1000);
+        if (!Number.isFinite(payload.exp)) return 0;
+        return payload.exp! - Math.floor(Date.now() / 1000);
     } catch {
         return 0;
     }

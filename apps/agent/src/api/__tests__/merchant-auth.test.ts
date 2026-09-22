@@ -1000,6 +1000,107 @@ describe("merchant account and business onboarding", () => {
       expect(res.body.business.name).toBe("Target Store");
     });
 
+    it("lists the workspaces a set of credentials can open, so the form can offer a choice", async () => {
+      const passwordHash = await hashPassword("MultiPass123!");
+      const secondBusinessId = new mongoose.Types.ObjectId();
+      vi.spyOn(User, "findOne").mockReturnValue({
+        select: vi.fn().mockResolvedValue({
+          _id: userId,
+          name: "Multi Merchant",
+          email: "multi.merchant@example.com",
+          passwordHash,
+          status: "active",
+          emailVerified: true,
+        }),
+      } as any);
+      vi.spyOn(BusinessMember, "find").mockReturnValue({
+        limit: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue([
+            { _id: membershipId, businessId, role: "Owner", status: "active" },
+            { _id: new mongoose.Types.ObjectId(), businessId: secondBusinessId, role: "Staff", status: "active" },
+          ]),
+        }),
+      } as any);
+      vi.spyOn(Business, "find").mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue([
+            { _id: secondBusinessId, name: "Zafar Traders", slug: "zafar-traders" },
+            { _id: businessId, name: "Anwar Fabrics", slug: "anwar-fabrics" },
+          ]),
+        }),
+      } as any);
+
+      const res = await request(app)
+        .post("/auth/workspaces")
+        .send({ email: "multi.merchant@example.com", password: "MultiPass123!" })
+        .expect(200);
+
+      // Sorted by name, and carrying nothing that could stand in for a session.
+      expect(res.body.workspaces).toEqual([
+        { id: businessId.toString(), name: "Anwar Fabrics", slug: "anwar-fabrics", role: "Owner" },
+        { id: secondBusinessId.toString(), name: "Zafar Traders", slug: "zafar-traders", role: "Staff" },
+      ]);
+      expect(JSON.stringify(res.body)).not.toMatch(/token/i);
+    });
+
+    it("refuses to list workspaces for a password that does not match", async () => {
+      const passwordHash = await hashPassword("MultiPass123!");
+      vi.spyOn(User, "findOne").mockReturnValue({
+        select: vi.fn().mockResolvedValue({
+          _id: userId,
+          name: "Multi Merchant",
+          email: "multi.merchant@example.com",
+          passwordHash,
+          status: "active",
+          emailVerified: true,
+        }),
+      } as any);
+      const failures = vi.spyOn(User, "updateOne");
+
+      const res = await request(app)
+        .post("/auth/workspaces")
+        .send({ email: "multi.merchant@example.com", password: "WrongPass123!" })
+        .expect(401);
+
+      expect(res.body).toMatchObject({ error: "Invalid credentials" });
+      // The lookup must count towards lockout too, or it becomes the cheaper
+      // endpoint to guess against.
+      expect(failures).toHaveBeenCalledWith(
+        { _id: userId },
+        expect.objectContaining({ $set: expect.objectContaining({ failedLoginAttempts: 1 }) }),
+      );
+    });
+
+    it("refuses a workspace the account is not a member of instead of starting onboarding", async () => {
+      const passwordHash = await hashPassword("MultiPass123!");
+      vi.spyOn(User, "findOne").mockReturnValue({
+        select: vi.fn().mockResolvedValue({
+          _id: userId,
+          name: "Multi Merchant",
+          email: "multi.merchant@example.com",
+          passwordHash,
+          status: "active",
+          emailVerified: true,
+        }),
+      } as any);
+      // Nothing matches the requested business: the membership ended, or the id
+      // was stale. This used to fall through to an account session, which sent a
+      // working merchant into "create your business".
+      vi.spyOn(BusinessMember, "find").mockReturnValue({
+        limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
+      } as any);
+
+      for (const requested of [new mongoose.Types.ObjectId().toString(), "not-an-object-id"]) {
+        const res = await request(app)
+          .post("/auth/login")
+          .send({ email: "multi.merchant@example.com", password: "MultiPass123!", businessId: requested })
+          .expect(403);
+        expect(res.body).toMatchObject({ code: "WORKSPACE_NOT_AVAILABLE" });
+        expect(res.body).not.toHaveProperty("accountToken");
+        expect(res.body.needsOnboarding).toBeUndefined();
+      }
+    });
+
     it("returns 403 BUSINESS_INACTIVE when user's business is suspended or inactive", async () => {
       const passwordHash = await hashPassword("MerchantPass123!");
       const user = {

@@ -92,8 +92,20 @@ const providers: NextAuthOptions['providers'] = [CredentialsProvider({
             if (response.status === 401) {
                 return null;
             }
+            // Without its own code this arrived at the form as an unrecognised
+            // message and was shown as "invalid email or password" — so someone
+            // who was merely rate limited kept retrying a password that was right.
+            if (response.status === 429) {
+                throw new Error('RATE_LIMITED');
+            }
+            if (response.status === 423 || body?.code === 'ACCOUNT_LOCKED') {
+                throw new Error('ACCOUNT_LOCKED');
+            }
             if (response.status === 409 || body?.error?.includes('businessId is required') || body?.code === 'BUSINESS_ID_REQUIRED') {
                 throw new Error('BUSINESS_ID_REQUIRED');
+            }
+            if (response.status === 503 || body?.code === 'MAINTENANCE') {
+                throw new Error('MAINTENANCE');
             }
             if (response.status === 403) {
                 if (body?.code === 'EMAIL_VERIFICATION_REQUIRED' || body?.error?.toLowerCase().includes('verify')) {
