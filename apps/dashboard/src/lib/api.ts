@@ -699,13 +699,18 @@ export interface PlatformNotice {
  * platform settings the dashboard renders — one request, because all three come
  * from the same operator configuration and change at the same cadence.
  */
+export interface PlatformNoticeFeed {
+  announcements: PlatformNotice[];
+  /** Published since this user last opened the panel. */
+  unreadCount: number;
+  seenAt: string | null;
+  flags: Record<string, boolean>;
+  settings: Record<string, unknown>;
+}
+
 export const platformNoticeApi = {
-  get: () =>
-    apiClient.get<{
-      announcements: PlatformNotice[];
-      flags: Record<string, boolean>;
-      settings: Record<string, unknown>;
-    }>("/api/dashboard/platform-notices"),
+  get: () => apiClient.get<PlatformNoticeFeed>("/api/dashboard/platform-notices"),
+  markSeen: () => apiClient.post<{ seenAt: string }>("/api/dashboard/platform-notices/seen"),
 };
 
 export const trainingApi = {

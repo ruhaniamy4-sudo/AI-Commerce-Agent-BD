@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { requireAdministrator } from '../auth/middleware';
 import { getAgentStatus } from '../services/agentManager';
 import { AIUsage } from '../models/AIUsage';
@@ -10,8 +11,9 @@ import { Customer } from '../models/Customer';
 import { Knowledge } from '../models/Knowledge';
 import { Order } from '../models/Order';
 import { Product } from '../models/Product';
+import { User } from '../models/User';
 import { requireTenantContext } from '../tenancy/context';
-import { announcementsForBusiness } from '../services/platform-announcement.service';
+import { announcementsForBusiness, countUnread } from '../services/platform-announcement.service';
 import { resolveFeatureFlags } from '../services/feature-flag.service';
 import { effectiveSettings } from '../services/platform-settings.service';
 
@@ -38,18 +40,29 @@ router.get('/dashboard/overview', requireAdministrator, async (_req, res) => {
  * maintenance or billing notice has to reach whoever is working.
  */
 router.get('/dashboard/platform-notices', async (_req, res) => {
-    const { businessId } = requireTenantContext();
-    const [announcements, flags, settings] = await Promise.all([
+    const { businessId, userId } = requireTenantContext();
+    const [announcements, flags, settings, user] = await Promise.all([
         announcementsForBusiness(businessId),
         resolveFeatureFlags(businessId),
         effectiveSettings(),
+        User.collection.findOne({ _id: new mongoose.Types.ObjectId(userId) }, { projection: { announcementsSeenAt: 1 } }),
     ]);
     const publicKeys = ['platform.name', 'platform.support_email', 'platform.status_page_url', 'support.enabled', 'support.chat_url', 'support.onboarding_call_url', 'support.response_sla_hours', 'compliance.privacy_policy_url', 'compliance.terms_url', 'localization.default_locale', 'localization.supported_locales', 'localization.default_timezone', 'subscription.allow_self_serve'];
     res.json({
         announcements,
+        unreadCount: countUnread(announcements as Array<{ publishedAt?: Date }>, user?.announcementsSeenAt),
+        seenAt: user?.announcementsSeenAt || null,
         flags,
         settings: Object.fromEntries(settings.filter(row => publicKeys.includes(row.key)).map(row => [row.key, row.value])),
     });
+});
+
+/** Opening the announcements panel marks everything currently published as read. */
+router.post('/dashboard/platform-notices/seen', async (_req, res) => {
+    const { userId } = requireTenantContext();
+    const seenAt = new Date();
+    await User.collection.updateOne({ _id: new mongoose.Types.ObjectId(userId) }, { $set: { announcementsSeenAt: seenAt } });
+    res.json({ seenAt });
 });
 
 export default router;

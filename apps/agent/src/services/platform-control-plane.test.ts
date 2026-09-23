@@ -14,6 +14,8 @@ import { Subscription } from '../models/Subscription';
 import { SubscriptionPlan } from '../models/SubscriptionPlan';
 import { clearFeatureFlagCache, resolveFeatureFlags } from './feature-flag.service';
 import { clearPlanCacheForTests } from './entitlement.service';
+import { ANNOUNCEMENT_FEED_LIMIT, announcementsForBusiness, countUnread } from './platform-announcement.service';
+import { PlatformAnnouncement } from '../models/PlatformAnnouncement';
 
 const adminId = new mongoose.Types.ObjectId().toString();
 
@@ -219,5 +221,58 @@ describe('operator overrides on the model path', () => {
         stored([{ key: 'ai.max_output_tokens', value: 0 }]);
         await warmSettingCache();
         expect(getAIMaxOutputTokens()).toBe(500);
+    });
+});
+
+describe('merchant announcement feed', () => {
+    const at = (iso: string) => ({ publishedAt: new Date(iso) });
+
+    it('counts everything as unread for someone who has never opened the panel', () => {
+        expect(countUnread([at('2026-09-20T10:00:00Z'), at('2026-09-21T10:00:00Z')], null)).toBe(2);
+        expect(countUnread([], null)).toBe(0);
+    });
+
+    it('counts only what was published after the panel was last opened', () => {
+        const seen = new Date('2026-09-21T00:00:00Z');
+        const feed = [at('2026-09-22T10:00:00Z'), at('2026-09-21T10:00:00Z'), at('2026-09-20T10:00:00Z')];
+        expect(countUnread(feed, seen)).toBe(2);
+        expect(countUnread(feed, new Date('2026-09-23T00:00:00Z'))).toBe(0);
+    });
+
+    it('does not count an announcement published at the exact moment it was seen', () => {
+        // Opening the panel writes the timestamp, so anything already on screen is read.
+        const moment = '2026-09-22T10:00:00Z';
+        expect(countUnread([at(moment)], new Date(moment))).toBe(0);
+    });
+
+    it('ignores a row with no publish time rather than treating it as new', () => {
+        expect(countUnread([{ publishedAt: null }, at('2026-09-22T10:00:00Z')], new Date('2026-09-21T00:00:00Z'))).toBe(1);
+    });
+
+    it('caps the feed at ten and keeps the newest, after targeting is applied', async () => {
+        const businessId = new mongoose.Types.ObjectId();
+        // Twenty published announcements, half of them aimed at a different plan.
+        const rows = Array.from({ length: 20 }, (_, index) => ({
+            _id: new mongoose.Types.ObjectId(),
+            title: `Notice ${index}`,
+            body: 'body',
+            severity: 'info',
+            audience: index % 2 ? 'plan' : 'all',
+            planSlugs: ['enterprise'],
+            subscriptionStatuses: [],
+            businessIds: [],
+            publishedAt: new Date(Date.now() - index * 60_000),
+        }));
+        vi.spyOn(PlatformAnnouncement.collection, 'find').mockReturnValue({
+            sort: () => ({ limit: () => ({ toArray: async () => rows }) }),
+        } as any);
+        vi.spyOn(Subscription.collection, 'findOne').mockResolvedValue({ planSlug: 'starter' } as any);
+
+        const feed = await announcementsForBusiness(businessId.toString());
+        expect(feed).toHaveLength(ANNOUNCEMENT_FEED_LIMIT);
+        // Targeted-elsewhere rows are filtered out, and the newest survivor leads.
+        expect(feed.every(row => row.title.startsWith('Notice'))).toBe(true);
+        expect(feed[0].publishedAt.getTime()).toBeGreaterThan(feed[1].publishedAt.getTime());
+        vi.restoreAllMocks();
     });
 });

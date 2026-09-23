@@ -12,6 +12,8 @@ export interface IUser extends Document {
     providerAccounts: Array<{ provider: 'google' | 'facebook'; accountId: string }>;
     status: 'active' | 'disabled';
     lastSeenAt?: Date;
+    /** When this user last opened the announcements panel; anything newer is unread. */
+    announcementsSeenAt?: Date;
     passwordChangedAt?: Date;
     failedLoginAttempts: number;
     lockedUntil?: Date;
@@ -34,6 +36,7 @@ const UserSchema = new Schema<IUser>({
     }],
     status: { type: String, enum: ['active', 'disabled'], default: 'active', index: true },
     lastSeenAt: { type: Date, index: true },
+    announcementsSeenAt: Date,
     passwordChangedAt: Date,
     failedLoginAttempts: { type: Number, default: 0, min: 0, select: false },
     lockedUntil: { type: Date, select: false },

@@ -47,7 +47,7 @@ Permission keys are `resource.action`:
 
 ## Navigation
 
-Eight groups, 26 destinations. Items the signed-in role cannot view are hidden.
+Eight groups, 28 destinations. Items the signed-in role cannot view are hidden.
 
 ### 1. Command center
 
@@ -55,7 +55,7 @@ Eight groups, 26 destinations. Items the signed-in role cannot view are hidden.
 | --- | --- | --- |
 | Overview | `/platform-admin` | KPI tiles, revenue/growth/AI trends, period selector, operational pulse |
 | Live operations | `/platform-admin/support` | Merchant session feed, audited-event feed, 30s refresh |
-| Announcements | `/platform-admin/announcements` | Compose, schedule, publish, take down and delete merchant broadcasts; audience targeting (all, plan, subscription status, named workspaces); severity; dismissible; delivered to the merchant dashboard |
+| Announcements | `/platform-admin/announcements` | Compose, schedule, publish, take down and delete merchant broadcasts; audience targeting (all, plan, subscription status, named workspaces); severity; delivered to the merchant dashboard top bar |
 
 ### 2. Merchants
 
@@ -140,6 +140,7 @@ console's proxy and session renewal keep working unchanged.
 | --- | --- |
 | `PlatformAdmin` (extended) | `role`, `permissions[]`, `createdBy`, `mustChangePassword`, `notes` |
 | `PlatformAnnouncement` | Merchant broadcasts with audience targeting and a schedule |
+| `User` (extended) | `announcementsSeenAt`, the single timestamp the unread badge is derived from |
 | `FeatureFlag` | Keyed rollout: enabled, percentage, plan slugs, tenant ids |
 | `Coupon` | Discount codes with scope, cap, window, redemption count |
 | `PromptTemplate` | Global prompt library entries with version history |
@@ -161,7 +162,7 @@ the paths that enforce them:
 | `compliance.retention_*`, `security.audit_retention_days` | The retention page reports what is past its window and the purge deletes it. |
 | `compliance.tenant_export_enabled` | Gates the workspace data export. |
 | Feature flags | `GET /api/dashboard/platform-notices` resolves every flag for the signed-in workspace, with stable percentage bucketing. |
-| Announcements | The same endpoint returns the notices targeted at that workspace; `PlatformNoticeBanner` renders them in the merchant dashboard, dismissals kept per browser. |
+| Announcements | The same endpoint returns the ten most recent notices targeted at that workspace, with an unread count. `PlatformNoticeBell` renders them behind a bell in the merchant top bar; opening the panel writes `announcementsSeenAt` on the user, so the badge is correct on every device they sign in from. |
 | Notification templates | `email_verification` and `password_reset` are rendered from the stored template, falling back to the shipped default. |
 | `ai.primary_model`, `ai.max_output_tokens` | `getAIModel()` and `getAIMaxOutputTokens()`, read synchronously from the warmed settings cache while a customer turn is built. Empty or 0 means "use the deployment value", which is also how a cold cache reads. The provider and its API key stay with the deployment, so switching provider remains a deploy-time decision. |
 | Integration provider switches | Read by the Providers page, which reports credential presence alongside them. |
